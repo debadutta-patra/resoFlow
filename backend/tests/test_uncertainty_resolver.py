@@ -52,13 +52,14 @@ class TestUncertaintyResolver:
         assert abs(dw_14.err_low - 0.0451) < 1e-3
         assert dw_14.status == ParameterStatus.FITTED
 
-        # 4. Test residue 14N R1_A (fitted with covariance error)
+        # 4. Test residue 14N R1_A (also discovered via per-group MCMC in STEP2)
         r1_14 = resolver.resolve("r1_a", scope="14N")
         assert r1_14.value is not None
         assert abs(r1_14.value - 1.96616) < 1e-4
+        assert r1_14.source == UncertaintySource.RESAMPLED
+        assert r1_14.method_name == "MCMC"
         assert r1_14.err_low is not None
-        assert abs(r1_14.err_low - 0.0143017) < 1e-4
-        assert r1_14.source == UncertaintySource.COVARIANCE
+        assert abs(r1_14.err_low - 0.0101) < 1e-3
         assert r1_14.status == ParameterStatus.FITTED
 
         # 5. Test residue 14N CS_A (fixed at 113.589 ppm)
