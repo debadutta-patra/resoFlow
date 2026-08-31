@@ -1,0 +1,21 @@
+[Unit]
+Description=resoFlow Redis Cache Container
+After=resoflow-pod.service resoflow-redisdata-volume.service
+Requires=resoflow-pod.service resoflow-redisdata-volume.service
+
+[Container]
+ContainerName=resoflow-redis
+Pod=resoflow.pod
+Image=docker.io/library/redis:7-alpine@sha256:1db42ccef14898aa29bae778452d567534b59c107129cbc1163fb552de184d3c
+Volume=resoflow-redisdata.volume:/data:Z
+HealthCmd=redis-cli ping || exit 1
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=default.target

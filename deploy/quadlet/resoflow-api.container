@@ -1,0 +1,19 @@
+[Unit]
+Description=resoFlow FastAPI Backend API Container
+After=resoflow-pod.service resoflow-postgres.service resoflow-redis.service
+Wants=resoflow-postgres.service resoflow-redis.service
+
+[Container]
+ContainerName=resoflow-api
+Pod=resoflow.pod
+Image=localhost/resoflow-api:latest
+Volume=%h/.local/share/resoflow/projects:/data/projects:z
+EnvironmentFile=%h/.config/resoflow/resoflow.env
+Exec=sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

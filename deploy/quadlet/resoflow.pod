@@ -1,0 +1,12 @@
+[Unit]
+Description=resoFlow Rootless Pod
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=resoflow
+# Only port 8080 is published, bound strictly to 127.0.0.1 (PostgreSQL & Redis are not exposed)
+PublishPort=127.0.0.1:8080:8080
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,22 @@
+[Unit]
+Description=resoFlow PostgreSQL Database Container
+After=resoflow-pod.service resoflow-pgdata-volume.service
+Requires=resoflow-pod.service resoflow-pgdata-volume.service
+
+[Container]
+ContainerName=resoflow-postgres
+Pod=resoflow.pod
+Image=docker.io/library/postgres:16-alpine@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571
+Volume=resoflow-pgdata.volume:/var/lib/postgresql/data:Z
+EnvironmentFile=%h/.config/resoflow/resoflow.env
+HealthCmd=pg_isready
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

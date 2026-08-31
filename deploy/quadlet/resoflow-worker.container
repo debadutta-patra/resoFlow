@@ -1,0 +1,21 @@
+[Unit]
+Description=resoFlow Celery Background Worker Container
+After=resoflow-pod.service resoflow-postgres.service resoflow-redis.service
+Wants=resoflow-postgres.service resoflow-redis.service
+
+[Container]
+ContainerName=resoflow-worker
+Pod=resoflow.pod
+Image=localhost/resoflow-worker:latest
+Volume=%h/.local/share/resoflow/projects:/data/projects:z
+Volume=%t/podman/podman.sock:/run/podman/podman.sock:z
+Environment=CONTAINER_HOST=unix:///run/podman/podman.sock
+EnvironmentFile=%h/.config/resoflow/resoflow.env
+Exec=celery -A app.celery_app worker --loglevel=info -Q chemex,peakfit,stats,celery --concurrency=2
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

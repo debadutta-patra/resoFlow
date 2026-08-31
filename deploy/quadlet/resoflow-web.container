@@ -1,0 +1,16 @@
+[Unit]
+Description=resoFlow Web UI & Reverse Proxy Container
+After=resoflow-pod.service resoflow-api.service
+Wants=resoflow-api.service
+
+[Container]
+ContainerName=resoflow-web
+Pod=resoflow.pod
+Image=localhost/resoflow-web:latest
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=default.target
