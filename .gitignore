@@ -47,6 +47,7 @@ backend/resoFlow.db
 backend/*.log
 frontend/*.log
 tmp_test_projects/
+/test_data/
 
 # Ad-hoc debug/scratch scripts and dumps (not part of the backend/tests/ suite)
 /TESTOUT_*.txt
