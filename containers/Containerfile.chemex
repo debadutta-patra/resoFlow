@@ -1,0 +1,24 @@
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:python3.13-trixie-slim@sha256:0f8266dbcba9d8863ca855e309e756e366b46aaebb2f7ffdb46f8773530a48d4
+ARG PYTHON_IMAGE=docker.io/library/python:3.13-slim-trixie@sha256:16f75ad0fbc6c4883a8afd63b2d700c3cf68ccffc1aaeca5304ca0a3a908451f
+
+FROM ${UV_IMAGE} AS builder
+WORKDIR /app
+RUN uv venv /app/.venv && uv pip install --no-cache "chemex>=0.9"
+
+FROM ${PYTHON_IMAGE} AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN useradd -u 1000 -m -s /bin/bash appuser
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    MPLBACKEND=Agg \
+    MPLCONFIGDIR=/tmp/mpl \
+    PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1
+
+USER appuser
+WORKDIR /work
+ENTRYPOINT ["chemex"]

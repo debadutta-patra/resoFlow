@@ -16,7 +16,6 @@ import {
   Maximize2,
   RotateCcw,
   Search,
-  Sparkles,
 } from 'lucide-react';
 import { deduplicateSpinKeys } from '../../lib/spinSystem';
 import type { CpmgDiagnosticsResult } from '../../lib/cpmgDiagnostics';

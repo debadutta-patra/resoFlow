@@ -1,0 +1,12 @@
+FROM localhost/resoflow-base:latest
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends podman && rm -rf /var/lib/apt/lists/*
+
+USER appuser
+WORKDIR /app
+COPY backend/app /app/app
+COPY backend/alembic.ini /app/alembic.ini
+COPY backend/migrations /app/migrations
+
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "-Q", "chemex,peakfit,stats,celery"]

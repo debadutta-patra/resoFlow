@@ -1,0 +1,14 @@
+FROM localhost/resoflow-base:latest
+
+WORKDIR /app
+COPY backend/app /app/app
+COPY backend/alembic.ini /app/alembic.ini
+COPY backend/migrations /app/migrations
+
+USER appuser
+EXPOSE 8000
+
+HEALTHCHECK --interval=5s --timeout=5s --retries=5 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs')" || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

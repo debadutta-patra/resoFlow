@@ -22,7 +22,7 @@ import ResidueSelector, { type ResidueItem } from './methods/ResidueSelector';
 import StepTabs from './methods/StepTabs';
 import StepStatisticsSection from './methods/StepStatisticsSection';
 import StatisticsResultsSection from './methods/StatisticsResultsSection';
-import type { ParameterConfig } from '../lib/parameterConfig';
+import type { ParameterConfig, ResidueParams } from '../lib/parameterConfig';
 import {
   createDefaultParameterConfig,
   computePickHash,
@@ -961,12 +961,12 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             ? parseFloat(p.dw_ab.toFixed(3))
             : (p.cs_b !== undefined && cs_a !== undefined ? parseFloat((p.cs_b - cs_a).toFixed(3)) : existing.dw_ab?.value);
 
-          const updatedRes = {
+          const updatedRes: ResidueParams = {
             ...existing,
-            ...(cs_a !== undefined ? { cs_a: { value: cs_a, source: { kind: 'manual', at: now } } } : {}),
-            ...(dw_ab !== undefined ? { dw_ab: { value: dw_ab, source: { kind: 'manual', at: now } } } : {}),
+            ...(cs_a !== undefined ? { cs_a: { value: cs_a, source: { kind: 'manual' as const, at: now } } } : {}),
+            ...(dw_ab !== undefined ? { dw_ab: { value: dw_ab, source: { kind: 'manual' as const, at: now } } } : {}),
           };
-          delete updatedRes.cs_b;
+          delete (updatedRes as Record<string, unknown>).cs_b;
           nextConfig.residues[res] = updatedRes;
           updated = true;
         }
