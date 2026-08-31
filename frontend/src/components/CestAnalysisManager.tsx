@@ -253,6 +253,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('resoFlow_sidebar_collapsed') === 'true');
   const [status, setStatus] = useState(analysis.status);
   const [isRunning, setIsRunning] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [hasBackup, setHasBackup] = useState(false);
