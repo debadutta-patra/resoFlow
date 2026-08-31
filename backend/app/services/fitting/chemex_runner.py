@@ -280,10 +280,17 @@ def run_chemex_job(
     if tmp_output_dir and tmp_output_dir.exists():
         shutil.rmtree(tmp_output_dir, ignore_errors=True)
 
+    # Ensure any existing container with the same name is removed
+    try:
+        subprocess.run(["podman", "rm", "-f", container_name], capture_output=True, timeout=5)
+    except Exception:
+        pass
+
     # 3. Assemble Podman CLI command
     podman_cmd = [
         "podman", "run",
         "--name", container_name,
+        "--replace",
         "--rm",
         "--userns=keep-id",
         "-v", f"{host_work_dir}:/work:z",

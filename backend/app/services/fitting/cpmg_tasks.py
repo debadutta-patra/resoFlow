@@ -146,9 +146,6 @@ def _build_cpmg_chemex_command(dirs: dict, config: dict) -> list:
     model = config.get("model", "2st")
     cmd.extend(["-d", model])
 
-    # Output directory
-    cmd.extend(["-o", dirs["output_dir"]])
-
     return cmd
 
 
