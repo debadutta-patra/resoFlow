@@ -125,6 +125,21 @@ def get_chemex_image_info(image_name: str = DEFAULT_CHEMEX_IMAGE) -> Tuple[Optio
     return digest, version
 
 
+def is_chemex_container_running(job_id: str) -> bool:
+    """Check if the ephemeral ChemEx container for the given job_id is currently running."""
+    container_name = get_container_name(job_id)
+    try:
+        ps_res = subprocess.run(
+            ["podman", "ps", "-q", "--filter", f"name={container_name}", "--filter", "status=running"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return ps_res.returncode == 0 and bool(ps_res.stdout.strip())
+    except Exception:
+        return False
+
+
 def cancel_chemex_job(job_id: str, timeout: int = 2) -> bool:
     """
     Cancel an active ChemEx fit by stopping and removing its deterministic container.

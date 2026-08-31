@@ -10,13 +10,14 @@ from sqlalchemy import func, case, or_
 from .. import models, schemas, database, security
 from ..celery_app import celery_app
 from ..services.log_parser import extract_failure_reason, extract_current_step
+from ..services.fitting.chemex_runner import is_chemex_container_running
 
 router = APIRouter(prefix="/api/users/me", tags=["dashboard-and-runs"])
 
 
 def reconcile_orphaned_runs(db: Session, user_id: int):
     """
-    Detect and reconcile any runs left in 'RUNNING' state where the worker process has died.
+    Detect and reconcile any runs left in 'RUNNING' state where the worker/container has died.
     """
     # 1. Check running analyses
     running_analyses = (
@@ -33,7 +34,11 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
         project = analysis.project
         run_dir = os.path.dirname(analysis.log_path) if analysis.log_path else None
         
-        # Check if results already finished but status didn't update
+        # 1a. If ephemeral ChemEx container is active, the job is actively running!
+        if is_chemex_container_running(analysis.analysis_uuid):
+            continue
+
+        # 1b. Check if results already finished but status didn't update
         if analysis.results_path and os.path.exists(analysis.results_path):
             try:
                 with open(analysis.results_path, "r") as rf:
@@ -46,70 +51,35 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
             except Exception:
                 pass
 
-        # Check log file for completion or failure markers
-        if analysis.log_path and os.path.exists(analysis.log_path):
-            try:
-                with open(analysis.log_path, "r", encoding="utf-8", errors="replace") as f:
-                    log_text = f.read()
-                if "Completed at:" in log_text:
-                    analysis.status = "COMPLETED"
-                    analysis.completed_at = analysis.completed_at or datetime.now(timezone.utc)
-                    db.commit()
-                    continue
-                if "ERROR:" in log_text or "Traceback (most recent call last):" in log_text:
-                    analysis.status = "FAILED"
-                    analysis.error_message = extract_failure_reason(analysis.log_path, "Run failed in worker")
-                    analysis.completed_at = analysis.completed_at or datetime.now(timezone.utc)
-                    db.commit()
-                    continue
-            except Exception:
-                pass
-
-        # Check PID file liveness
+        # 1c. Check legacy PID file liveness (if running outside container)
         if run_dir:
             pid_file = os.path.join(run_dir, "chemex.pid")
             if os.path.exists(pid_file):
                 try:
                     with open(pid_file, "r") as pf:
                         pid = int(pf.read().strip())
-                    # Check if process is still running
                     os.kill(pid, 0)
                     # Process is alive, keep RUNNING
                     continue
                 except (OSError, ValueError):
-                    # Process is dead but status was still RUNNING
-                    analysis.status = "FAILED"
-                    analysis.error_message = extract_failure_reason(
-                        analysis.log_path, "Worker process terminated unexpectedly (orphaned run)"
-                    )
-                    analysis.completed_at = datetime.now(timezone.utc)
-                    try:
-                        os.remove(pid_file)
-                    except Exception:
-                        pass
-                    db.commit()
-                    continue
+                    pass
 
-        # If no PID file and task was created more than 90 seconds ago without logs being updated
+        # 1d. If no container is running and task was created > 60s ago, mark orphaned run as FAILED
         if analysis.created_at:
             created_tz = analysis.created_at.replace(tzinfo=timezone.utc) if analysis.created_at.tzinfo is None else analysis.created_at
             now_tz = datetime.now(timezone.utc)
             age_seconds = (now_tz - created_tz).total_seconds()
             
-            # Check log file last modification time
-            log_stale = True
-            if analysis.log_path and os.path.exists(analysis.log_path):
-                log_mtime = os.path.getmtime(analysis.log_path)
-                if (now_tz.timestamp() - log_mtime) < 60:
-                    log_stale = False
+            # Give recent tasks 60 seconds to boot up before treating as orphaned
+            if age_seconds < 60:
+                continue
 
-            if age_seconds > 120 and log_stale:
-                analysis.status = "FAILED"
-                analysis.error_message = extract_failure_reason(
-                    analysis.log_path, "Worker process terminated unexpectedly (orphaned run)"
-                )
-                analysis.completed_at = datetime.now(timezone.utc)
-                db.commit()
+            analysis.status = "FAILED"
+            analysis.error_message = extract_failure_reason(
+                analysis.log_path, "Worker container terminated unexpectedly (orphaned run)"
+            )
+            analysis.completed_at = datetime.now(timezone.utc)
+            db.commit()
 
     # 2. Check running peak-fitting jobs
     running_jobs = (
