@@ -791,7 +791,7 @@ def stop_cpmg_analysis(
     current_user: models.User = Depends(security.get_current_user),
 ):
     """Terminate a running CPMG fitting job inside its ephemeral container."""
-    from ...celery_app import celery_app
+    from ..celery_app import celery_app
     from datetime import datetime
 
     if analysis.status not in ["RUNNING", "PENDING"]:

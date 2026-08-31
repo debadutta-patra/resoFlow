@@ -186,10 +186,10 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > backend.log 2>
 BACKEND_PID=$!
 echo -e "  ${GREEN}✓ Backend (FastAPI)${NC} running on port 8000 (PID: $BACKEND_PID, Log: backend/backend.log)"
 
-# Start Celery Worker
-uv run celery -A app.celery_app worker --loglevel=info > celery.log 2>&1 &
+# Start Celery Worker (listening to all task queues)
+uv run celery -A app.celery_app worker --loglevel=info -Q chemex,peakfit,stats,celery --concurrency=2 > celery.log 2>&1 &
 CELERY_PID=$!
-echo -e "  ${GREEN}✓ Celery Worker${NC} running (PID: $CELERY_PID, Log: backend/celery.log)"
+echo -e "  ${GREEN}✓ Celery Worker${NC} running on queues: chemex, peakfit, stats, celery (PID: $CELERY_PID, Log: backend/celery.log)"
 
 # 5. Start Frontend (Vite)
 echo -e "\n${BLUE}[5/5] Starting Frontend (Vite)...${NC}"
