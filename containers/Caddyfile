@@ -3,7 +3,7 @@
     file_server
 
     @api {
-        path /api/* /docs* /openapi.json
+        path /api/* /auth/* /docs* /openapi.json /redoc*
     }
     handle @api {
         reverse_proxy 127.0.0.1:8000

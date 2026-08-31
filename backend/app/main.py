@@ -16,6 +16,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router)
 app.include_router(projects.router)
 app.include_router(admin.router)
