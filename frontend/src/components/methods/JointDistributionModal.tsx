@@ -138,26 +138,6 @@ export const JointDistributionModal: React.FC<JointDistributionModalProps> = ({
       },
     ];
 
-    if (data.x_deterministic !== undefined && data.y_deterministic !== undefined) {
-      plotData.push({
-        x: [data.x_deterministic],
-        y: [data.y_deterministic],
-        mode: 'markers',
-        type: 'scatter',
-        name: 'Deterministic Fit',
-        marker: {
-          symbol: 'cross',
-          size: 14,
-          color: '#ef4444',
-          line: {
-            color: '#ffffff',
-            width: 2,
-          },
-        },
-        hovertemplate: `Deterministic Fit<br>${labelX.displaySymbol}: %{x:.4f}<br>${labelY.displaySymbol}: %{y:.4f}<extra></extra>`,
-      });
-    }
-
     plotLayout = {
       title: false,
       autosize: true,
@@ -183,13 +163,7 @@ export const JointDistributionModal: React.FC<JointDistributionModalProps> = ({
         zeroline: false,
         tickfont: { color: isDark ? '#cbd5e1' : '#475569', size: 11 },
       },
-      showlegend: true,
-      legend: {
-        x: 0,
-        y: 1.15,
-        orientation: 'h',
-        font: { color: isDark ? '#cbd5e1' : '#475569', size: 11 },
-      },
+      showlegend: false,
     };
   }
 

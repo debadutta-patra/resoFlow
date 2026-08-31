@@ -101,7 +101,6 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
     const pLow = data.percentile_95_lower * scale;
     const pHigh = data.percentile_95_upper * scale;
     const medianVal = data.median * scale;
-    const detVal = data.deterministic_value !== undefined ? data.deterministic_value * scale : undefined;
 
     // Color bars based on whether they fall within the 95% band
     const barColors = xCenters.map(x =>
@@ -158,23 +157,6 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
       },
     ];
 
-    if (detVal !== undefined) {
-      shapes.push({
-        type: 'line',
-        xref: 'x',
-        yref: 'paper',
-        x0: detVal,
-        x1: detVal,
-        y0: 0,
-        y1: 1,
-        line: {
-          color: '#ef4444',
-          width: 2,
-          dash: 'dash',
-        },
-      });
-    }
-
     plotLayout = {
       title: false,
       autosize: true,
@@ -209,10 +191,6 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
   const stat = data || paramSummary;
   const isSkewed = stat?.skew !== undefined ? Math.abs(stat.skew) > 0.45 : (stat?.skewness !== undefined ? Math.abs(stat.skewness) > 0.45 : false);
   const skewVal = stat?.skew ?? stat?.skewness;
-  const detVal = stat?.deterministic_value;
-  const medianVal = stat?.median;
-  const sdVal = stat?.standard_deviation ?? stat?.std_dev ?? stat?.std;
-  const biasRatio = detVal !== undefined && medianVal !== undefined && sdVal > 0 ? (detVal - medianVal) / sdVal : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -295,12 +273,6 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                     <span className="w-3.5 h-0.5 bg-emerald-500"></span>
                     <span className="text-slate-600 dark:text-slate-300 font-medium">Median</span>
                   </div>
-                  {detVal !== undefined && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-3.5 h-0.5 bg-rose-500 border-b border-dashed border-rose-500"></span>
-                      <span className="text-slate-600 dark:text-slate-300 font-medium">Deterministic Fit</span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-2 font-mono">
@@ -308,11 +280,6 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                   {isSkewed && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                       Skewed (γ₁ = {skewVal?.toFixed(2)})
-                    </span>
-                  )}
-                  {biasRatio !== null && Math.abs(biasRatio) > 0.25 && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800 dark:bg-orange-950/80 dark:text-orange-300 border border-orange-300 dark:border-orange-800">
-                      Bias: {(biasRatio * 100).toFixed(0)}% σ
                     </span>
                   )}
                 </div>
@@ -324,7 +291,7 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
               </div>
 
               {/* Statistics Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/50">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                     Median (50%)
@@ -350,17 +317,6 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                   <span className="text-xs font-semibold font-mono text-indigo-600 dark:text-indigo-400">
                     [{formatUncertainty(data.percentile_95_lower * scale, null).formatted},{' '}
                     {formatUncertainty(data.percentile_95_upper * scale, null).formatted}]
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/50">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                    Deterministic Fit
-                  </span>
-                  <span className="text-sm font-semibold font-mono text-slate-900 dark:text-white">
-                    {detVal !== undefined
-                      ? formatUncertainty(detVal, null, { unit: currentUnit }).formatted
-                      : '—'}
                   </span>
                 </div>
               </div>
