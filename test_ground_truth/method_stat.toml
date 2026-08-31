@@ -1,3 +1,0 @@
-[STEP1]
-INCLUDE = [15]
-STATISTICS = { "MC" = 4, "BS" = 4, "BSN" = 4, "MCMC" = 50 }

@@ -48,6 +48,17 @@ backend/*.log
 frontend/*.log
 tmp_test_projects/
 
+# Ad-hoc debug/scratch scripts and dumps (not part of the backend/tests/ suite)
+/TESTOUT_*.txt
+backend/TESTOUT_*.txt
+backend/out.txt
+backend/test_*.py
+backend/reparse_*.py
+backend/full_reset.py
+/pass_reset.py
+backend/pass_reset.py
+/spectrum_*.json
+
 # Testing & Type checking
 .pytest_cache/
 .mypy_cache/

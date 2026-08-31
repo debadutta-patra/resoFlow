@@ -8,6 +8,7 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronUp,
+  Download,
   FileText,
   GitFork,
   Info,
@@ -431,7 +432,7 @@ export const CpmgResultsTab: React.FC<CpmgResultsTabProps> = ({
     setIsDownloadingReport(true);
     try {
       const res = await api.get(
-        `/api/projects/${projectUuid}/analysis/${analysisUuid}/cpmg/report`,
+        `/api/projects/${projectUuid}/analysis/${analysisUuid}/cpmg/report?style=publication`,
         { responseType: 'blob' }
       );
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -447,6 +448,26 @@ export const CpmgResultsTab: React.FC<CpmgResultsTabProps> = ({
       alert('Failed to download report. Please check if the analysis results exist.');
     } finally {
       setIsDownloadingReport(false);
+    }
+  };
+
+  const handleDownloadZip = async () => {
+    if (!projectUuid || !analysisUuid) return;
+    try {
+      const res = await api.post(
+        `/api/projects/${projectUuid}/analysis/${analysisUuid}/export-token`,
+        {
+          include_data: false,
+          include_plots: true,
+          include_statistics: true,
+          style: 'publication',
+        }
+      );
+      const token = res.data.token;
+      window.location.href = `/api/projects/${projectUuid}/analysis/${analysisUuid}/export?token=${token}`;
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      alert(err.response?.data?.detail || 'Failed to export analysis archive.');
     }
   };
 
@@ -623,18 +644,29 @@ export const CpmgResultsTab: React.FC<CpmgResultsTabProps> = ({
           )}
         </div>
 
-        <button
-          onClick={handleDownloadReport}
-          disabled={isDownloadingReport || !projectUuid || !analysisUuid}
-          className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700 shadow-xs self-start sm:self-auto disabled:opacity-50"
-        >
-          {isDownloadingReport ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <FileText className="w-3.5 h-3.5" />
-          )}
-          Download Report (PDF)
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={handleDownloadReport}
+            disabled={isDownloadingReport || !projectUuid || !analysisUuid}
+            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 shadow-xs disabled:opacity-50"
+          >
+            {isDownloadingReport ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileText className="w-3.5 h-3.5" />
+            )}
+            Report (PDF)
+          </button>
+
+          <button
+            onClick={handleDownloadZip}
+            disabled={!projectUuid || !analysisUuid}
+            className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all border border-indigo-200 dark:border-indigo-800 shadow-xs disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download Output (ZIP)
+          </button>
+        </div>
       </div>
 
       {/* ── Step Statistics Drawer ── */}

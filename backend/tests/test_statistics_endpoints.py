@@ -193,11 +193,11 @@ class TestStatisticsEndpoints(unittest.TestCase):
         res = self.client.get(url, headers=self.headers)
         assert res.status_code == 200
         data = res.json()
-        assert "KEX_AB, NUC->32" in data["summary"]
-        assert "KEX_AB, NUC->55" in data["summary"]
+        assert "KEX_AB, NUC->32N" in data["summary"]
+        assert "KEX_AB, NUC->55N" in data["summary"]
 
         # Test histogram endpoint retrieves parameter from specific group
-        url_hist = f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/statistics/histogram?parameter_name=KEX_AB,%20NUC-%3E55&method_name=monte_carlo"
+        url_hist = f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/statistics/histogram?parameter_name=KEX_AB,%20NUC-%3E55N&method_name=monte_carlo"
         res_hist = self.client.get(url_hist, headers=self.headers)
         assert res_hist.status_code == 200
         data_hist = res_hist.json()

@@ -833,3 +833,63 @@ def stop_cpmg_analysis(
 
     return {"message": "Analysis cancelled successfully", "status": "CANCELLED"}
 
+
+@router.post("/{analysis_uuid}/cpmg/restore")
+def restore_cpmg_analysis(
+    analysis: models.Analysis = Depends(get_analysis),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Restore the last backed-up CPMG results."""
+    project = analysis.project
+    run_dir = os.path.join(project.local_directory_path, "cpmg_fitting", analysis.analysis_uuid)
+    
+    output_dir = os.path.join(run_dir, "Output")
+    output_bak = os.path.join(run_dir, "Output_bak")
+    output_tmp = os.path.join(run_dir, "Output_tmp")
+    
+    results_path = os.path.join(run_dir, "results.json")
+    results_bak = os.path.join(run_dir, "results_bak.json")
+    results_tmp = os.path.join(run_dir, "results_tmp.json")
+    
+    log_path = os.path.join(run_dir, "chemex.log")
+    log_bak = os.path.join(run_dir, "chemex_bak.log")
+    log_tmp = os.path.join(run_dir, "chemex_tmp.log")
+
+    if not os.path.exists(output_bak) and not os.path.exists(results_bak):
+        raise HTTPException(status_code=404, detail="No backup found to restore")
+
+    try:
+        # Swap Output directories
+        if os.path.exists(output_dir):
+            os.rename(output_dir, output_tmp)
+        if os.path.exists(output_bak):
+            os.rename(output_bak, output_dir)
+        if os.path.exists(output_tmp):
+            os.rename(output_tmp, output_bak)
+
+        # Swap Results JSON files
+        if os.path.exists(results_path):
+            os.rename(results_path, results_tmp)
+        if os.path.exists(results_bak):
+            os.rename(results_bak, results_path)
+        if os.path.exists(results_tmp):
+            os.rename(results_tmp, results_bak)
+
+        # Swap Log files
+        if os.path.exists(log_path):
+            os.rename(log_path, log_tmp)
+        if os.path.exists(log_bak):
+            os.rename(log_bak, log_path)
+        if os.path.exists(log_tmp):
+            os.rename(log_tmp, log_bak)
+
+        # Update analysis status back to completed 
+        analysis.status = "COMPLETED"
+        db.commit()
+        
+        return {"message": "Results restored from backup"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
+
+

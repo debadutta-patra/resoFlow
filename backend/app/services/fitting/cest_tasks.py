@@ -339,10 +339,36 @@ def _parse_chemex_output(output_dir: str) -> dict:
                     params["dw_ab_err"] = res_model.dw_ab.stderr
             if res_model.r1_a is not None:
                 params["r1_a"] = res_model.r1_a.value
+                if res_model.r1_a.has_stderr and res_model.r1_a.stderr is not None:
+                    params["r1_a_err"] = res_model.r1_a.stderr
             if res_model.r2_a is not None:
                 params["r2_a"] = res_model.r2_a.value
+                if res_model.r2_a.has_stderr and res_model.r2_a.stderr is not None:
+                    params["r2_a_err"] = res_model.r2_a.stderr
             if res_model.r2_b is not None:
                 params["r2_b"] = res_model.r2_b.value
+                if res_model.r2_b.has_stderr and res_model.r2_b.stderr is not None:
+                    params["r2_b_err"] = res_model.r2_b.stderr
+            if res_model.kex_ab is not None:
+                params["kex_ab"] = res_model.kex_ab.value
+                if res_model.kex_ab.has_stderr and res_model.kex_ab.stderr is not None:
+                    params["kex_ab_err"] = res_model.kex_ab.stderr
+            if res_model.pb is not None:
+                params["pb"] = res_model.pb.value
+                if res_model.pb.has_stderr and res_model.pb.stderr is not None:
+                    params["pb_err"] = res_model.pb.stderr
+            if res_model.kab is not None:
+                params["kab"] = res_model.kab.value
+                if res_model.kab.has_stderr and res_model.kab.stderr is not None:
+                    params["kab_err"] = res_model.kab.stderr
+            if res_model.kba is not None:
+                params["kba"] = res_model.kba.value
+                if res_model.kba.has_stderr and res_model.kba.stderr is not None:
+                    params["kba_err"] = res_model.kba.stderr
+            if res_model.tau_b is not None:
+                params["tau_b"] = res_model.tau_b.value
+                if res_model.tau_b.has_stderr and res_model.tau_b.stderr is not None:
+                    params["tau_b_err"] = res_model.tau_b.stderr
 
             if res_model.chi2 is not None:
                 params["chi2"] = res_model.chi2

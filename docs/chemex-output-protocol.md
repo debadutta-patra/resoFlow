@@ -205,6 +205,12 @@ Each line follows: `^\s*(?P<key>"?[^"=]+"??)\s*=\s*(?P<value>[-+]?(?:\d+(?:\.\d*
 
 **Rule 1.5.5 (Boundary Warnings):** If a fitted parameter's value is within boundary tolerance (\(|v - v_{bound}| \le 3 \cdot 	ext{stderr}\) or near hard bounds), flag `near_boundary = True`.
 
+**Rule 1.5.6 (Parameter Key Canonicalization):**
+- Raw key format: `[<BASE_NAME>]` or `[<BASE_NAME>, NUC-><SCOPE>]` or `[<BASE_NAME>, NUC-><SCOPE>, B0-><FIELD>]`
+- Canonical form: `(name, scope, field)` where scope defaults to 'global'
+- Scope normalization: `32` → `32N`, `C14N` → `14N`, `14N` → `14N`
+- Exchange parameters (`KEX_AB`, `PB`, etc.) in per-group runs have group-local scope but represent the same physical quantity as a global parameter when groups share the parameter
+
 ---
 
 ### 3.6 Experimental & Fitted Data: `Data/`
@@ -328,6 +334,30 @@ Column names vary by experiment type. The parser **MUST** extract column names f
   - Timings: `sampling_seconds`, `result_processing_seconds`, `output_summary_seconds`, `output_samples_seconds`, `output_correlations_seconds`, `output_plots_seconds`, `output_total_seconds`, `total_seconds`.
   - *Worker Verification:* Surface `workers` prominently to verify `--workers` enforcement on shared queues.
 
+#### 3.9.3 Statistics Discovery Protocol
+
+**Rule 3.9.3.1 (Valid Statistics/ Locations):**
+- Single-step: `<output>/Statistics/`
+- Multi-step: `<output>/<STEP_NAME>/Statistics/`
+- Group-scoped: `<output>/Groups/<group_name>/Statistics/`
+- Groups-within-steps: `<output>/<STEP_NAME>/Groups/<group_name>/Statistics/` (if applicable)
+
+**Rule 3.9.3.2 (Discovery Algorithm):**
+1. Start from `<output_directory>/`
+2. If multi-step layout: iterate step directories, check `<STEP>/Statistics/` and `<STEP>/Groups/<group>/Statistics/`
+3. If single-step layout with Groups: iterate `Groups/<group>/Statistics/`
+4. If single-step layout without Groups: check `Statistics/` directly
+5. Deduplicate by content hash of sample arrays
+
+**Rule 3.9.3.3 (Sample File Format Contract):**
+- TSV with bracket-enclosed parameter names as header
+- Last column may be `chisqr` (not a parameter)
+- Rows are replicate samples
+- NaN values are valid (filtered during analysis)
+
+**Rule 3.9.3.4 (Deduplication Rule):**
+If the same Statistics directory is reachable via multiple paths (e.g., primary step insert and child iteration), deduplicate by computing SHA-256 of the `samples.tsv` file content. Keep the more specific label (e.g., `MONTECARLO_STEP2` over bare `MONTECARLO`).
+
 ---
 
 ### 3.10 Directory Reuse Semantics
@@ -419,7 +449,7 @@ Each step in `RunResult.steps` carries a distinct `status`:
 
 ### 4.2 Phase 0 Ground Truth Artifact Samples
 
-#### Sample 1: `Parameters/fitted.toml` (from `test_ground_truth/single_step/Parameters/fitted.toml`)
+#### Sample 1: `Parameters/fitted.toml` (from `backend/tests/fixtures/chemex_trees/single_step/Parameters/fitted.toml`)
 ```toml
 [GLOBAL]
 KEX_AB =  3.77303e+02 # ±1.59730e+01
@@ -435,7 +465,7 @@ PB     =  6.67200e-02 # ±1.67100e-03
 15N =  6.36914e+00 # ±3.25464e-01
 ```
 
-#### Sample 2: `Parameters/constrained.toml` (from `test_ground_truth/single_step/Parameters/constrained.toml`)
+#### Sample 2: `Parameters/constrained.toml` (from `backend/tests/fixtures/chemex_trees/single_step/Parameters/constrained.toml`)
 ```toml
 [GLOBAL]
 KAB =  2.51736e+01 # ±7.89977e-01 ([KEX_AB] * [PB])
@@ -449,7 +479,7 @@ PA  =  9.33280e-01 # ±1.67100e-03 (1.0 - [PB])
 15N =  2.62465e+00 # ([R1_A, NUC->15N, B0->500.0MHZ])
 ```
 
-#### Sample 3: `Data/500mhz.dat` (from `test_ground_truth/single_step/Data/500mhz.dat`)
+#### Sample 3: `Data/500mhz.dat` (from `backend/tests/fixtures/chemex_trees/single_step/Data/500mhz.dat`)
 ```
 [15N]
 #         NCYC   INTENSITY (EXP)       ERROR (EXP)  INTENSITY (CALC)
@@ -458,7 +488,7 @@ PA  =  9.33280e-01 # ±1.67100e-03 (1.0 - [PB])
              1    1.81234230e+04    1.45930401e+02    1.82708770e+04 
 ```
 
-#### Sample 4: `Grid/grid.out` (from `test_ground_truth/grid_fit/Grid/grid.out`)
+#### Sample 4: `Grid/grid.out` (from `backend/tests/fixtures/chemex_trees/grid_fit/Grid/grid.out`)
 ```
 # [PB] [KEX_AB] [χ²]
   5.00000e-02 3.00000e+02 8.91123e+02
@@ -466,7 +496,7 @@ PA  =  9.33280e-01 # ±1.67100e-03 (1.0 - [PB])
   5.00000e-02 5.00000e+02 1.86201e+02
 ```
 
-#### Sample 5: `Statistics/MCMC/summary.toml` (from `test_ground_truth/stat_fit/Statistics/MCMC/summary.toml`)
+#### Sample 5: `Statistics/MCMC/summary.toml` (from `backend/tests/fixtures/chemex_trees/stat_fit/Statistics/MCMC/summary.toml`)
 ```toml
 ["DW_AB, NUC->15N"]
 prior = "uniform"
@@ -497,7 +527,7 @@ upper_1sigma = 3.81298e+02
 stderr = 4.12149e+00
 ```
 
-#### Sample 6: Interrupted Statistics (from `test_ground_truth/stat_interrupted/Statistics/MonteCarlo/diagnostics.toml` and `summary.toml`)
+#### Sample 6: Interrupted Statistics (from `backend/tests/fixtures/chemex_trees/stat_interrupted/Statistics/MonteCarlo/diagnostics.toml` and `summary.toml`)
 ```toml
 # diagnostics.toml
 method = "Monte Carlo"

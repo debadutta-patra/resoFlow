@@ -1,3 +1,6 @@
+import logging
+import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 import bcrypt
@@ -8,11 +11,22 @@ from sqlalchemy.orm import Session
 
 from . import models, schemas, database
 
-# to get a string like this run:
-# openssl rand -hex 32
-SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+logger = logging.getLogger(__name__)
+
+# Deployments (see deploy/install.sh) generate and inject SECRET_KEY via
+# resoflow.env. When it's not set (e.g. local dev), fall back to a random
+# per-process key so tokens are never signed with a value shipped in source.
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_hex(32)
+    logger.warning(
+        "SECRET_KEY is not set in the environment; using a random ephemeral key "
+        "for this process. All existing tokens will be invalidated on restart. "
+        "Set SECRET_KEY (see deploy/install.sh / resoflow.env) for a stable, "
+        "production-safe deployment."
+    )
+ALGORITHM = os.environ.get("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
@@ -31,7 +45,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=1440)
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -53,6 +67,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(models.User).filter(models.User.email == token_data.email).first()
     if user is None:
         raise credentials_exception
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive. Please contact an administrator.",
+        )
     return user
 
 def get_current_active_superuser(current_user: models.User = Depends(get_current_user)):
@@ -61,3 +80,25 @@ def get_current_active_superuser(current_user: models.User = Depends(get_current
             status_code=status.HTTP_403_FORBIDDEN, detail="The user doesn't have enough privileges"
         )
     return current_user
+
+
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+
+def get_optional_current_user(
+    token: Optional[str] = Depends(optional_oauth2_scheme),
+    db: Session = Depends(database.get_db),
+) -> Optional[models.User]:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            return None
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if user and user.is_active:
+            return user
+    except Exception:
+        pass
+    return None
+

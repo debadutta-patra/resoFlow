@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { formatUncertainty } from '../../lib/uncertaintyFormatter';
 import { parseParameterLabel, ppmToHz } from '../../lib/parameterSymbols';
 
-import api from '../../lib/api';
+import api from '../../services/api';
 
 interface MarginalDistributionModalProps {
   isOpen: boolean;

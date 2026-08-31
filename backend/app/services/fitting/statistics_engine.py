@@ -14,12 +14,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from app.services.fitting.param_canonicalizer import canonicalize
+
 logger = logging.getLogger(__name__)
 
 
 def clean_param_name(name: str) -> str:
-    """Strip brackets, quotes, and whitespace from parameter names."""
-    return name.strip().strip('"').strip("'").strip("[]").strip()
+    """Strip brackets, quotes, and whitespace from parameter names and return its canonical string representation."""
+    return str(canonicalize(name))
 
 
 def compute_parameter_summary(

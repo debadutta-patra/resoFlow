@@ -141,38 +141,64 @@ export const CpmgDispersionTab: React.FC<CpmgDispersionTabProps> = ({
   return (
     <div className="space-y-4 animate-in fade-in">
       {/* Top Header Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 border border-slate-200 dark:border-slate-700 rounded-xl">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button
             onClick={() => onSelectIndex(Math.max(0, currentIndex - 1))}
             disabled={currentIndex === 0 || safeProfiles.length === 0}
             className={`${btnSecondary} disabled:opacity-40`}
+            title="Previous residue"
           >
-            <ChevronLeft className="w-4 h-4" /> Previous
+            <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-xs font-mono font-bold px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300">
-            {safeProfiles.length > 0 ? currentIndex + 1 : 0} / {safeProfiles.length}
-          </span>
+
+          <select
+            value={currentIndex}
+            onChange={(e) => onSelectIndex(Number(e.target.value))}
+            className="text-xs py-1.5 px-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-200 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+          >
+            {safeProfiles.map((p, i) => {
+              const isEx = excludedSet.has(p.residue);
+              return (
+                <option key={i} value={i}>
+                  {p.full_residue || p.residue} {isEx ? "(Excluded)" : ""}
+                </option>
+              );
+            })}
+          </select>
+
           <button
             onClick={() => onSelectIndex(Math.min(safeProfiles.length - 1, currentIndex + 1))}
             disabled={currentIndex >= safeProfiles.length - 1 || safeProfiles.length === 0}
             className={`${btnSecondary} disabled:opacity-40`}
+            title="Next residue"
           >
-            Next <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4" />
           </button>
 
-          <button
-            onClick={() => currentProfile && onToggleExcludeResidue(currentProfile.residue)}
-            disabled={!currentProfile}
-            className={`ml-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              isCurrentExcluded
-                ? "bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/40 dark:border-red-900"
-                : "bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-900"
-            }`}
-          >
-            {isCurrentExcluded ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-            {isCurrentExcluded ? "Excluded from Fit" : "Included in Fit"}
-          </button>
+          {currentProfile && (
+            <button
+              type="button"
+              onClick={() => onToggleExcludeResidue(currentProfile.residue)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                isCurrentExcluded
+                  ? "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/50"
+                  : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300"
+              }`}
+              title={
+                isCurrentExcluded
+                  ? "Include this residue in parameters (uncomment in parameters.toml)"
+                  : "Exclude this residue from parameters (comment out in parameters.toml)"
+              }
+            >
+              {isCurrentExcluded ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              ) : (
+                <XCircle className="w-3.5 h-3.5 text-rose-500" />
+              )}
+              <span>{isCurrentExcluded ? "Excluded (Click to Include)" : "Exclude"}</span>
+            </button>
+          )}
         </div>
 
         {/* Action Buttons */}

@@ -17,7 +17,7 @@ import JointDistributionModal from './JointDistributionModal';
 import DerivedQuantitiesCards from './DerivedQuantitiesCards';
 import MethodComparisonTab from './MethodComparisonTab';
 import McmcDiagnosticsTab from './McmcDiagnosticsTab';
-import api from '../../lib/api';
+import api from '../../services/api';
 
 export interface ParameterStatItem {
   mean?: number;

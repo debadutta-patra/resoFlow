@@ -334,6 +334,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
 
   // ── Logs State ──
   const [logs, setLogs] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
 
   // ── Preview File State ──
@@ -1245,7 +1246,9 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             </button>
           )}
 
-          {status === 'COMPLETED' && analysisResults && (
+          {(status === 'COMPLETED' || status === 'FAILED') &&
+            analysisResults?.steps &&
+            Object.values(analysisResults.steps).some((s: any) => s?.has_grid) && (
             <button
               onClick={handleUseGridMinAsStarting}
               className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-lg border border-amber-200 dark:border-amber-800 transition-all"
@@ -2138,8 +2141,53 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
           )}
 
           {activeTab === 'logs' && (
-            <div className="animate-in fade-in">
-              <pre ref={logRef} className="bg-slate-900 text-green-400 text-xs font-mono p-4 rounded-xl overflow-auto max-h-[600px] whitespace-pre-wrap">{logs || 'No logs available.'}</pre>
+            <div className="space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${status === 'RUNNING' ? 'bg-emerald-500 animate-ping' : status === 'COMPLETED' ? 'bg-emerald-500' : status === 'FAILED' ? 'bg-rose-500' : 'bg-slate-400'}`} />
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {status === 'RUNNING' ? 'Live Execution Logs' : 'Process Execution Log'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(logs);
+                      setCopyFeedback(true);
+                      setTimeout(() => setCopyFeedback(false), 2000);
+                    }}
+                    disabled={!logs}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium rounded-md border border-slate-200 dark:border-slate-600 transition-colors disabled:opacity-50"
+                    title="Copy logs to clipboard"
+                  >
+                    {copyFeedback ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copyFeedback ? 'Copied!' : 'Copy'}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([logs], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `chemex_${analysis.name}_${new Date().toISOString().slice(0, 10)}.log`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    disabled={!logs}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium rounded-md border border-slate-200 dark:border-slate-600 transition-colors disabled:opacity-50"
+                    title="Download full log file"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download</span>
+                  </button>
+                </div>
+              </div>
+              <pre
+                ref={logRef}
+                className="bg-slate-950 text-emerald-400 text-xs font-mono p-4 rounded-xl overflow-auto max-h-[600px] min-h-[400px] whitespace-pre-wrap border border-slate-800 shadow-inner"
+              >
+                {logs || 'No logs available yet. Click "Run ChemEx" to start fitting and stream real-time logs.'}
+              </pre>
             </div>
           )}
 
@@ -2341,27 +2389,53 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
                     )}
                   </div>
 
-                  <button 
-                    onClick={async () => {
-                      try {
-                        const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/report`, { responseType: 'blob' });
-                        const url = window.URL.createObjectURL(new Blob([res.data]));
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.setAttribute('download', `cest_${analysis.analysis_uuid}_report.pdf`);
-                        document.body.appendChild(link);
-                        link.click();
-                        link.remove();
-                      } catch (err) {
-                        console.error('Download failed:', err);
-                        alert('Failed to download report. Please check if the analysis results exist.');
-                      }
-                    }}
-                    className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700 shadow-xs self-start sm:self-auto"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    Download Report (PDF)
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button 
+                      onClick={async () => {
+                        try {
+                          const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/report?style=publication`, { responseType: 'blob' });
+                          const url = window.URL.createObjectURL(new Blob([res.data]));
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.setAttribute('download', `cest_${analysis.analysis_uuid}_report.pdf`);
+                          document.body.appendChild(link);
+                          link.click();
+                          link.remove();
+                        } catch (err) {
+                          console.error('Download failed:', err);
+                          alert('Failed to download report. Please check if the analysis results exist.');
+                        }
+                      }}
+                      className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 shadow-xs"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Report (PDF)
+                    </button>
+
+                    <button 
+                      onClick={async () => {
+                        try {
+                          const res = await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/export-token`, {
+                            include_data: false,
+                            include_plots: true,
+                            include_statistics: true,
+                            style: 'publication',
+                          });
+                          const token = res.data.token;
+                          window.location.href = `/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/export?token=${token}`;
+                        } catch (err: any) {
+                          console.error('Export failed:', err);
+                          alert(err.response?.data?.detail || 'Failed to export analysis archive.');
+                        }
+                      }}
+                      disabled={analysis.status !== 'COMPLETED'}
+                      title={analysis.status !== 'COMPLETED' ? 'Analysis must be completed to export archive' : 'Download reproducible archive (ZIP)'}
+                      className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all border border-indigo-200 dark:border-indigo-800 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download Output (ZIP)
+                    </button>
+                  </div>
                 </div>
 
                 {/* Step Statistics Drawer (§2) */}

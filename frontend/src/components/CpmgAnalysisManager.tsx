@@ -16,6 +16,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Beaker,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -28,6 +29,8 @@ import {
   Info,
   Loader2,
   Play,
+  RefreshCw,
+  RotateCcw,
   Sparkles,
   Square,
   Upload,
@@ -187,8 +190,10 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   const [resultsGlobals, setResultsGlobals] = useState<Record<string, { value: number; error?: number }>>({});
   const [resultsStats, setResultsStats] = useState<any>({});
   const [diagnostics, setDiagnostics] = useState<CpmgDiagnosticsResult | undefined>(undefined);
+  const [hasBackup, setHasBackup] = useState(false);
 
-  const logRef = useRef<HTMLDivElement>(null);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+  const logRef = useRef<HTMLPreElement>(null);
 
   const moduleDef = useMemo(
     () => CPMG_MODULES.find((m) => m.id === selectedParentModule) || CPMG_MODULES[0],
@@ -357,6 +362,9 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           setMethodConfig(parsed.config);
           setUnparsedTomlLines(parsed.unparsed);
         }
+        setHasBackup(res.data.has_backup || false);
+      } else {
+        setHasBackup(res.data?.has_backup || false);
       }
     } catch {
       // ignore
@@ -618,6 +626,83 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     }
   };
 
+  const handleUseFittedAsStarting = () => {
+    if (!analysisResults) return;
+    let updated = false;
+    const now = new Date().toISOString();
+    const nextConfig: CpmgParameterConfig = {
+      ...parameterConfig,
+      globals: { ...parameterConfig.globals },
+      residues: { ...parameterConfig.residues },
+    };
+
+    const activeGlobals = analysisResults.global || analysisResults.globals || {};
+    if (activeGlobals.pb !== undefined) {
+      const pbVal = typeof activeGlobals.pb === 'number' ? activeGlobals.pb : activeGlobals.pb?.value;
+      if (pbVal !== undefined && !isNaN(pbVal)) {
+        nextConfig.globals.pb = {
+          value: parseFloat(pbVal.toFixed(4)),
+          source: { kind: 'manual', at: now },
+        };
+        updated = true;
+      }
+    }
+    if (activeGlobals.kex_ab !== undefined) {
+      const kexVal = typeof activeGlobals.kex_ab === 'number' ? activeGlobals.kex_ab : activeGlobals.kex_ab?.value;
+      if (kexVal !== undefined && !isNaN(kexVal)) {
+        nextConfig.globals.kex_ab = {
+          value: parseFloat(kexVal.toFixed(2)),
+          source: { kind: 'manual', at: now },
+        };
+        updated = true;
+      }
+    }
+
+    if (analysisResults.residues) {
+      for (const [res, rData] of Object.entries(analysisResults.residues)) {
+        const p = (rData as any)?.parameters;
+        if (p && (p.cs_a !== undefined || p.dw_ab !== undefined || p.dw !== undefined)) {
+          const existing = nextConfig.residues[res] || {};
+          const cs_a = p.cs_a !== undefined ? (typeof p.cs_a === 'number' ? p.cs_a : p.cs_a.value) : existing.cs_a?.value;
+          const dwRaw = p.dw_ab !== undefined ? (typeof p.dw_ab === 'number' ? p.dw_ab : p.dw_ab.value) : (p.dw !== undefined ? (typeof p.dw === 'number' ? p.dw : p.dw.value) : undefined);
+          const dw_ab = dwRaw !== undefined ? parseFloat(dwRaw.toFixed(3)) : existing.dw_ab?.value;
+
+          nextConfig.residues[res] = {
+            ...existing,
+            ...(cs_a !== undefined ? { cs_a: { value: parseFloat(cs_a.toFixed(3)), source: { kind: 'manual', at: now } } } : {}),
+            ...(dw_ab !== undefined ? { dw_ab: { value: dw_ab, source: { kind: 'manual', at: now } } } : {}),
+          };
+          updated = true;
+        }
+      }
+    }
+
+    if (updated) {
+      setParameterConfig(nextConfig);
+      setSuccessMsg('Updated starting parameters with values from completed fit.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!window.confirm("This will restore the last version of your results. Current results will become the new backup. Proceed?")) return;
+    try {
+      setIsFitting(true);
+      setError('');
+      await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/restore`);
+      setSuccessMsg("Results restored successfully!");
+      loadSavedConfig();
+      fetchResults();
+      const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/logs`);
+      setLogs(res.data.logs || '');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Restore failed");
+    } finally {
+      setIsFitting(false);
+    }
+  };
+
   const handleStepChange = (updatedStep: Step) => {
     const nextSteps = [...methodConfig.steps];
     nextSteps[activeStepIdx] = updatedStep;
@@ -766,68 +851,90 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
 
   const tabCls = (key: TabKey) =>
     `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 whitespace-nowrap w-auto md:w-full ${
-      isSidebarCollapsed ? "md:justify-center" : "md:justify-start"
+      isSidebarCollapsed ? 'md:justify-center' : 'md:justify-start'
     } ${
       activeTab === key
-        ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-base scale-[1.03] shadow-sm border border-blue-100/50 dark:border-blue-900/50"
-        : "text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50"
+        ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-semibold text-sm shadow-2xs border border-blue-200/60 dark:border-blue-800/60'
+        : 'text-sm text-slate-600 hover:text-slate-900 hover:bg-white dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50 border border-transparent'
     }`;
 
-  const btnPrimary = "px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm disabled:opacity-50";
-  const btnSecondary = "px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg transition-all";
+  const btnPrimary = 'px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm disabled:opacity-50';
+  const btnSecondary = 'px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 transition-all';
   const sectionCls = "bg-slate-50 dark:bg-slate-800/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700";
 
   return (
     <div className="space-y-4">
-      {/* Top Header Card */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => window.history.back()}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-500 transition-colors"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{analysis.name}</h2>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border flex items-center gap-1.5 ${STATUS_COLORS[status] || STATUS_COLORS.PENDING}`}>
-                {(status === "RUNNING" || status === "CANCELLING") && <Loader2 className="w-3 h-3 animate-spin" />}
-                {status === "COMPLETED" && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
-                <span>{status}</span>
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
-                {fitMode.toUpperCase()} FIT
-              </span>
-            </div>
-          </div>
+      {/* Top Header Action Bar */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${STATUS_COLORS[status] || STATUS_COLORS.PENDING}`}>
+            {(status === "RUNNING" || status === "CANCELLING" || isFitting) && <Loader2 className="w-3 h-3 animate-spin" />}
+            {status === "COMPLETED" && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+            <span>{status}</span>
+          </span>
+
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border ${
+            fitMode === 'global' 
+              ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800'
+              : 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-400 dark:border-indigo-800'
+          }`}>
+            {fitMode} Fit
+          </span>
+
+          {analysisResults?.global?.chi2_red !== undefined && (
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+              Red. χ²: <strong className="text-slate-800 dark:text-slate-200">{analysisResults.global.chi2_red.toFixed(2)}</strong>
+            </span>
+          )}
         </div>
 
         {/* Global Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {(status === "RUNNING" || status === "CANCELLING" || isFitting) && (
+            <button
+              onClick={handleStop}
+              disabled={isCancelling || status === "CANCELLING"}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200 transition-all shadow-sm disabled:opacity-50"
+            >
+              <Square size={13} fill="currentColor" />
+              <span>{isCancelling || status === "CANCELLING" ? "Cancelling..." : "Stop Run"}</span>
+            </button>
+          )}
+
           {/* Fit Mode Switcher */}
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 mr-2">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => setFitMode("global")}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
                 fitMode === "global"
-                  ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-600"
+                  : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
               Global
             </button>
             <button
               onClick={() => setFitMode("individual")}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
                 fitMode === "individual"
-                  ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-600"
+                  : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               }`}
             >
               Individual
             </button>
           </div>
+
+          {status === 'COMPLETED' && analysisResults && (
+            <button
+              onClick={handleUseFittedAsStarting}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
+              title="Copy fitted parameters (pb, kex, chemical shifts, dw) into the starting values of the Parameters tab"
+            >
+              <RefreshCw className="w-3 h-3 text-blue-500" />
+              <span>Use fitted as starting</span>
+            </button>
+          )}
 
           {/* Use Grid Minimum as Starting */}
           {(status === "COMPLETED" || status === "FAILED") &&
@@ -835,7 +942,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             Object.values(analysisResults.steps).some((s: any) => s?.has_grid) && (
               <button
                 onClick={handleUseGridMinAsStarting}
-                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-lg border border-amber-200 dark:border-amber-800 transition-all"
                 title="Populate starting parameters with grid minimum values"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
@@ -843,35 +950,36 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
               </button>
           )}
 
+          {hasBackup && (
+            <button
+              onClick={handleRestore}
+              disabled={isFitting || status === "RUNNING" || status === "CANCELLING"}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200 transition-all disabled:opacity-50"
+              title="Restore previous run results from backup"
+            >
+              <RotateCcw size={13} />
+              <span>Restore Last fit</span>
+            </button>
+          )}
+
           <button onClick={saveConfig} className={btnSecondary}>
             Save Config
           </button>
 
-          {status === "RUNNING" || status === "CANCELLING" || isFitting ? (
-            <button
-              onClick={handleStop}
-              disabled={isCancelling || status === "CANCELLING"}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <Square size={16} />
-              <span>{isCancelling || status === "CANCELLING" ? "Cancelling..." : "Stop ChemEx"}</span>
-            </button>
-          ) : (
-            <button
-              onClick={handleRunFitting}
-              disabled={isFitting || generatedExperiments.length === 0 || blockingErrors.length > 0}
-              className={`${btnPrimary} flex items-center gap-1.5 font-bold`}
-            >
-              {isFitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
-              <span>Run ChemEx</span>
-            </button>
-          )}
+          <button
+            onClick={handleRunFitting}
+            disabled={isFitting || generatedExperiments.length === 0 || blockingErrors.length > 0}
+            className={`${btnPrimary} flex items-center gap-1`}
+          >
+            {isFitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+            <span>{isFitting ? "Running..." : "Run ChemEx"}</span>
+          </button>
         </div>
       </div>
 
       {/* Messages */}
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-600 dark:text-red-400 flex items-center justify-between">
+        <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
@@ -882,19 +990,19 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         </div>
       )}
       {successMsg && (
-        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+        <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {/* Main Layout: Left Tab Bar + Right Content */}
-      <div className="flex flex-col md:flex-row bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden min-h-[700px]">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm flex flex-col md:flex-row min-h-[600px]">
         {/* Sidebar Tabs */}
         <div
-          className={`flex md:flex-col border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 p-3 bg-slate-50/50 dark:bg-slate-900/50 gap-1.5 transition-all duration-300 overflow-x-auto ${
-            isSidebarCollapsed ? "md:w-20" : "md:w-64"
-          }`}
+          className={`${
+            isSidebarCollapsed ? "w-full md:w-20" : "w-full md:w-64"
+          } flex-shrink-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/10 p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-x-visible transition-all duration-300`}
         >
           <button onClick={() => setActiveTab("experiments")} className={tabCls("experiments")} title="Experiments">
             <img
@@ -1347,8 +1455,53 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           )}
 
           {activeTab === "logs" && (
-            <div className="bg-slate-950 text-slate-200 font-mono text-xs p-4 rounded-xl h-[500px] overflow-auto" ref={logRef}>
-              <pre>{logs || "No logs yet. Execute fitting from the top action bar to see ChemEx stdout."}</pre>
+            <div className="space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${status === 'RUNNING' ? 'bg-emerald-500 animate-ping' : status === 'COMPLETED' ? 'bg-emerald-500' : status === 'FAILED' ? 'bg-rose-500' : 'bg-slate-400'}`} />
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {status === 'RUNNING' ? 'Live Execution Logs' : 'Process Execution Log'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(logs);
+                      setCopyFeedback(true);
+                      setTimeout(() => setCopyFeedback(false), 2000);
+                    }}
+                    disabled={!logs}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium rounded-md border border-slate-200 dark:border-slate-600 transition-colors disabled:opacity-50"
+                    title="Copy logs to clipboard"
+                  >
+                    {copyFeedback ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copyFeedback ? 'Copied!' : 'Copy'}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([logs], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `chemex_${analysis.name}_${new Date().toISOString().slice(0, 10)}.log`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    disabled={!logs}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium rounded-md border border-slate-200 dark:border-slate-600 transition-colors disabled:opacity-50"
+                    title="Download full log file"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download</span>
+                  </button>
+                </div>
+              </div>
+              <pre
+                ref={logRef}
+                className="bg-slate-950 text-emerald-400 text-xs font-mono p-4 rounded-xl overflow-auto max-h-[600px] min-h-[400px] whitespace-pre-wrap border border-slate-800 shadow-inner"
+              >
+                {logs || 'No logs available yet. Click "Run ChemEx" to start fitting and stream real-time logs.'}
+              </pre>
             </div>
           )}
 

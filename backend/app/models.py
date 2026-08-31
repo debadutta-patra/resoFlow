@@ -1,5 +1,7 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float
+import os
 import uuid
+
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -70,7 +72,6 @@ class Spectrum(Base):
         if not self.results_json_path:
             return False
         bak_path = self.results_json_path.replace(".json", "_bak.json")
-        import os
         return os.path.exists(bak_path)
 
     project = relationship("Project", back_populates="spectra")
@@ -100,9 +101,6 @@ class Job(Base):
 
 
 # Association table for Analysis and Spectrum (Many-to-Many)
-analysis_spectra = Column(String, name="analysis_spectra", primary_key=False) # Placeholder for the thought, I'll use a proper Table object
-
-from sqlalchemy import Table
 analysis_spectra = Table(
     "analysis_spectra",
     Base.metadata,
@@ -140,11 +138,13 @@ class Analysis(Base):
 
     @property
     def has_backup(self):
-        if not self.results_path:
-            return False
-        bak_path = self.results_path.replace(".json", "_bak.json")
-        import os
-        return os.path.exists(bak_path)
+        if self.results_path and os.path.exists(self.results_path.replace(".json", "_bak.json")):
+            return True
+        if self.project and self.project.local_directory_path:
+            dir_name = "cpmg_fitting" if self.analysis_type == "CPMG" else "cest_fitting"
+            output_bak = os.path.join(self.project.local_directory_path, dir_name, self.analysis_uuid, "Output_bak")
+            return os.path.exists(output_bak)
+        return False
 
     project = relationship("Project", back_populates="analyses")
     spectra = relationship("Spectrum", secondary=analysis_spectra, back_populates="analyses")

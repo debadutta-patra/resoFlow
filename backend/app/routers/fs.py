@@ -8,14 +8,37 @@ from .. import models, security
 
 router = APIRouter(prefix="/api/fs", tags=["filesystem"])
 
-# Block access to known sensitive system and environment configuration paths
+# Block access to known sensitive system, credential, and application-secret paths.
+# This is a denylist, not a sandbox: any path not matched here is still
+# readable/browsable by any authenticated user. Keep it broad rather than
+# exhaustive-and-narrow.
 SENSITIVE_PATTERNS = [
+    # System auth databases
     re.compile(r"^/etc/(shadow|gshadow|sudoers|master\.passwd)"),
     re.compile(r"^/proc/"),
     re.compile(r"^/sys/"),
+    # This application's own secrets / source
     re.compile(r"resoflow\.env$"),
-    re.compile(r"\.env$"),
-    re.compile(r"id_rsa|id_ecdsa|id_ed25519"),
+    re.compile(r"/\.config/resoflow/"),
+    re.compile(r"(^|/)app/security\.py$"),
+    # Generic env / dotenv files (".env", "app.env", ".env.production", ...)
+    re.compile(r"\.env(\.[\w-]+)?$"),
+    # SSH keys and known_hosts/config
+    re.compile(r"/\.ssh(/|$)"),
+    re.compile(r"id_rsa|id_ecdsa|id_ed25519|id_dsa"),
+    # Cloud / tool credential files
+    re.compile(r"/\.aws/credentials$"),
+    re.compile(r"/\.netrc$"),
+    re.compile(r"/\.pgpass$"),
+    re.compile(r"/\.docker/config\.json$"),
+    re.compile(r"/\.kube/config$"),
+    re.compile(r"/\.npmrc$"),
+    re.compile(r"/\.pypirc$"),
+    # GPG keyrings
+    re.compile(r"/\.gnupg(/|$)"),
+    # Browser/password-manager credential stores
+    re.compile(r"/\.mozilla/.*/(logins|key)[\w.]*\.(json|db)$"),
+    re.compile(r"/\.config/google-chrome/.*/Login Data$"),
 ]
 
 def _sanitize_path(path: str) -> str:

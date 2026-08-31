@@ -1057,15 +1057,25 @@ def restore_cest_analysis(
 
 @router.get("/{analysis_uuid}/cest/report")
 def export_cest_report(
+    style: str = "publication",
     analysis: models.Analysis = Depends(get_analysis),
     db: Session = Depends(database.get_db)
 ):
     """Generate and return a multi-page PDF report for the CEST analysis."""
     project = analysis.project
-    run_dir = os.path.join(project.local_directory_path, "cest_fitting", analysis.analysis_uuid)
+    if analysis.results_path and os.path.exists(analysis.results_path):
+        run_dir = os.path.dirname(analysis.results_path)
+    else:
+        run_dir = os.path.join(project.local_directory_path, "cest_fitting", analysis.analysis_uuid)
     
     try:
-        pdf_buffer = generate_cest_pdf_report(run_dir, analysis.name, analysis_type="CEST")
+        pdf_buffer = generate_cest_pdf_report(
+            run_dir,
+            analysis.name,
+            analysis_type="CEST",
+            style=style,
+            chemex_image_digest=analysis.chemex_image_digest,
+        )
         return StreamingResponse(
             pdf_buffer,
             media_type="application/pdf",
@@ -1081,6 +1091,7 @@ def export_cest_report(
 @router.get("/{analysis_uuid}/cpmg/report")
 @router.get("/{analysis_uuid}/report")
 def export_cpmg_report(
+    style: str = "publication",
     analysis: models.Analysis = Depends(get_analysis),
     db: Session = Depends(database.get_db)
 ):
@@ -1088,11 +1099,20 @@ def export_cpmg_report(
     project = analysis.project
     is_cpmg = analysis.analysis_type.upper() == "CPMG"
     folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
-    run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
+    if analysis.results_path and os.path.exists(analysis.results_path):
+        run_dir = os.path.dirname(analysis.results_path)
+    else:
+        run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
     type_name = "cpmg" if is_cpmg else "cest"
     
     try:
-        pdf_buffer = generate_cest_pdf_report(run_dir, analysis.name, analysis_type=type_name.upper())
+        pdf_buffer = generate_cest_pdf_report(
+            run_dir,
+            analysis.name,
+            analysis_type=type_name.upper(),
+            style=style,
+            chemex_image_digest=analysis.chemex_image_digest,
+        )
         return StreamingResponse(
             pdf_buffer,
             media_type="application/pdf",
@@ -1104,6 +1124,115 @@ def export_cpmg_report(
         import traceback
         tb = traceback.format_exc()
         raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}\n{tb}")
+
+
+@router.post("/{analysis_uuid}/export-token")
+def create_export_token(
+    request: Optional[Dict[str, Any]] = None,
+    analysis: models.Analysis = Depends(get_analysis),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """
+    Issue a short-lived (60s) single-use signed download token for streaming ZIP archive export.
+    """
+    from ..services.export.zip_export import generate_export_token
+
+    if analysis.status != "COMPLETED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Analysis export requires status COMPLETED (current status: {analysis.status})",
+        )
+
+    options = request or {}
+    token = generate_export_token(
+        project_uuid=analysis.project.project_uuid,
+        analysis_uuid=analysis.analysis_uuid,
+        user_id=current_user.id,
+        options=options,
+        validity_seconds=60,
+    )
+    return {"token": token, "expires_in": 60}
+
+
+@router.get("/{analysis_uuid}/export")
+def export_analysis_zip(
+    project_uuid: str,
+    analysis_uuid: str,
+    token: Optional[str] = None,
+    include_data: bool = False,
+    include_plots: bool = True,
+    include_statistics: bool = True,
+    style: str = "publication",
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+):
+    """
+    Stream a deterministic ZIP archive of the analysis direct to disk.
+    Supports short-lived signed tokens as well as direct session authentication.
+    """
+    from ..services.export.zip_export import verify_export_token, stream_analysis_zip
+    import re
+
+    # Verify authorization via token or current_user
+    if token:
+        valid, token_opts, err_msg = verify_export_token(token, project_uuid, analysis_uuid)
+        if not valid:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err_msg)
+        if token_opts:
+            include_data = token_opts.get("include_data", include_data)
+            include_plots = token_opts.get("include_plots", include_plots)
+            include_statistics = token_opts.get("include_statistics", include_statistics)
+            style = token_opts.get("style", style)
+    elif current_user:
+        # Check permissions through project lookup
+        project = db.query(models.Project).filter(models.Project.project_uuid == project_uuid).first()
+        if not project or (project.user_id != current_user.id and not current_user.is_superuser):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    else:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication token required")
+
+    # Fetch analysis record
+    analysis = db.query(models.Analysis).filter(
+        models.Analysis.analysis_uuid == analysis_uuid
+    ).first()
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+
+    if analysis.status != "COMPLETED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Analysis export requires status COMPLETED (current status: {analysis.status})",
+        )
+
+    project = analysis.project
+    is_cpmg = analysis.analysis_type.upper() == "CPMG"
+    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
+    run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
+
+    clean_name = re.sub(r"[^A-Za-z0-9_-]", "_", analysis.name.strip()).lower()
+    short_uuid = analysis.analysis_uuid[:8]
+    date_str = datetime.now().strftime("%Y%m%d")
+    filename = f"resoflow_{clean_name}_{short_uuid}_{date_str}.zip"
+
+    generator = stream_analysis_zip(
+        analysis_dir=run_dir,
+        analysis_name=analysis.name,
+        analysis_type=analysis.analysis_type,
+        include_data=include_data,
+        include_plots=include_plots,
+        include_statistics=include_statistics,
+        style=style,
+        chemex_image_digest=analysis.chemex_image_digest,
+    )
+
+    return StreamingResponse(
+        generator,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
 
 
 @router.get("/{analysis_uuid}/statistics/plots/{method_name}")

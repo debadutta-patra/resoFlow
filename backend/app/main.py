@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from . import models, database
@@ -7,9 +9,20 @@ database.init_db()
 
 app = FastAPI(title="NMR Relaxation Platform API")
 
+# In production the SPA and API are served from the same origin via the
+# Caddy reverse proxy, so CORS is dev-only in practice. CORS_ORIGINS lets a
+# non-default deployment (e.g. a separate frontend host) override the list
+# without a code change.
+_default_cors_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", _default_cors_origins).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

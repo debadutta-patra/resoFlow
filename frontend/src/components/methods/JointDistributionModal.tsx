@@ -4,7 +4,7 @@ import Plot from '../Plot';
 import { useTheme } from '../../context/ThemeContext';
 import { parseParameterLabel } from '../../lib/parameterSymbols';
 
-import api from '../../lib/api';
+import api from '../../services/api';
 
 interface JointDistributionModalProps {
   isOpen: boolean;
