@@ -32,6 +32,15 @@ celery_app.conf.update(
     result_backend=redis_url,
 )
 
+# Task routes for queue splitting
+celery_app.conf.task_routes = {
+    "app.services.fitting.cest_tasks.run_cest_analysis_task": {"queue": "chemex"},
+    "app.services.fitting.cpmg_tasks.run_cpmg_analysis_task": {"queue": "chemex"},
+    "app.services.fitting.service.fit_cluster_task": {"queue": "peakfit"},
+    "app.services.fitting.service.compile_results_task": {"queue": "peakfit"},
+    "app.services.fitting.relaxation_tasks.run_relaxation_analysis_task": {"queue": "stats"},
+}
+
 @worker_process_init.connect
 def init_worker_process(**kwargs):
     """
@@ -39,6 +48,19 @@ def init_worker_process(**kwargs):
     a new child process. Each child process will establish its own fresh connection pool.
     """
     engine.dispose(close=True)
+
+from celery.signals import worker_ready
+
+@worker_ready.connect
+def on_worker_ready(sender, **kwargs):
+    """
+    On Celery worker startup, scan for and reap any orphaned ChemEx containers
+    left behind by previous abnormal shutdowns.
+    """
+    from app.services.fitting.chemex_runner import reap_orphaned_chemex_containers
+    reaped = reap_orphaned_chemex_containers()
+    if reaped:
+        logging.getLogger(__name__).info(f"Worker startup: reaped {len(reaped)} orphaned ChemEx container(s): {reaped}")
 
 @after_setup_logger.connect
 def setup_loggers(logger, *args, **kwargs):

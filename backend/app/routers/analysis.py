@@ -332,29 +332,39 @@ def run_cest_analysis(
 
 
 @router.post("/{analysis_uuid}/cest/stop")
+@router.post("/{analysis_uuid}/cancel")
 def stop_cest_analysis(
     analysis: models.Analysis = Depends(get_analysis),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(security.get_current_user),
 ):
-    """Terminate a running CEST fitting job."""
-    if not analysis.parameters:
-        raise HTTPException(status_code=400, detail="No task information found for this analysis")
-    
-    params = json.loads(analysis.parameters)
-    task_id = params.get("task_id")
-    
-    if not task_id:
-        # Fallback: if it's already running we might want to check status
-        if analysis.status not in ["RUNNING", "PENDING"]:
-            return {"message": "Analysis is not running"}
-        raise HTTPException(status_code=400, detail="No active task ID found to stop")
+    """Terminate a running CEST/CPMG fitting job inside its ephemeral container."""
+    if analysis.status not in ["RUNNING", "PENDING"]:
+        return {"message": f"Analysis is already in {analysis.status} state"}
 
-    # Revoke the task in Celery
-    celery_app.control.revoke(task_id, terminate=True)
-    
-    # Update analysis status
-    analysis.status = "FAILED"
+    # 1. Terminate Celery task if recorded
+    task_id = analysis.celery_task_id
+    if not task_id and analysis.parameters:
+        try:
+            params = json.loads(analysis.parameters)
+            task_id = params.get("task_id")
+        except Exception:
+            pass
+    if task_id:
+        try:
+            celery_app.control.revoke(task_id, terminate=True, signal="SIGTERM")
+        except Exception:
+            pass
+
+    # 2. Terminate ChemEx ephemeral container
+    from ..services.fitting.chemex_runner import cancel_chemex_job
+    cancel_chemex_job(analysis.analysis_uuid)
+
+    # 3. Update analysis status
+    analysis.cancel_requested = True
+    analysis.status = "CANCELLED"
+    analysis.error_message = "Cancelled by user"
+    analysis.completed_at = datetime.utcnow()
     db.commit()
 
     # Append stop message to log if possible
@@ -362,12 +372,12 @@ def stop_cest_analysis(
         try:
             with open(analysis.log_path, "a") as f:
                 f.write(f"\n\n{'=' * 60}\n")
-                f.write(f"ANALYSIS STOPPED BY USER AT: {datetime.now().isoformat()}\n")
+                f.write(f"ANALYSIS CANCELLED BY USER AT: {datetime.utcnow().isoformat()}\n")
                 f.write(f"{'=' * 60}\n")
         except Exception:
             pass
 
-    return {"message": "Analysis termination requested"}
+    return {"message": "Analysis cancelled successfully", "status": "CANCELLED"}
 
 
 @router.get("/{analysis_uuid}/cest/logs")

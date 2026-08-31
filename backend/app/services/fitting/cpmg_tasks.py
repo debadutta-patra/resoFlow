@@ -18,6 +18,7 @@ from datetime import datetime
 from ...celery_app import celery_app
 from ... import models, database
 from .cest_tasks import _update_experiment_toml_exclusions, _backup_output_directory, _parse_chemex_output
+from .chemex_runner import run_chemex_job, get_chemex_image_info
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def _setup_cpmg_directory(run_dir: str, config: dict):
 
 def _build_cpmg_chemex_command(dirs: dict, config: dict) -> list:
     """Build the chemex fit command line arguments for CPMG."""
-    cmd = ["chemex", "fit"]
+    cmd = ["fit"]
 
     # Experiment files
     experiments_dir = dirs["experiments_dir"]
@@ -154,7 +155,7 @@ def _build_cpmg_chemex_command(dirs: dict, config: dict) -> list:
 @celery_app.task(bind=True)
 def run_cpmg_analysis_task(self, analysis_uuid: str, config: dict):
     """
-    Celery task to run a ChemEx CPMG fitting job.
+    Celery task to run a ChemEx CPMG fitting job inside an ephemeral Podman container.
     Supports Global or Individual fitting.
     """
     db = next(database.get_db())
@@ -167,6 +168,15 @@ def run_cpmg_analysis_task(self, analysis_uuid: str, config: dict):
         return
 
     analysis.status = "RUNNING"
+    analysis.celery_task_id = self.request.id if self.request else None
+    
+    # Record ChemEx container image digest and version
+    digest, ver = get_chemex_image_info()
+    if digest:
+        analysis.chemex_image_digest = digest
+    if ver:
+        analysis.chemex_version = ver
+
     db.commit()
 
     try:
@@ -207,6 +217,10 @@ def run_cpmg_analysis_task(self, analysis_uuid: str, config: dict):
         with open(log_path, "w") as log_file:
             log_file.write(f"CPMG Analysis Started: {datetime.now().isoformat()}\n")
             log_file.write(f"Fit Mode: {fit_mode.upper()}\n")
+            if analysis.chemex_image_digest:
+                log_file.write(f"ChemEx Image Digest: {analysis.chemex_image_digest}\n")
+            if analysis.chemex_version:
+                log_file.write(f"ChemEx Version: {analysis.chemex_version}\n")
             log_file.write("=" * 60 + "\n\n")
 
         for idx, residue in enumerate(residues_to_fit):
@@ -224,32 +238,22 @@ def run_cpmg_analysis_task(self, analysis_uuid: str, config: dict):
             cmd = _build_cpmg_chemex_command(dirs, run_config)
             cmd.extend(["-o", output_dir])
 
-            with open(log_path, "a") as log_file:
-                log_file.write(f"$ {' '.join(cmd)}\n")
+            # Run ChemEx via ephemeral container runner
+            return_code = run_chemex_job(
+                job_id=analysis_uuid,
+                work_dir=run_dir,
+                cmd_args=cmd,
+                log_file=log_path,
+            )
 
-            pid_file = os.path.join(run_dir, "chemex.pid")
-            with open(log_path, "a") as log_file:
-                process = subprocess.Popen(
-                    cmd,
-                    cwd=run_dir,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    start_new_session=True,
-                )
-                try:
-                    with open(pid_file, "w") as pf:
-                        pf.write(str(process.pid))
-                except Exception:
-                    pass
-
-                return_code = process.wait()
-
-            if os.path.exists(pid_file):
-                try:
-                    os.remove(pid_file)
-                except Exception:
-                    pass
+            # Check for cancellation (SIGKILL=137, SIGTERM=143)
+            if return_code in (137, 143):
+                logger.info(f"CPMG Analysis {analysis_uuid} was cancelled by user (exit code {return_code})")
+                analysis.status = "CANCELLED"
+                analysis.error_message = "Cancelled by user"
+                analysis.completed_at = datetime.now()
+                db.commit()
+                return
 
             if return_code != 0 and fit_mode == "global":
                 raise RuntimeError(f"ChemEx exited with return code {return_code}. Check logs.")

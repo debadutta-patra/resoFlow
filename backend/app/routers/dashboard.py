@@ -501,35 +501,25 @@ def cancel_user_run(
             return {"message": f"Analysis is already in {analysis.status} state"}
 
         # Terminate Celery task if task_id recorded
-        if analysis.parameters:
+        task_id = analysis.celery_task_id
+        if not task_id and analysis.parameters:
             try:
                 params = json.loads(analysis.parameters)
                 task_id = params.get("task_id")
-                if task_id:
-                    celery_app.control.revoke(task_id, terminate=True, signal="SIGKILL")
+            except Exception:
+                pass
+        if task_id:
+            try:
+                celery_app.control.revoke(task_id, terminate=True, signal="SIGTERM")
             except Exception:
                 pass
 
-        # Terminate ChemEx process group via chemex.pid file
-        run_dir = os.path.dirname(analysis.log_path) if analysis.log_path else None
-        if run_dir:
-            pid_file = os.path.join(run_dir, "chemex.pid")
-            if os.path.exists(pid_file):
-                try:
-                    with open(pid_file, "r") as pf:
-                        pid = int(pf.read().strip())
-                    try:
-                        os.killpg(os.getpgid(pid), signal.SIGKILL)
-                    except Exception:
-                        try:
-                            os.kill(pid, signal.SIGKILL)
-                        except Exception:
-                            pass
-                    os.remove(pid_file)
-                except Exception:
-                    pass
+        # Terminate ChemEx ephemeral container
+        from ..services.fitting.chemex_runner import cancel_chemex_job
+        cancel_chemex_job(analysis.analysis_uuid)
 
-        analysis.status = "FAILED"
+        analysis.cancel_requested = True
+        analysis.status = "CANCELLED"
         analysis.error_message = "Cancelled by user"
         analysis.completed_at = datetime.now(timezone.utc)
 
@@ -541,7 +531,7 @@ def cancel_user_run(
                 pass
 
         db.commit()
-        return {"message": "Analysis cancelled successfully", "status": "FAILED"}
+        return {"message": "Analysis cancelled successfully", "status": "CANCELLED"}
 
     # 2. Check if it's a Job
     job = (

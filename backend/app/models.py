@@ -131,6 +131,12 @@ class Analysis(Base):
     results_path = Column(String, nullable=True)
     log_path = Column(String, nullable=True)
     error_message = Column(String, nullable=True)
+    
+    # ChemEx container metadata & execution tracking
+    chemex_image_digest = Column(String, nullable=True)
+    chemex_version = Column(String, nullable=True)
+    celery_task_id = Column(String, nullable=True)
+    cancel_requested = Column(Boolean, default=False)
 
     @property
     def has_backup(self):

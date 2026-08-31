@@ -17,6 +17,7 @@ from datetime import datetime
 
 from ...celery_app import celery_app
 from ... import models, database
+from .chemex_runner import run_chemex_job, get_chemex_image_info
 
 logger = logging.getLogger(__name__)
 
@@ -108,21 +109,26 @@ def _setup_cest_directory(run_dir: str, config: dict):
         or []
     )
 
-    # Write experiment TOMLs (support for multiple B1 experiments)
-    generated_experiments = config.get("generatedExperiments", [])
+    # Check for multi-experiment config: generatedExperiments or experiments list
+    generated_experiments = config.get("generatedExperiments", []) or config.get("experiments", [])
     if isinstance(generated_experiments, list) and len(generated_experiments) > 0:
         for i, exp_entry in enumerate(generated_experiments):
-            fname = f"cest_b1_{i}.toml"
-            # Extract TOML content from the entry dictionary
+            fname = exp_entry.get("filename") if isinstance(exp_entry, dict) else f"exp_{i}.toml"
             exp_toml = exp_entry.get("toml_content", "") if isinstance(exp_entry, dict) else str(exp_entry)
+            if not exp_toml and isinstance(exp_entry, dict) and exp_entry.get("path") and os.path.exists(exp_entry["path"]):
+                try:
+                    with open(exp_entry["path"], "r") as f:
+                        exp_toml = f.read()
+                except Exception:
+                    pass
             exp_toml = _update_experiment_toml_exclusions(exp_toml, excluded_residues)
             _write_toml(os.path.join(experiments_dir, fname), exp_toml)
     else:
         # Fallback to singular experiment_toml if provided
-        experiment_toml = config.get("experiment_toml", "")
-        if experiment_toml:
-            experiment_toml = _update_experiment_toml_exclusions(experiment_toml, excluded_residues)
-            _write_toml(os.path.join(experiments_dir, "cest_15n.toml"), experiment_toml)
+        exp_toml = config.get("experiment_toml", "")
+        if exp_toml:
+            exp_toml = _update_experiment_toml_exclusions(exp_toml, excluded_residues)
+            _write_toml(os.path.join(experiments_dir, "cest_15n.toml"), exp_toml)
 
     # Write parameter TOML
     parameter_toml = config.get("parameter_toml", "")
@@ -197,7 +203,7 @@ def _backup_output_directory(run_dir: str):
 
 def _build_chemex_command(dirs: dict, config: dict) -> list:
     """Build the chemex fit command line arguments."""
-    cmd = ["chemex", "fit"]
+    cmd = ["fit"]
 
     # Experiment files
     experiments_dir = dirs["experiments_dir"]
@@ -402,6 +408,15 @@ def run_cest_analysis_task(self, analysis_uuid: str, config: dict):
         return
 
     analysis.status = "RUNNING"
+    analysis.celery_task_id = self.request.id if self.request else None
+
+    # Record ChemEx container image digest and version
+    digest, ver = get_chemex_image_info()
+    if digest:
+        analysis.chemex_image_digest = digest
+    if ver:
+        analysis.chemex_version = ver
+
     db.commit()
 
     try:
@@ -443,6 +458,10 @@ def run_cest_analysis_task(self, analysis_uuid: str, config: dict):
         with open(log_path, "w") as log_file:
             log_file.write(f"CEST Analysis Started: {datetime.now().isoformat()}\n")
             log_file.write(f"Fit Mode: {fit_mode.upper()}\n")
+            if analysis.chemex_image_digest:
+                log_file.write(f"ChemEx Image Digest: {analysis.chemex_image_digest}\n")
+            if analysis.chemex_version:
+                log_file.write(f"ChemEx Version: {analysis.chemex_version}\n")
             log_file.write("=" * 60 + "\n\n")
 
         for idx, residue in enumerate(residues_to_fit):
@@ -457,37 +476,26 @@ def run_cest_analysis_task(self, analysis_uuid: str, config: dict):
                 with open(log_path, "a") as log_file:
                     log_file.write(f"\n--- Fitting Residue {idx+1}/{len(residues_to_fit)}: {residue} ---\n")
 
-            # Build and log command
+            # Build command
             cmd = _build_chemex_command(dirs, run_config)
             cmd.extend(["-o", output_dir])
-            
-            with open(log_path, "a") as log_file:
-                log_file.write(f"$ {' '.join(cmd)}\n")
 
-            # Run ChemEx
-            pid_file = os.path.join(run_dir, "chemex.pid")
-            with open(log_path, "a") as log_file:
-                process = subprocess.Popen(
-                    cmd,
-                    cwd=run_dir,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    start_new_session=True,
-                )
-                try:
-                    with open(pid_file, "w") as pf:
-                        pf.write(str(process.pid))
-                except Exception:
-                    pass
+            # Run ChemEx via ephemeral container runner
+            return_code = run_chemex_job(
+                job_id=analysis_uuid,
+                work_dir=run_dir,
+                cmd_args=cmd,
+                log_file=log_path,
+            )
 
-                return_code = process.wait()
-
-            if os.path.exists(pid_file):
-                try:
-                    os.remove(pid_file)
-                except Exception:
-                    pass
+            # Check for cancellation (SIGKILL=137, SIGTERM=143)
+            if return_code in (137, 143):
+                logger.info(f"CEST Analysis {analysis_uuid} was cancelled by user (exit code {return_code})")
+                analysis.status = "CANCELLED"
+                analysis.error_message = "Cancelled by user"
+                analysis.completed_at = datetime.now()
+                db.commit()
+                return
 
             if return_code != 0 and fit_mode == "global":
                 raise RuntimeError(f"ChemEx exited with return code {return_code}. Check logs.")

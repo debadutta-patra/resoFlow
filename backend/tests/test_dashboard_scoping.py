@@ -194,7 +194,7 @@ class TestDashboardAndScoping(unittest.TestCase):
         self.assertEqual(data_b["runs"][0]["uuid"], self.analysis_b.analysis_uuid)
 
     def test_run_cancellation(self):
-        """POST /api/users/me/runs/{uuid}/cancel marks run FAILED and sets error message."""
+        """POST /api/users/me/runs/{uuid}/cancel marks run CANCELLED and sets error message."""
         headers_a = self._login(self.user_a.email, "password123")
         resp = self.client.post(
             f"/api/users/me/runs/{self.analysis_a.analysis_uuid}/cancel",
@@ -205,7 +205,7 @@ class TestDashboardAndScoping(unittest.TestCase):
         # Verify DB updated
         db = self.TestingSessionLocal()
         a = db.query(models.Analysis).filter(models.Analysis.analysis_uuid == self.analysis_a.analysis_uuid).first()
-        self.assertEqual(a.status, "FAILED")
+        self.assertEqual(a.status, "CANCELLED")
         self.assertEqual(a.error_message, "Cancelled by user")
         db.close()
 

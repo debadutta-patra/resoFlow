@@ -94,6 +94,8 @@ interface CpmgAnalysisManagerProps {
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
   RUNNING: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
+  CANCELLING: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700",
+  CANCELLED: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
   COMPLETED: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800",
   FAILED: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
 };
@@ -121,6 +123,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [isFitting, setIsFitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ name: string; content: string } | null>(null);
 
   // ── Experiments Tab State ──
@@ -735,15 +738,23 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   };
 
   const handleStop = async () => {
+    if (isCancelling || status === "CANCELLING") return;
     if (!window.confirm("Are you sure you want to stop the current fitting run?")) return;
+    setIsCancelling(true);
+    setStatus("CANCELLING");
     try {
       await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/stop`);
-      setSuccessMsg("Analysis termination requested.");
-      setStatus("FAILED");
+      setSuccessMsg("Analysis cancelled successfully.");
+      setStatus("CANCELLED");
       setIsFitting(false);
+      onUpdate?.();
       setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to stop analysis");
+      setStatus("FAILED");
+      setIsFitting(false);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -774,8 +785,10 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">{analysis.name}</h2>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border ${STATUS_COLORS[status] || STATUS_COLORS.PENDING}`}>
-                {status}
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border flex items-center gap-1.5 ${STATUS_COLORS[status] || STATUS_COLORS.PENDING}`}>
+                {(status === "RUNNING" || status === "CANCELLING") && <Loader2 className="w-3 h-3 animate-spin" />}
+                {status === "COMPLETED" && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                <span>{status}</span>
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800">
                 {fitMode.toUpperCase()} FIT
@@ -828,10 +841,14 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             Save Config
           </button>
 
-          {status === "RUNNING" || isFitting ? (
-            <button onClick={handleStop} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+          {status === "RUNNING" || status === "CANCELLING" || isFitting ? (
+            <button
+              onClick={handleStop}
+              disabled={isCancelling || status === "CANCELLING"}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+            >
               <Square size={16} />
-              <span>Stop ChemEx</span>
+              <span>{isCancelling || status === "CANCELLING" ? "Cancelling..." : "Stop ChemEx"}</span>
             </button>
           ) : (
             <button

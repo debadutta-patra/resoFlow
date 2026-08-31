@@ -224,6 +224,8 @@ CONSTRAINTS = ["[PB] < 0.5"]
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800',
   RUNNING: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+  CANCELLING: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700',
+  CANCELLED: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
   COMPLETED: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800',
   FAILED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
 };
@@ -1022,16 +1024,25 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   };
 
   const handleStop = async () => {
+    if (isCancelling || status === 'CANCELLING') return;
     if (!window.confirm("Are you sure you want to stop the current fitting run? Any partial results will be lost.")) return;
+    setIsCancelling(true);
+    setStatus('CANCELLING');
+    onStatusChange?.('CANCELLING');
     try {
       await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/stop`);
-      setSuccessMsg("Analysis termination requested.");
-      setStatus('FAILED');
-      onStatusChange?.('FAILED');
+      setSuccessMsg("Analysis cancelled successfully.");
+      setStatus('CANCELLED');
+      onStatusChange?.('CANCELLED');
       setIsRunning(false);
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to stop analysis");
+      setStatus('FAILED');
+      onStatusChange?.('FAILED');
+      setIsRunning(false);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -1129,7 +1140,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${STATUS_COLORS[status] || ''}`}>
-            {status === 'RUNNING' && <Loader2 className="w-3 h-3 animate-spin" />}
+            {(status === 'RUNNING' || status === 'CANCELLING') && <Loader2 className="w-3 h-3 animate-spin" />}
             {status === 'COMPLETED' && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
             <span>{status}</span>
           </span>
@@ -1197,9 +1208,13 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {(status === 'RUNNING' || status === 'PENDING') && (
-            <button onClick={handleStop} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200 transition-all shadow-sm">
-              <Square size={13} fill="currentColor" /> Stop Run
+          {(status === 'RUNNING' || status === 'PENDING' || status === 'CANCELLING') && (
+            <button
+              onClick={handleStop}
+              disabled={isCancelling || status === 'CANCELLING'}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200 transition-all shadow-sm disabled:opacity-50"
+            >
+              <Square size={13} fill="currentColor" /> {isCancelling || status === 'CANCELLING' ? 'Cancelling...' : 'Stop Run'}
             </button>
           )}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
