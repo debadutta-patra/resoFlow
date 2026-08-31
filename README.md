@@ -12,7 +12,6 @@ It's built for a single research group or lab to run on their own workstation or
 - [Local development](#local-development)
 - [Configuration](#configuration)
 - [Testing](#testing)
-- [Additional documentation](#additional-documentation)
 
 ## Architecture
 
@@ -50,7 +49,7 @@ It's built for a single research group or lab to run on their own workstation or
 - **Relaxation analysis (R1/R2/hetNOE)** — exponential decay fitting across a project's spectra with statistics.
 - **CPMG relaxation dispersion** — ChemEx-driven dispersion curve fitting, per-experiment method/config generation, live log streaming, cancellation, and diagnostics.
 - **CEST** — ChemEx-driven CEST profile fitting with the same config/run/log/cancel lifecycle, plus PDF report generation.
-- **Statistics & uncertainty** — parses ChemEx's grid search, Monte Carlo, Bootstrap, and MCMC output trees into structured, provenance-tracked results (see [`docs/chemex-output-protocol.md`](docs/chemex-output-protocol.md)), with parameter histograms, joint-distribution plots, and raw replicate downloads.
+- **Statistics & uncertainty** — parses ChemEx's grid search, Monte Carlo, Bootstrap, and MCMC output trees into structured, provenance-tracked results, with parameter histograms, joint-distribution plots, and raw replicate downloads.
 - **Reporting & export** — modern PDF report generation with proper uncertainty resolution and derived-kinetics propagation, plus streamed ZIP export of full analysis output trees via signed, expiring download tokens.
 - **Admin & multi-user** — JWT-based auth with an approval gate (new registrations are inactive until an admin activates them), a superuser admin panel for user management, and per-user project scoping enforced at the dependency layer.
 - **Dashboard** — cross-project overview of active runs, recent analyses, and job cancellation.
@@ -253,10 +252,3 @@ npm run lint
 npm run test       # vitest
 npm run build       # tsc -b && vite build
 ```
-
-## Additional documentation
-
-- [`docs/chemex-output-protocol.md`](docs/chemex-output-protocol.md) — normative specification for how resoFlow parses ChemEx's on-disk output trees (layout discrimination, trust gating via `outcome.toml`, parameter/statistics grammars, per-residue derived quantities).
-- [`docs/cutover_runbook.md`](docs/cutover_runbook.md) — SQLite → PostgreSQL migration runbook, connection-pool sizing arithmetic, backup/restore procedures.
-- [`how_to_run.md`](how_to_run.md) — quick reference for the local dev scripts.
-- [`backend/README.md`](backend/README.md) — Alembic migration workflow reference.
