@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Backup Timer for resoFlow Database
+PartOf=resoflow-pod.service
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

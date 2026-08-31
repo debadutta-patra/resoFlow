@@ -1,0 +1,10 @@
+[Unit]
+Description=resoFlow Daily Database Backup Service
+After=resoflow-postgres.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/resoflow/scripts/backup.sh
+
+[Install]
+WantedBy=default.target

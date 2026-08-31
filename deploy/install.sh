@@ -92,16 +92,29 @@ else
     echo -e "\n${BLUE}[1/5] Using existing environment configuration at ${ENV_FILE}.${NC}"
 fi
 
-# 4. Copy Quadlet Unit Files
-echo -e "\n${BLUE}[2/5] Installing Quadlet unit files into ${QUADLET_DIR}...${NC}"
+# 4. Copy Quadlet Unit Files & Backup Timers
+echo -e "\n${BLUE}[2/5] Installing Quadlet unit files and backup timers...${NC}"
 cp -f "${SCRIPT_DIR}/quadlet/"*.pod "${QUADLET_DIR}/" 2>/dev/null || true
 cp -f "${SCRIPT_DIR}/quadlet/"*.volume "${QUADLET_DIR}/" 2>/dev/null || true
 cp -f "${SCRIPT_DIR}/quadlet/"*.container "${QUADLET_DIR}/" 2>/dev/null || true
-echo -e "${GREEN}✓ Quadlet units installed.${NC}"
 
-# 5. Enable Podman Socket and Linger
-echo -e "\n${BLUE}[3/5] Configuring systemd user services & Podman socket...${NC}"
+SCRIPTS_DIR="${HOME}/.local/share/resoflow/scripts"
+mkdir -p "${SCRIPTS_DIR}"
+cp -f "${SCRIPT_DIR}/backup.sh" "${SCRIPTS_DIR}/backup.sh"
+chmod +x "${SCRIPTS_DIR}/backup.sh"
+
+USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
+mkdir -p "${USER_SYSTEMD_DIR}"
+cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.service" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
+
+echo -e "${GREEN}✓ Quadlet units and backup timers installed.${NC}"
+
+# 5. Enable Podman Socket, Backup Timer, and Linger
+echo -e "\n${BLUE}[3/5] Configuring systemd user services, backup timer & Podman socket...${NC}"
+systemctl --user daemon-reload
 systemctl --user enable --now podman.socket > /dev/null 2>&1 || true
+systemctl --user enable --now resoflow-backup.timer > /dev/null 2>&1 || true
 
 if command -v loginctl > /dev/null 2>&1; then
     loginctl enable-linger "${USER}" 2>/dev/null || true

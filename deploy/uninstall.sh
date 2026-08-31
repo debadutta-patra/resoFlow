@@ -21,20 +21,26 @@ echo -e "${BLUE}${BOLD}======================================================${N
 
 # 1. Stop systemd services
 echo -e "\n${BLUE}[1/3] Stopping resoFlow systemd services...${NC}"
+systemctl --user disable --now resoflow-backup.timer > /dev/null 2>&1 || true
 systemctl --user stop resoflow-pod.service \
     resoflow-api.service \
     resoflow-worker.service \
     resoflow-web.service \
     resoflow-postgres.service \
-    resoflow-redis.service > /dev/null 2>&1 || true
+    resoflow-redis.service \
+    resoflow-backup.service > /dev/null 2>&1 || true
 echo -e "${GREEN}✓ Services stopped.${NC}"
 
 # 2. Remove Quadlet unit files
-echo -e "\n${BLUE}[2/3] Removing Quadlet unit files from ~/.config/containers/systemd/...${NC}"
+echo -e "\n${BLUE}[2/3] Removing Quadlet unit files and backup timers...${NC}"
 QUADLET_DIR="${HOME}/.config/containers/systemd"
+USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
+
 rm -f "${QUADLET_DIR}/resoflow.pod" \
       "${QUADLET_DIR}/resoflow-"*.container \
-      "${QUADLET_DIR}/resoflow-"*.volume 2>/dev/null || true
+      "${QUADLET_DIR}/resoflow-"*.volume \
+      "${USER_SYSTEMD_DIR}/resoflow-backup.service" \
+      "${USER_SYSTEMD_DIR}/resoflow-backup.timer" 2>/dev/null || true
 
 systemctl --user daemon-reload
 echo -e "${GREEN}✓ Quadlet units removed and systemd daemon reloaded.${NC}"
