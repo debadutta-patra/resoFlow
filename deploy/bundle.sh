@@ -64,21 +64,21 @@ cd resoflow-*-offline-bundle
 ./install.sh
 ```
 
-The installer will:
-1. Automatically load all container images from `images/` into your local Podman storage.
-2. Generate secure dynamic secrets and configuration in `~/.config/resoflow/resoflow.env`.
-3. Install Quadlet units into `~/.config/containers/systemd/`.
-4. Enable the user Podman API socket and configure systemd lingering.
-5. Start the resoFlow rootless pod service.
+The installer will interactively prompt for:
+1. **Service Port**: Choose the base port (e.g. `50000` or default `8080`). The port series will automatically be allocated for container services.
+2. **Accessible File System / Storage Path**: Set your preferred host directory for storing NMR spectra, project databases, and fit outputs (default: `~/.local/share/resoflow/projects`).
+3. **Admin Account**: Prompt to create an initial administrator login (email, full name, secure password).
+
+For headless or automated deployments, pass CLI flags:
+```bash
+./install.sh -y --port 50000 --data-dir /mnt/nmr_data --admin-email admin@lab.org --admin-password secret
+```
 
 ---
 
 ## Accessing resoFlow
 
-Once started, navigate to:
-```
-http://127.0.0.1:8080
-```
+Once started, navigate to your configured port (e.g., http://127.0.0.1:8080 or http://127.0.0.1:50000).
 
 ---
 

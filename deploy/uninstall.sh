@@ -47,16 +47,30 @@ echo -e "${GREEN}✓ Quadlet units removed and systemd daemon reloaded.${NC}"
 
 # 3. Optional data purge
 echo -e "\n${BLUE}[3/3] Checking data volumes and configuration...${NC}"
+CONFIG_DIR="${HOME}/.config/resoflow"
+DATA_DIR="${HOME}/.local/share/resoflow/projects"
+ENV_FILE="${CONFIG_DIR}/resoflow.env"
+
+if [ -f "${ENV_FILE}" ]; then
+    HOST_DATA_ROOT="$(grep '^RESOFLOW_HOST_DATA_ROOT=' "${ENV_FILE}" 2>/dev/null | cut -d'=' -f2- || true)"
+    if [ -n "${HOST_DATA_ROOT}" ]; then
+        DATA_DIR="${HOST_DATA_ROOT}"
+    fi
+fi
+
 if [ "$PURGE_DATA" = true ]; then
     echo -e "${YELLOW}Purging data volumes and secrets (--purge-data requested)...${NC}"
     podman volume rm -f resoflow-pgdata resoflow-redisdata 2>/dev/null || true
-    rm -rf "${HOME}/.config/resoflow"
+    rm -rf "${CONFIG_DIR}"
+    if [ -d "${DATA_DIR}" ]; then
+        rm -rf "${DATA_DIR}"
+    fi
     rm -rf "${HOME}/.local/share/resoflow"
     echo -e "${GREEN}✓ Data directories, volumes, and secrets purged.${NC}"
 else
     echo -e "User data and database volumes preserved in:"
-    echo -e "  - Configuration & secrets: ${BOLD}~/.config/resoflow/${NC}"
-    echo -e "  - Projects & fit results:  ${BOLD}~/.local/share/resoflow/projects/${NC}"
+    echo -e "  - Configuration & secrets: ${BOLD}${CONFIG_DIR}/${NC}"
+    echo -e "  - Projects & fit results:  ${BOLD}${DATA_DIR}/${NC}"
     echo -e "  - Podman persistent volumes: ${BOLD}resoflow-pgdata, resoflow-redisdata${NC}"
     echo -e "\n${YELLOW}To purge all data on uninstall, run: ./deploy/uninstall.sh --purge-data${NC}"
 fi

@@ -65,9 +65,16 @@ class FileItem(BaseModel):
 @router.get("/browse", response_model=List[FileItem])
 def browse_filesystem(
     path: Optional[str] = Query(None, description="Directory path to browse"),
-    current_user: models.User = Depends(security.get_current_user)
+    current_user: models.User = Depends(security.get_current_user),
 ):
-    target_path = _sanitize_path(path) if path else _sanitize_path("~")
+    if path:
+        target_path = _sanitize_path(path)
+    else:
+        default_dir = os.environ.get("PROJECTS_STORAGE_PATH") or os.environ.get("RESOFLOW_CONTAINER_DATA_ROOT")
+        if default_dir and os.path.isdir(default_dir):
+            target_path = _sanitize_path(default_dir)
+        else:
+            target_path = _sanitize_path("~")
     
     if _is_sensitive_path(target_path):
         raise HTTPException(status_code=403, detail="Access to sensitive path forbidden")

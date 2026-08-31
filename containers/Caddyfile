@@ -1,4 +1,4 @@
-:8080 {
+:{$WEB_PORT:8080} {
     root * /srv/dist
     file_server
 
@@ -6,7 +6,7 @@
         path /api/* /auth/* /docs* /openapi.json /redoc*
     }
     handle @api {
-        reverse_proxy 127.0.0.1:8000
+        reverse_proxy 127.0.0.1:{$API_PORT:8000}
     }
 
     handle {

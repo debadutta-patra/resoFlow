@@ -7,6 +7,7 @@ Wants=resoflow-api.service
 ContainerName=resoflow-web
 Pod=resoflow.pod
 Image=localhost/resoflow-web:latest
+EnvironmentFile=%h/.config/resoflow/resoflow.env
 
 [Service]
 Restart=always

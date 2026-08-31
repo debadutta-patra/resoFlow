@@ -13,6 +13,89 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Default settings
+BASE_PORT="8080"
+API_PORT=""
+DATA_DIR="${HOME}/.local/share/resoflow/projects"
+ADMIN_EMAIL=""
+ADMIN_PASSWORD=""
+ADMIN_NAME="Administrator"
+CREATE_ADMIN=""
+NON_INTERACTIVE=false
+
+usage() {
+    cat << 'EOF'
+Usage: ./deploy/install.sh [OPTIONS]
+
+Options:
+  -p, --port PORT          Base port for resoFlow services (default: 8080)
+                           Allocates PORT for Web UI and PORT+1 for API (or 8000 if port is 8080)
+      --api-port PORT      Override internal backend API port
+  -d, --data-dir PATH      Host storage directory for projects and spectra
+                           (default: ~/.local/share/resoflow/projects)
+      --admin-email EMAIL  Initial administrator account email
+      --admin-password PWD Initial administrator account password
+      --admin-name NAME    Initial administrator full name (default: "Administrator")
+      --skip-admin         Skip administrator account creation
+  -y, --non-interactive    Run non-interactively with provided flags or defaults
+  -h, --help               Show this help message and exit
+
+Examples:
+  ./deploy/install.sh
+  ./deploy/install.sh --port 50000 --data-dir /mnt/nmr_data
+  ./deploy/install.sh -y --port 8080 --admin-email admin@lab.org --admin-password secret
+EOF
+    exit 0
+}
+
+# Parse command-line options
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -p|--port)
+            BASE_PORT="$2"
+            shift 2
+            ;;
+        --api-port)
+            API_PORT="$2"
+            shift 2
+            ;;
+        -d|--data-dir)
+            DATA_DIR="$2"
+            shift 2
+            ;;
+        --admin-email)
+            ADMIN_EMAIL="$2"
+            CREATE_ADMIN="true"
+            shift 2
+            ;;
+        --admin-password)
+            ADMIN_PASSWORD="$2"
+            CREATE_ADMIN="true"
+            shift 2
+            ;;
+        --admin-name)
+            ADMIN_NAME="$2"
+            shift 2
+            ;;
+        --skip-admin|--no-admin)
+            CREATE_ADMIN="false"
+            shift
+            ;;
+        -y|--non-interactive)
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}" >&2
+            echo "Use --help for usage information." >&2
+            exit 1
+            ;;
+    esac
+done
+
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 echo -e "${BLUE}${BOLD}          resoFlow Rootless Podman Installer          ${NC}"
 echo -e "${BLUE}${BOLD}======================================================${NC}"
@@ -33,7 +116,99 @@ if [ ! -r /etc/subuid ] || ! grep -q "^${USER}:" /etc/subuid 2>/dev/null; then
     echo -e "${YELLOW}Warning: User '${USER}' does not have a subuid mapping in /etc/subuid. Rootless Podman may fail.${NC}"
 fi
 
-# 1b. Load offline images if present in bundle
+# 2. Interactive configuration prompts (if TTY & interactive mode)
+IS_TTY=false
+if [ -t 0 ] && [ "$NON_INTERACTIVE" = false ]; then
+    IS_TTY=true
+fi
+
+if [ "$IS_TTY" = true ]; then
+    echo -e "\n${BOLD}--- Setup Configuration ---${NC}"
+
+    # Port prompt
+    read -r -p "Base port for resoFlow web interface [${BASE_PORT}]: " input_port
+    if [ -n "${input_port}" ]; then
+        BASE_PORT="${input_port}"
+    fi
+
+    # Accessible filesystem prompt
+    read -r -p "Host accessible storage path for projects & spectra [${DATA_DIR}]: " input_data_dir
+    if [ -n "${input_data_dir}" ]; then
+        DATA_DIR="${input_data_dir}"
+    fi
+
+    # Admin account prompt
+    if [ -z "${CREATE_ADMIN}" ]; then
+        echo ""
+        read -r -p "Create an administrator account now? [Y/n]: " input_create_admin
+        case "${input_create_admin}" in
+            [nN]|[nN][oO])
+                CREATE_ADMIN="false"
+                ;;
+            *)
+                CREATE_ADMIN="true"
+                ;;
+        esac
+    fi
+
+    if [ "${CREATE_ADMIN}" = "true" ] && { [ -z "${ADMIN_EMAIL}" ] || [ -z "${ADMIN_PASSWORD}" ]; }; then
+        echo -e "\n${BOLD}--- Administrator Account Setup ---${NC}"
+        while [ -z "${ADMIN_EMAIL}" ]; do
+            read -r -p "Admin Email: " input_email
+            input_email="$(echo "${input_email}" | tr -d '[:space:]')"
+            if [[ "${input_email}" == *"@"* ]]; then
+                ADMIN_EMAIL="${input_email}"
+            else
+                echo -e "${RED}Please enter a valid email address.${NC}"
+            fi
+        done
+
+        read -r -p "Admin Full Name [${ADMIN_NAME}]: " input_name
+        if [ -n "${input_name}" ]; then
+            ADMIN_NAME="${input_name}"
+        fi
+
+        while [ -z "${ADMIN_PASSWORD}" ]; do
+            read -r -s -p "Admin Password: " pwd1
+            echo ""
+            read -r -s -p "Confirm Admin Password: " pwd2
+            echo ""
+            if [ -z "${pwd1}" ]; then
+                echo -e "${RED}Password cannot be empty.${NC}"
+            elif [ "${pwd1}" != "${pwd2}" ]; then
+                echo -e "${RED}Passwords do not match. Please try again.${NC}"
+            else
+                ADMIN_PASSWORD="${pwd1}"
+            fi
+        done
+    fi
+fi
+
+# Expand and normalize DATA_DIR
+if [[ "${DATA_DIR}" == ~* ]]; then
+    DATA_DIR="${HOME}${DATA_DIR#\~}"
+fi
+DATA_DIR="$(mkdir -p "${DATA_DIR}" && cd "${DATA_DIR}" && pwd)"
+
+# Resolve WEB_PORT and API_PORT
+WEB_PORT="${BASE_PORT}"
+if [ -z "${API_PORT}" ]; then
+    if [ "${WEB_PORT}" = "8080" ]; then
+        API_PORT="8000"
+    else
+        API_PORT="$((WEB_PORT + 1))"
+    fi
+fi
+
+echo -e "\n${BLUE}Configuration summary:${NC}"
+echo -e "  - Web UI Port:         ${BOLD}${WEB_PORT}${NC}"
+echo -e "  - Backend API Port:    ${BOLD}${API_PORT}${NC}"
+echo -e "  - Accessible Data Dir: ${BOLD}${DATA_DIR}${NC}"
+if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ]; then
+    echo -e "  - Administrator:       ${BOLD}${ADMIN_EMAIL}${NC}"
+fi
+
+# 3. Load offline images if present in bundle
 if [ -d "${SCRIPT_DIR}/images" ]; then
     echo -e "\n${BLUE}[0/5] Loading offline container images from ${SCRIPT_DIR}/images...${NC}"
     for archive in "${SCRIPT_DIR}/images/"*.tar*; do
@@ -45,27 +220,26 @@ if [ -d "${SCRIPT_DIR}/images" ]; then
     echo -e "${GREEN}✓ Offline images loaded.${NC}"
 fi
 
-# 2. Directory setup
+# 4. Directory setup
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 CONFIG_DIR="${HOME}/.config/resoflow"
-DATA_DIR="${HOME}/.local/share/resoflow/projects"
 
 mkdir -p "${QUADLET_DIR}" "${CONFIG_DIR}" "${DATA_DIR}"
 chmod 700 "${CONFIG_DIR}"
 
-# 3. Dynamic Secrets Generation
+# 5. Dynamic Secrets and Environment Generation
 ENV_FILE="${CONFIG_DIR}/resoflow.env"
+
+gen_secret() {
+    if command -v openssl > /dev/null 2>&1; then
+        openssl rand -hex "$1"
+    else
+        python3 -c "import secrets; print(secrets.token_hex($1))"
+    fi
+}
+
 if [ ! -f "${ENV_FILE}" ]; then
     echo -e "\n${BLUE}[1/5] Generating secure environment secrets in ${ENV_FILE}...${NC}"
-    
-    gen_secret() {
-        if command -v openssl > /dev/null 2>&1; then
-            openssl rand -hex "$1"
-        else
-            python3 -c "import secrets; print(secrets.token_hex($1))"
-        fi
-    }
-
     PG_PASS="$(gen_secret 16)"
     SECRET_KEY="$(gen_secret 32)"
     PG_USER="resoflow"
@@ -85,19 +259,49 @@ PROJECTS_STORAGE_PATH=/data/projects
 RESOFLOW_HOST_DATA_ROOT=${DATA_DIR}
 RESOFLOW_CONTAINER_DATA_ROOT=/data/projects
 RESOFLOW_CHEMEX_IMAGE=localhost/resoflow-chemex:latest
+WEB_PORT=${WEB_PORT}
+API_PORT=${API_PORT}
 EOF
     chmod 600 "${ENV_FILE}"
     echo -e "${GREEN}✓ Generated ${ENV_FILE} with permissions 600.${NC}"
 else
-    echo -e "\n${BLUE}[1/5] Using existing environment configuration at ${ENV_FILE}.${NC}"
+    echo -e "\n${BLUE}[1/5] Updating environment configuration at ${ENV_FILE}...${NC}"
+    # Update existing env file with new data root and ports if modified
+    update_env_var() {
+        local key="$1"
+        local val="$2"
+        if grep -q "^${key}=" "${ENV_FILE}"; then
+            sed -i "s|^${key}=.*|${key}=${val}|g" "${ENV_FILE}"
+        else
+            echo "${key}=${val}" >> "${ENV_FILE}"
+        fi
+    }
+    update_env_var "RESOFLOW_HOST_DATA_ROOT" "${DATA_DIR}"
+    update_env_var "WEB_PORT" "${WEB_PORT}"
+    update_env_var "API_PORT" "${API_PORT}"
+    echo -e "${GREEN}✓ Updated ${ENV_FILE}.${NC}"
 fi
 
-# 4. Copy Quadlet Unit Files & Backup Timers
-echo -e "\n${BLUE}[2/5] Installing Quadlet unit files and backup timers...${NC}"
-cp -f "${SCRIPT_DIR}/quadlet/"*.pod "${QUADLET_DIR}/" 2>/dev/null || true
+# 6. Copy and configure Quadlet Unit Files & Backup Timers
+echo -e "\n${BLUE}[2/5] Installing and tailoring Quadlet unit files...${NC}"
 cp -f "${SCRIPT_DIR}/quadlet/"*.volume "${QUADLET_DIR}/" 2>/dev/null || true
-cp -f "${SCRIPT_DIR}/quadlet/"*.container "${QUADLET_DIR}/" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/quadlet/resoflow-postgres.container" "${QUADLET_DIR}/" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/quadlet/resoflow-redis.container" "${QUADLET_DIR}/" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/quadlet/resoflow-web.container" "${QUADLET_DIR}/" 2>/dev/null || true
 
+# Copy & customize resoflow.pod (PublishPort)
+sed "s|PublishPort=127.0.0.1:.*|PublishPort=127.0.0.1:${WEB_PORT}:${WEB_PORT}|g" \
+    "${SCRIPT_DIR}/quadlet/resoflow.pod" > "${QUADLET_DIR}/resoflow.pod"
+
+# Copy & customize resoflow-api.container (Volume & Port)
+sed -e "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
+    "${SCRIPT_DIR}/quadlet/resoflow-api.container" > "${QUADLET_DIR}/resoflow-api.container"
+
+# Copy & customize resoflow-worker.container (Volume)
+sed "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
+    "${SCRIPT_DIR}/quadlet/resoflow-worker.container" > "${QUADLET_DIR}/resoflow-worker.container"
+
+# Install backup scripts and timer
 SCRIPTS_DIR="${HOME}/.local/share/resoflow/scripts"
 mkdir -p "${SCRIPTS_DIR}"
 cp -f "${SCRIPT_DIR}/backup.sh" "${SCRIPTS_DIR}/backup.sh"
@@ -108,9 +312,9 @@ mkdir -p "${USER_SYSTEMD_DIR}"
 cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.service" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
 cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
 
-echo -e "${GREEN}✓ Quadlet units and backup timers installed.${NC}"
+echo -e "${GREEN}✓ Quadlet units and backup timers installed with customized ports and storage.${NC}"
 
-# 5. Enable Podman Socket, Backup Timer, and Linger
+# 7. Enable Podman Socket, Backup Timer, and Linger
 echo -e "\n${BLUE}[3/5] Configuring systemd user services, backup timer & Podman socket...${NC}"
 systemctl --user daemon-reload
 systemctl --user enable --now podman.socket > /dev/null 2>&1 || true
@@ -120,31 +324,91 @@ if command -v loginctl > /dev/null 2>&1; then
     loginctl enable-linger "${USER}" 2>/dev/null || true
 fi
 
-# 6. Daemon reload and start pod
+# 8. Daemon reload and start pod
 echo -e "\n${BLUE}[4/5] Reloading systemd user daemon and starting resoFlow pod...${NC}"
 systemctl --user daemon-reload
 systemctl --user restart resoflow-pod.service
 
-# 7. Health & Readiness Verification
+# 9. Health & Readiness Verification
 echo -e "\n${BLUE}[5/5] Verifying service readiness...${NC}"
-echo -n "  Waiting for web interface (http://127.0.0.1:8080)..."
+echo -n "  Waiting for web interface (http://127.0.0.1:${WEB_PORT})..."
 
 READY=false
-for i in {1..30}; do
-    if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080 2>/dev/null | grep -qE "200|301|302|404"; then
+for i in {1..35}; do
+    if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${WEB_PORT}" 2>/dev/null | grep -qE "200|301|302|404"; then
         READY=true
         break
     fi
     echo -n "."
     sleep 1
 done
-
 echo ""
+
+# 10. Bootstrap administrator account if requested
+if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ] && [ -n "${ADMIN_PASSWORD}" ]; then
+    echo -e "\n${BLUE}Configuring administrator account (${ADMIN_EMAIL})...${NC}"
+    if podman exec -i \
+        -e ADMIN_EMAIL="${ADMIN_EMAIL}" \
+        -e ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+        -e ADMIN_NAME="${ADMIN_NAME}" \
+        resoflow-api python - << 'PYEOF' > /dev/null 2>&1
+import os
+import sys
+from app import database, models, security
+
+email = os.environ.get("ADMIN_EMAIL", "").strip()
+password = os.environ.get("ADMIN_PASSWORD", "")
+full_name = os.environ.get("ADMIN_NAME", "Administrator").strip()
+
+if not email or not password:
+    sys.exit(0)
+
+db = database.SessionLocal()
+try:
+    user = db.query(models.User).filter(models.User.email == email).first()
+    hashed = security.get_password_hash(password)
+    if user:
+        user.hashed_password = hashed
+        user.full_name = full_name or user.full_name
+        user.is_active = True
+        user.is_superuser = True
+        db.commit()
+    else:
+        user = models.User(
+            email=email,
+            hashed_password=hashed,
+            full_name=full_name or "Administrator",
+            is_active=True,
+            is_superuser=True
+        )
+        db.add(user)
+        db.commit()
+except Exception as e:
+    db.rollback()
+    sys.exit(1)
+finally:
+    db.close()
+PYEOF
+    then
+        echo -e "${GREEN}✓ Administrator account configured successfully.${NC}"
+    else
+        echo -e "${YELLOW}Warning: Could not create admin account automatically. You can create one anytime with:${NC}"
+        echo -e "  ${BOLD}podman exec -it resoflow-api python create_superuser.py${NC}"
+    fi
+fi
+
 if [ "$READY" = true ]; then
-    echo -e "${GREEN}${BOLD}✓ resoFlow is successfully running!${NC}"
+    echo -e "\n${GREEN}${BOLD}======================================================${NC}"
+    echo -e "${GREEN}${BOLD}✓ resoFlow is successfully installed and running!     ${NC}"
+    echo -e "${GREEN}${BOLD}======================================================${NC}"
     echo -e "\n${BLUE}${BOLD}Access resoFlow in your web browser:${NC}"
-    echo -e "  ${GREEN}${BOLD}http://127.0.0.1:8080${NC}\n"
-    echo -e "${BLUE}Systemd management commands:${NC}"
+    echo -e "  ${GREEN}${BOLD}http://127.0.0.1:${WEB_PORT}${NC}"
+    echo -e "\n${BLUE}Configuration details:${NC}"
+    echo -e "  - Accessible storage: ${BOLD}${DATA_DIR}${NC}"
+    if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ]; then
+        echo -e "  - Admin login email:  ${BOLD}${ADMIN_EMAIL}${NC}"
+    fi
+    echo -e "\n${BLUE}Systemd management commands:${NC}"
     echo -e "  Status:  ${BOLD}systemctl --user status resoflow-pod.service${NC}"
     echo -e "  Logs:    ${BOLD}journalctl --user -u resoflow-api -u resoflow-worker -f${NC}"
     echo -e "  Stop:    ${BOLD}systemctl --user stop resoflow-pod.service${NC}"
@@ -153,3 +417,4 @@ else
     echo -e "${YELLOW}Warning: Services started, but healthcheck timed out. Check container logs:${NC}"
     echo -e "  ${BOLD}journalctl --user -u resoflow-api.service -n 50${NC}"
 fi
+

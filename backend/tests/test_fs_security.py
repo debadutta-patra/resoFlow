@@ -27,3 +27,21 @@ def test_sensitive_path_detection():
     # Benign paths should pass
     assert _is_sensitive_path("/home/user/my_nmr_project/parameters.toml") is False
     assert _is_sensitive_path("/data/projects/proj1/cpmg_fitting") is False
+
+
+def test_browse_filesystem_default_storage(tmp_path, monkeypatch):
+    """Verify browse_filesystem defaults to PROJECTS_STORAGE_PATH when path is None."""
+    from app.routers.fs import browse_filesystem
+    from app.models import User
+
+    test_storage = tmp_path / "custom_projects"
+    test_storage.mkdir()
+    (test_storage / "project_a").mkdir()
+
+    monkeypatch.setenv("PROJECTS_STORAGE_PATH", str(test_storage))
+    mock_user = User(id=1, email="test@lab.org", is_active=True)
+
+    items = browse_filesystem(path=None, current_user=mock_user)
+    names = [item.name for item in items]
+    assert "project_a" in names
+
