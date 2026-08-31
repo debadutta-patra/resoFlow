@@ -11,14 +11,17 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 echo -e "${BLUE}${BOLD}               Starting resoFlow Platform              ${NC}"
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 
 # 0. Ensure a clean state by stopping any existing app processes
-if [ -f "$ROOT_DIR/stop_apps.sh" ]; then
+if [ -f "$ROOT_DIR/dev/stop_apps.sh" ]; then
+    bash "$ROOT_DIR/dev/stop_apps.sh"
+elif [ -f "$ROOT_DIR/stop_apps.sh" ]; then
     bash "$ROOT_DIR/stop_apps.sh"
 fi
 
