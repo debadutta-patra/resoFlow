@@ -1155,10 +1155,24 @@ def download_statistics_plots(
                 filename=f"{method_name}_plots_{analysis.analysis_uuid}.pdf",
             )
 
+    # Search inside group directories
+    try:
+        method_dirs = _locate_all_statistics_method_dirs(analysis, method_name, step_name)
+        for m_dir in method_dirs:
+            pdf_f = m_dir / "plots.pdf"
+            if pdf_f.is_file():
+                return FileResponse(
+                    path=str(pdf_f),
+                    media_type="application/pdf",
+                    filename=f"{method_name}_plots_{analysis.analysis_uuid}.pdf",
+                )
+    except Exception:
+        pass
+
     raise HTTPException(status_code=404, detail=f"No {method_name} plots.pdf report found for this analysis.")
 
 
-def _locate_statistics_method_dir(analysis: models.Analysis, method_name: str, step_name: Optional[str] = None):
+def _locate_all_statistics_method_dirs(analysis: models.Analysis, method_name: str, step_name: Optional[str] = None):
     from pathlib import Path
     project = analysis.project
     is_cpmg = analysis.analysis_type.upper() == "CPMG"
@@ -1178,11 +1192,14 @@ def _locate_statistics_method_dir(analysis: models.Analysis, method_name: str, s
     }
     dir_name = method_dir_map.get(method_name.lower(), method_name)
 
-    candidates = []
+    # 1. Check top-level single statistics directories
+    top_candidates = []
     if step_name:
-        candidates.append(run_dir / step_name / "Statistics" / dir_name)
-        candidates.append(run_dir / "Output" / step_name / "Statistics" / dir_name)
-    candidates.extend([
+        top_candidates.extend([
+            run_dir / step_name / "Statistics" / dir_name,
+            run_dir / "Output" / step_name / "Statistics" / dir_name,
+        ])
+    top_candidates.extend([
         run_dir / "Output" / "STEP2" / "Statistics" / dir_name,
         run_dir / "STEP2" / "Statistics" / dir_name,
         run_dir / "Output" / "STEP1" / "Statistics" / dir_name,
@@ -1190,29 +1207,41 @@ def _locate_statistics_method_dir(analysis: models.Analysis, method_name: str, s
         run_dir / "Output" / "Statistics" / dir_name,
         run_dir / "Statistics" / dir_name,
     ])
-    for p in candidates:
+    for p in top_candidates:
         if p.is_dir():
-            return p
+            return [p]
 
-    # Fallback to checking if Groups/ exists with method statistics
-    group_candidates = []
+    # 2. Check for Groups/ folders across potential roots
+    group_parents = []
     if step_name:
-        group_candidates.append((run_dir / step_name / "Groups", run_dir / step_name / "Statistics" / dir_name))
-        group_candidates.append((run_dir / "Output" / step_name / "Groups", run_dir / "Output" / step_name / "Statistics" / dir_name))
-    group_candidates.extend([
-        (run_dir / "Output" / "STEP2" / "Groups", run_dir / "Output" / "STEP2" / "Statistics" / dir_name),
-        (run_dir / "STEP2" / "Groups", run_dir / "STEP2" / "Statistics" / dir_name),
-        (run_dir / "Output" / "STEP1" / "Groups", run_dir / "Output" / "STEP1" / "Statistics" / dir_name),
-        (run_dir / "STEP1" / "Groups", run_dir / "STEP1" / "Statistics" / dir_name),
+        group_parents.extend([
+            run_dir / step_name / "Groups",
+            run_dir / "Output" / step_name / "Groups",
+        ])
+    group_parents.extend([
+        run_dir / "Output" / "Groups",
+        run_dir / "Groups",
+        run_dir / "Output" / "STEP2" / "Groups",
+        run_dir / "STEP2" / "Groups",
+        run_dir / "Output" / "STEP1" / "Groups",
+        run_dir / "STEP1" / "Groups",
     ])
-    for g_parent, target_dir in group_candidates:
+    for g_parent in group_parents:
         if g_parent.is_dir():
-            for g_dir in g_parent.iterdir():
-                if (g_dir / "Statistics" / dir_name).is_dir():
-                    target_dir.mkdir(parents=True, exist_ok=True)
-                    return target_dir
+            group_dirs = []
+            for g_dir in sorted(g_parent.iterdir()):
+                stat_sub = g_dir / "Statistics" / dir_name
+                if stat_sub.is_dir():
+                    group_dirs.append(stat_sub)
+            if group_dirs:
+                return group_dirs
 
     raise HTTPException(status_code=404, detail=f"No {method_name} statistics directory found.")
+
+
+def _locate_statistics_method_dir(analysis: models.Analysis, method_name: str, step_name: Optional[str] = None):
+    dirs = _locate_all_statistics_method_dirs(analysis, method_name, step_name)
+    return dirs[0]
 
 
 def _get_step_deterministic_values(analysis: models.Analysis, step_name: Optional[str] = None) -> Dict[str, float]:
@@ -1225,17 +1254,22 @@ def _get_step_deterministic_values(analysis: models.Analysis, step_name: Optiona
 
     fitted_candidates = []
     if step_name:
-        fitted_candidates.append(run_dir / step_name / "Parameters" / "fitted.toml")
-        fitted_candidates.append(run_dir / "Output" / step_name / "Parameters" / "fitted.toml")
-    candidates = [
+        fitted_candidates.extend([
+            run_dir / step_name / "Parameters" / "fitted.toml",
+            run_dir / "Output" / step_name / "Parameters" / "fitted.toml",
+            run_dir / step_name / "All" / "Parameters" / "fitted.toml",
+            run_dir / "Output" / step_name / "All" / "Parameters" / "fitted.toml",
+        ])
+    fitted_candidates.extend([
+        run_dir / "Output" / "All" / "Parameters" / "fitted.toml",
+        run_dir / "All" / "Parameters" / "fitted.toml",
         run_dir / "Output" / "STEP2" / "Parameters" / "fitted.toml",
         run_dir / "STEP2" / "Parameters" / "fitted.toml",
         run_dir / "Output" / "STEP1" / "Parameters" / "fitted.toml",
         run_dir / "STEP1" / "Parameters" / "fitted.toml",
         run_dir / "Output" / "Parameters" / "fitted.toml",
         run_dir / "Parameters" / "fitted.toml",
-    ]
-    fitted_candidates.extend(candidates)
+    ])
 
     det_map: Dict[str, float] = {}
     for p in fitted_candidates:
@@ -1247,13 +1281,42 @@ def _get_step_deterministic_values(analysis: models.Analysis, step_name: Optiona
                         for sub_k, sub_v in val.items():
                             if isinstance(sub_v, (int, float)):
                                 det_map[f"{section}, {sub_k}"] = float(sub_v)
+                                det_map[f"{section}, NUC->{sub_k}"] = float(sub_v)
                                 det_map[sub_k] = float(sub_v)
                                 det_map[f"{section}_{sub_k}"] = float(sub_v)
                     elif isinstance(val, (int, float)):
                         det_map[section] = float(val)
-                return det_map
+                if det_map:
+                    return det_map
             except Exception:
                 pass
+
+    # Per-group fitted.toml
+    group_parents = [
+        run_dir / "Output" / "Groups",
+        run_dir / "Groups",
+        run_dir / "Output" / "STEP2" / "Groups",
+        run_dir / "STEP2" / "Groups",
+    ]
+    for g_parent in group_parents:
+        if g_parent.is_dir():
+            for g_dir in g_parent.iterdir():
+                fitted_f = g_dir / "Parameters" / "fitted.toml"
+                if fitted_f.is_file():
+                    try:
+                        data = tomllib.loads(fitted_f.read_text(encoding="utf-8"))
+                        for section, val in data.items():
+                            if isinstance(val, dict):
+                                for sub_k, sub_v in val.items():
+                                    if isinstance(sub_v, (int, float)):
+                                        det_map[f"{section}, {sub_k}"] = float(sub_v)
+                                        det_map[f"{section}, NUC->{sub_k}"] = float(sub_v)
+                                        det_map[sub_k] = float(sub_v)
+                                        det_map[f"{section}_{sub_k}"] = float(sub_v)
+                            elif isinstance(val, (int, float)):
+                                det_map[section] = float(val)
+                    except Exception:
+                        pass
     return det_map
 
 
@@ -1263,27 +1326,37 @@ def get_statistics_summary(
     method_name: str = "monte_carlo",
     step_name: Optional[str] = None,
 ):
-    """Return per-parameter statistical summary derived from replicate matrix."""
+    """Return per-parameter statistical summary derived from replicate matrix across all groups."""
     from ..services.fitting.statistics_engine import compute_parameter_summary, load_replicates_or_fallback
-    method_dir = _locate_statistics_method_dir(analysis, method_name, step_name)
-    rep_data = load_replicates_or_fallback(method_dir, method_name)
+    method_dirs = _locate_all_statistics_method_dirs(analysis, method_name, step_name)
+    det_vals = _get_step_deterministic_values(analysis, step_name)
 
-    if rep_data is None or rep_data.get("replicates") is None or len(rep_data["parameter_names"]) == 0:
+    merged_summary = {}
+    all_parameters = []
+    total_samples = 0
+
+    for m_dir in method_dirs:
+        rep_data = load_replicates_or_fallback(m_dir, method_name)
+        if rep_data and rep_data.get("replicates") is not None and len(rep_data["parameter_names"]) > 0:
+            summary = compute_parameter_summary(
+                rep_data["replicates"],
+                rep_data["parameter_names"],
+                deterministic_values=det_vals,
+            )
+            merged_summary.update(summary)
+            all_parameters.extend(rep_data["parameter_names"])
+            total_samples = max(total_samples, rep_data["replicates"].shape[0])
+
+    if not merged_summary:
         raise HTTPException(status_code=404, detail="No replicate matrix available for this technique.")
 
-    det_vals = _get_step_deterministic_values(analysis, step_name)
-    summary = compute_parameter_summary(
-        rep_data["replicates"],
-        rep_data["parameter_names"],
-        deterministic_values=det_vals,
-    )
     return {
         "analysis_uuid": analysis.analysis_uuid,
         "method_name": method_name,
         "step_name": step_name or "primary",
-        "sample_count": rep_data["replicates"].shape[0],
-        "parameters": rep_data["parameter_names"],
-        "summary": summary,
+        "sample_count": total_samples,
+        "parameters": all_parameters,
+        "summary": merged_summary,
     }
 
 
@@ -1295,28 +1368,31 @@ def get_parameter_histogram(
     step_name: Optional[str] = None,
     bins: Optional[int] = None,
 ):
-    """Return server-side Freedman-Diaconis binned histogram counts and edges."""
-    from ..services.fitting.statistics_engine import compute_parameter_histogram, load_replicates_or_fallback
-    method_dir = _locate_statistics_method_dir(analysis, method_name, step_name)
-    rep_data = load_replicates_or_fallback(method_dir, method_name)
-
-    if rep_data is None or rep_data.get("replicates") is None:
-        raise HTTPException(status_code=404, detail="No replicate samples found.")
-
+    """Return server-side Freedman-Diaconis binned histogram counts and edges for single/grouped fits."""
+    from ..services.fitting.statistics_engine import compute_parameter_histogram, load_replicates_or_fallback, clean_param_name
+    method_dirs = _locate_all_statistics_method_dirs(analysis, method_name, step_name)
     det_vals = _get_step_deterministic_values(analysis, step_name)
-    det_val = det_vals.get(parameter_name)
+    det_val = det_vals.get(parameter_name) or det_vals.get(clean_param_name(parameter_name))
 
-    hist_data = compute_parameter_histogram(
-        rep_data["replicates"],
-        rep_data["parameter_names"],
-        target_param=parameter_name,
-        bins=bins,
-        deterministic_value=det_val,
-    )
-    if hist_data is None:
-        raise HTTPException(status_code=404, detail=f"Parameter '{parameter_name}' not found in replicate matrix.")
+    clean_target = clean_param_name(parameter_name).lower()
 
-    return hist_data
+    for m_dir in method_dirs:
+        rep_data = load_replicates_or_fallback(m_dir, method_name)
+        if rep_data and rep_data.get("replicates") is not None:
+            p_names = rep_data["parameter_names"]
+            match_found = any(clean_param_name(p).lower() == clean_target for p in p_names)
+            if match_found:
+                hist_data = compute_parameter_histogram(
+                    rep_data["replicates"],
+                    p_names,
+                    target_param=parameter_name,
+                    bins=bins,
+                    deterministic_value=det_val,
+                )
+                if hist_data is not None:
+                    return hist_data
+
+    raise HTTPException(status_code=404, detail=f"Parameter '{parameter_name}' not found in replicate matrix.")
 
 
 @router.get("/{analysis_uuid}/statistics/joint-distribution")
@@ -1328,31 +1404,63 @@ def get_joint_distribution(
     step_name: Optional[str] = None,
     bins: int = 25,
 ):
-    """Return 2D joint density matrix and correlation r for a parameter pair."""
-    from ..services.fitting.statistics_engine import compute_joint_2d_distribution, load_replicates_or_fallback
-    method_dir = _locate_statistics_method_dir(analysis, method_name, step_name)
-    rep_data = load_replicates_or_fallback(method_dir, method_name)
-
-    if rep_data is None or rep_data.get("replicates") is None:
-        raise HTTPException(status_code=404, detail="No replicate samples found.")
-
+    """Return 2D joint density matrix and correlation r for a parameter pair in single/grouped fits."""
+    from ..services.fitting.statistics_engine import compute_joint_2d_distribution, load_replicates_or_fallback, clean_param_name
+    import numpy as np
+    method_dirs = _locate_all_statistics_method_dirs(analysis, method_name, step_name)
     det_vals = _get_step_deterministic_values(analysis, step_name)
-    det_x = det_vals.get(param_x)
-    det_y = det_vals.get(param_y)
+    det_x = det_vals.get(param_x) or det_vals.get(clean_param_name(param_x))
+    det_y = det_vals.get(param_y) or det_vals.get(clean_param_name(param_y))
 
-    joint_data = compute_joint_2d_distribution(
-        rep_data["replicates"],
-        rep_data["parameter_names"],
-        param_x=param_x,
-        param_y=param_y,
-        bins=bins,
-        x_deterministic=det_x,
-        y_deterministic=det_y,
-    )
-    if joint_data is None:
-        raise HTTPException(status_code=404, detail="One or both parameters not found in replicate matrix.")
+    clean_x = clean_param_name(param_x).lower()
+    clean_y = clean_param_name(param_y).lower()
 
-    return joint_data
+    # 1. First check if both parameters reside in the same group
+    for m_dir in method_dirs:
+        rep_data = load_replicates_or_fallback(m_dir, method_name)
+        if rep_data and rep_data.get("replicates") is not None:
+            p_names = rep_data["parameter_names"]
+            has_x = any(clean_param_name(p).lower() == clean_x for p in p_names)
+            has_y = any(clean_param_name(p).lower() == clean_y for p in p_names)
+            if has_x and has_y:
+                joint_data = compute_joint_2d_distribution(
+                    rep_data["replicates"],
+                    p_names,
+                    param_x=param_x,
+                    param_y=param_y,
+                    bins=bins,
+                    x_deterministic=det_x,
+                    y_deterministic=det_y,
+                )
+                if joint_data is not None:
+                    return joint_data
+
+    # 2. If in different groups, merge aligned columns
+    col_x, col_y = None, None
+    for m_dir in method_dirs:
+        rep_data = load_replicates_or_fallback(m_dir, method_name)
+        if rep_data and rep_data.get("replicates") is not None:
+            for idx, p in enumerate(rep_data["parameter_names"]):
+                if clean_param_name(p).lower() == clean_x and col_x is None:
+                    col_x = rep_data["replicates"][:, idx]
+                if clean_param_name(p).lower() == clean_y and col_y is None:
+                    col_y = rep_data["replicates"][:, idx]
+
+    if col_x is not None and col_y is not None and len(col_x) == len(col_y):
+        merged_reps = np.column_stack([col_x, col_y])
+        joint_data = compute_joint_2d_distribution(
+            merged_reps,
+            [param_x, param_y],
+            param_x=param_x,
+            param_y=param_y,
+            bins=bins,
+            x_deterministic=det_x,
+            y_deterministic=det_y,
+        )
+        if joint_data is not None:
+            return joint_data
+
+    raise HTTPException(status_code=404, detail="One or both parameters not found in replicate matrix.")
 
 
 @router.get("/{analysis_uuid}/statistics/download/replicates")
@@ -1362,44 +1470,58 @@ def download_replicates(
     step_name: Optional[str] = None,
     format: str = "csv",
 ):
-    """Download raw replicates matrix as CSV or compressed NPZ archive."""
+    """Download raw replicates matrix as CSV or compressed NPZ archive across single/grouped fits."""
     import io
     import csv
+    import numpy as np
     from fastapi.responses import FileResponse, StreamingResponse
     from ..services.fitting.statistics_engine import load_replicates_or_fallback
 
-    method_dir = _locate_statistics_method_dir(analysis, method_name, step_name)
-    rep_data = load_replicates_or_fallback(method_dir, method_name)
+    method_dirs = _locate_all_statistics_method_dirs(analysis, method_name, step_name)
+    all_p_names = []
+    all_reps_cols = []
+    chisqr_col = None
 
-    if rep_data is None or rep_data.get("replicates") is None:
+    for m_dir in method_dirs:
+        rep_data = load_replicates_or_fallback(m_dir, method_name)
+        if rep_data and rep_data.get("replicates") is not None:
+            for idx, p in enumerate(rep_data["parameter_names"]):
+                all_p_names.append(p)
+                all_reps_cols.append(rep_data["replicates"][:, idx])
+            if chisqr_col is None and rep_data.get("chisqr") is not None:
+                chisqr_col = rep_data["chisqr"]
+
+    if not all_reps_cols:
         raise HTTPException(status_code=404, detail="No replicate matrix available to download.")
 
+    min_len = min(len(c) for c in all_reps_cols)
+    merged_reps = np.column_stack([c[:min_len] for c in all_reps_cols])
+
     if format.lower() == "npz":
-        npz_file = method_dir / ("mcmc_chains.npz" if rep_data.get("is_mcmc") else "replicates.npz")
-        if npz_file.is_file():
-            return FileResponse(
-                path=str(npz_file),
-                media_type="application/octet-stream",
-                filename=f"{method_name}_replicates_{analysis.analysis_uuid}.npz",
-            )
-        else:
-            raise HTTPException(status_code=404, detail="NPZ file not found.")
+        mem_buf = io.BytesIO()
+        np.savez_compressed(mem_buf, replicates=merged_reps, parameter_names=all_p_names, chisqr=chisqr_col[:min_len] if chisqr_col is not None else None)
+        mem_buf.seek(0)
+        return StreamingResponse(
+            mem_buf,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{method_name}_replicates_{analysis.analysis_uuid}.npz"'
+            },
+        )
 
     # CSV export
     output = io.StringIO()
     writer = csv.writer(output)
-    headers = list(rep_data["parameter_names"])
-    has_chisqr = rep_data.get("chisqr") is not None and len(rep_data["chisqr"]) == len(rep_data["replicates"])
+    csv_headers = list(all_p_names)
+    has_chisqr = chisqr_col is not None and len(chisqr_col) >= min_len
     if has_chisqr:
-        headers.append("chisqr")
-    writer.writerow(headers)
+        csv_headers.append("chisqr")
+    writer.writerow(csv_headers)
 
-    reps = rep_data["replicates"]
-    chisqr = rep_data.get("chisqr")
-    for i in range(len(reps)):
-        row = reps[i].tolist()
+    for i in range(min_len):
+        row = merged_reps[i].tolist()
         if has_chisqr:
-            row.append(float(chisqr[i]))
+            row.append(float(chisqr_col[i]))
         writer.writerow(row)
 
     output.seek(0)

@@ -165,3 +165,41 @@ class TestStatisticsEndpoints(unittest.TestCase):
         assert res.status_code == 200
         assert "application/octet-stream" in res.headers["content-type"]
         assert len(res.content) > 0
+
+    def test_grouped_fit_statistics(self):
+        """Verify grouped fit statistics discovery and aggregation."""
+        import numpy as np
+        import shutil
+        from app.services.fitting.statistics_engine import save_replicates_npz
+        run_dir = self.project_dir / "cest_fitting" / self.analysis.analysis_uuid
+        # Remove top-level statistics to simulate pure grouped output
+        if self.mc_dir.exists():
+            shutil.rmtree(self.mc_dir.parent.parent)
+
+        # Setup group directories
+        g1_dir = run_dir / "Output" / "Groups" / "1_32" / "Statistics" / "MonteCarlo"
+        g2_dir = run_dir / "Output" / "Groups" / "2_55" / "Statistics" / "MonteCarlo"
+        g1_dir.mkdir(parents=True, exist_ok=True)
+        g2_dir.mkdir(parents=True, exist_ok=True)
+
+        g1_reps = np.random.normal(300.0, 10.0, (100, 2))
+        save_replicates_npz(g1_dir / "replicates.npz", g1_reps, ["[KEX_AB, NUC->32]", "[PB, NUC->32]"])
+
+        g2_reps = np.random.normal(500.0, 15.0, (100, 2))
+        save_replicates_npz(g2_dir / "replicates.npz", g2_reps, ["[KEX_AB, NUC->55]", "[PB, NUC->55]"])
+
+        # Test summary endpoint merges both groups
+        url = f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/statistics/summary?method_name=monte_carlo"
+        res = self.client.get(url, headers=self.headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert "KEX_AB, NUC->32" in data["summary"]
+        assert "KEX_AB, NUC->55" in data["summary"]
+
+        # Test histogram endpoint retrieves parameter from specific group
+        url_hist = f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/statistics/histogram?parameter_name=KEX_AB,%20NUC-%3E55&method_name=monte_carlo"
+        res_hist = self.client.get(url_hist, headers=self.headers)
+        assert res_hist.status_code == 200
+        data_hist = res_hist.json()
+        assert data_hist["sample_count"] == 100
+        assert data_hist["mean"] == pytest.approx(500.0, abs=5.0)
