@@ -33,6 +33,18 @@ if [ ! -r /etc/subuid ] || ! grep -q "^${USER}:" /etc/subuid 2>/dev/null; then
     echo -e "${YELLOW}Warning: User '${USER}' does not have a subuid mapping in /etc/subuid. Rootless Podman may fail.${NC}"
 fi
 
+# 1b. Load offline images if present in bundle
+if [ -d "${SCRIPT_DIR}/images" ]; then
+    echo -e "\n${BLUE}[0/5] Loading offline container images from ${SCRIPT_DIR}/images...${NC}"
+    for archive in "${SCRIPT_DIR}/images/"*.tar*; do
+        if [ -f "${archive}" ]; then
+            echo -e "  Loading ${archive}..."
+            podman load -i "${archive}"
+        fi
+    done
+    echo -e "${GREEN}✓ Offline images loaded.${NC}"
+fi
+
 # 2. Directory setup
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 CONFIG_DIR="${HOME}/.config/resoflow"
