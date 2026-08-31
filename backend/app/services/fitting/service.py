@@ -426,19 +426,6 @@ def compile_results_task(results_list, job_id: int):
             logger.error(f"Failed to update persistent peaktable: {e}")
 
         logger.info(f"Final results saved to {json_path}")
-        
-        # Shutdown the transient worker
-        from ...celery_app import celery_app
-        worker_node = f"celery@worker_job_{job_id}"
-        logger.info(f"Sending shutdown signal to worker {worker_node}")
-        celery_app.control.broadcast('shutdown', destination=[worker_node])
-        
-        # Fallback: pkill specifically for this worker's name to ensure cleanup
-        try:
-            subprocess.Popen(["pkill", "-f", f"worker_job_{job_id}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-        
         return {"status": "success", "json_path": json_path}
         
     except Exception as e:
@@ -544,43 +531,19 @@ def dispatch_fitting_job(
         }
     }
     
+    queue_name = "peakfit"
     tasks = []
     for cluster_id, group_df in clusters:
         cluster_data = {
             "CLUSTID": int(cluster_id),
             "peaks": results_to_serializable(group_df)
         }
-        tasks.append(fit_cluster_task.s(cluster_data, fit_input_dict, job.id))
-        
-    
-    # 4. Dynamic Worker Startup
-    queue_name = f"queue_job_{job.id}"
-    worker_name = f"worker_job_{job.id}"
-    concurrency = request_params.get("processors", 1)
-    
-    # Project root is 3 levels up from this file: backend/app/services/fitting/service.py -> backend/
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-    
-    cmd = [
-        "uv", "run", "celery", "-A", "app.celery_app", "worker",
-        "--concurrency", str(concurrency),
-        "--hostname", worker_name,
-        "-Q", queue_name,
-        "--loglevel=info"
-    ]
-    
-    # Run worker in background with logging
-    log_file = os.path.join(run_dir, "celery_worker.log")
-    with open(log_file, "w") as f:
-        subprocess.Popen(cmd, cwd=project_root, stdout=f, stderr=subprocess.STDOUT)
-    logger.info(f"Started dynamic worker {worker_name} for queue {queue_name} with concurrency {concurrency}. Logs: {log_file}")
+        tasks.append(fit_cluster_task.s(cluster_data, fit_input_dict, job.id).set(queue=queue_name))
 
-    # 5. Dispatch using group | task (chord)
+    # 4. Dispatch using group | task (chord) to peakfit queue
     from celery import group
     from ...celery_app import celery_app
     
-    # Route all tasks in this workflow to the job-specific queue
-    tasks = [t.set(queue=queue_name) for t in tasks]
     workflow = (group(tasks, app=celery_app) | compile_results_task.s(job.id).set(queue=queue_name))
     
     result = workflow.apply_async()
