@@ -4,6 +4,8 @@ resoFlow is a self-hosted web platform for NMR relaxation and exchange data anal
 
 It's built for a single research group or lab to run on their own workstation or server — projects and their underlying data live on the host filesystem, ChemEx fits execute in isolated, ephemeral Podman containers, and results are tracked in a Postgres database.
 
+For a walkthrough of using the app itself (projects, peak fitting, CPMG/CEST/relaxation analyses), see the [User Guide](docs/user-guide.md).
+
 ## Contents
 
 - [Architecture](#architecture)
