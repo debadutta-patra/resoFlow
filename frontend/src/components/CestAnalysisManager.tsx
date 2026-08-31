@@ -563,30 +563,41 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     } catch { /* ignore */ }
   };
 
-  // ── Load saved config on mount ──
+  const fetchLogs = async () => {
+    try {
+      const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/logs`);
+      setLogs(res.data.logs || '');
+      if (res.data.status && res.data.status !== status) {
+        setStatus(res.data.status);
+        onStatusChange?.(res.data.status);
+        if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') {
+          setIsRunning(false);
+          loadResults();
+        }
+      }
+    } catch { /* ignore */ }
+  };
+
+  // ── Load saved config and logs on mount ──
   useEffect(() => {
     loadSavedConfig();
     loadProfilesQuietly();
     loadResults();
+    fetchLogs();
   }, [analysis.analysis_uuid]);
+
+  // ── Fetch logs when switching to logs tab ──
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      fetchLogs();
+    }
+  }, [activeTab]);
 
   // ── Poll logs while running ──
   useEffect(() => {
     if (status !== 'RUNNING' && status !== 'PENDING') return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/logs`);
-        setLogs(res.data.logs || '');
-        if (res.data.status !== status) {
-          setStatus(res.data.status);
-          onStatusChange?.(res.data.status);
-          if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') {
-            setIsRunning(false);
-            loadResults();
-          }
-        }
-      } catch { /* ignore */ }
-    }, 3000);
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 3000);
     return () => clearInterval(interval);
   }, [status]);
 

@@ -243,14 +243,37 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     fetchParams();
   }, [model, projectUuid, analysis.analysis_uuid]);
 
+  const fetchLogs = async () => {
+    try {
+      const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/logs`);
+      if (res.data.logs) setLogs(res.data.logs);
+      if (res.data.status && res.data.status !== status) {
+        setStatus(res.data.status);
+        if (res.data.status === "COMPLETED" || res.data.status === "FAILED") {
+          setIsFitting(false);
+          await fetchResults();
+          if (res.data.status === "COMPLETED") {
+            setActiveTab("results");
+          }
+          if (onUpdate) onUpdate();
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   useEffect(() => {
     loadSavedConfig();
     fetchResults();
+    fetchLogs();
   }, [analysis.analysis_uuid]);
 
   useEffect(() => {
     if (activeTab === "results") {
       fetchResults();
+    } else if (activeTab === "logs") {
+      fetchLogs();
     }
   }, [activeTab]);
 
@@ -258,25 +281,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   useEffect(() => {
     if (status !== "RUNNING" && status !== "PENDING") return;
     setIsFitting(true);
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/logs`);
-        if (res.data.logs) setLogs(res.data.logs);
-        if (res.data.status && res.data.status !== status) {
-          setStatus(res.data.status);
-          if (res.data.status === "COMPLETED" || res.data.status === "FAILED") {
-            setIsFitting(false);
-            await fetchResults();
-            if (res.data.status === "COMPLETED") {
-              setActiveTab("results");
-            }
-            if (onUpdate) onUpdate();
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }, 2000);
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 2000);
     return () => clearInterval(interval);
   }, [status, projectUuid, analysis.analysis_uuid]);
 

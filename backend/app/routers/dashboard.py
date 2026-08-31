@@ -38,7 +38,16 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
         if is_chemex_container_running(analysis.analysis_uuid):
             continue
 
-        # 1b. Check if results already finished but status didn't update
+        # 1b. If the log file was updated recently, the process/container is still active
+        if analysis.log_path and os.path.exists(analysis.log_path):
+            try:
+                mtime = os.path.getmtime(analysis.log_path)
+                if (datetime.now().timestamp() - mtime) < 180:
+                    continue
+            except Exception:
+                pass
+
+        # 1c. Check if results already finished but status didn't update
         if analysis.results_path and os.path.exists(analysis.results_path):
             try:
                 with open(analysis.results_path, "r") as rf:
@@ -51,7 +60,7 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
             except Exception:
                 pass
 
-        # 1c. Check legacy PID file liveness (if running outside container)
+        # 1d. Check legacy PID file liveness (if running outside container)
         if run_dir:
             pid_file = os.path.join(run_dir, "chemex.pid")
             if os.path.exists(pid_file):
@@ -64,16 +73,17 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
                 except (OSError, ValueError):
                     pass
 
-        # 1d. If no container is running and task was created > 60s ago, mark orphaned run as FAILED
-        if analysis.created_at:
-            created_tz = analysis.created_at.replace(tzinfo=timezone.utc) if analysis.created_at.tzinfo is None else analysis.created_at
-            now_tz = datetime.now(timezone.utc)
-            age_seconds = (now_tz - created_tz).total_seconds()
-            
-            # Give recent tasks 60 seconds to boot up before treating as orphaned
-            if age_seconds < 60:
-                continue
+        # 1e. If log was not modified recently (> 300s) and no container/pid alive, mark orphaned run as FAILED
+        log_is_stale = True
+        if analysis.log_path and os.path.exists(analysis.log_path):
+            try:
+                mtime = os.path.getmtime(analysis.log_path)
+                if (datetime.now().timestamp() - mtime) < 300:
+                    log_is_stale = False
+            except Exception:
+                pass
 
+        if log_is_stale:
             analysis.status = "FAILED"
             analysis.error_message = extract_failure_reason(
                 analysis.log_path, "Worker container terminated unexpectedly (orphaned run)"

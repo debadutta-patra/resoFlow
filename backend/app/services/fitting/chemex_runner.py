@@ -125,9 +125,61 @@ def get_chemex_image_info(image_name: str = DEFAULT_CHEMEX_IMAGE) -> Tuple[Optio
     return digest, version
 
 
+def _podman_socket_request(method: str, path: str):
+    """Execute a REST request directly against the Podman Unix socket."""
+    sock_path = os.environ.get("CONTAINER_HOST", "").replace("unix://", "")
+    if not sock_path:
+        for candidate in ["/run/podman/podman.sock", f"/run/user/{os.getuid()}/podman/podman.sock"]:
+            if os.path.exists(candidate):
+                sock_path = candidate
+                break
+    if not sock_path or not os.path.exists(sock_path):
+        return None
+
+    try:
+        import socket
+        import http.client
+
+        class UnixHTTPConnection(http.client.HTTPConnection):
+            def __init__(self, s_path):
+                super().__init__("localhost")
+                self.s_path = s_path
+
+            def connect(self):
+                self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.sock.settimeout(4.0)
+                self.sock.connect(self.s_path)
+
+        conn = UnixHTTPConnection(sock_path)
+        conn.request(method, path)
+        resp = conn.getresponse()
+        data = resp.read().decode("utf-8", errors="replace")
+        conn.close()
+        return resp.status, data
+    except Exception as e:
+        logger.debug(f"Podman socket {method} {path} error: {e}")
+        return None
+
+
 def is_chemex_container_running(job_id: str) -> bool:
     """Check if the ephemeral ChemEx container for the given job_id is currently running."""
     container_name = get_container_name(job_id)
+
+    # 1. Try Podman API socket first (works in containers without podman CLI)
+    import urllib.parse
+    import json
+    filters = json.dumps({"name": [container_name], "status": ["running"]})
+    res = _podman_socket_request("GET", f"/v4.0.0/libpod/containers/json?filters={urllib.parse.quote(filters)}")
+    if res is not None:
+        status, data = res
+        if status == 200:
+            try:
+                containers = json.loads(data)
+                return len(containers) > 0
+            except Exception:
+                pass
+
+    # 2. Fallback to CLI
     try:
         ps_res = subprocess.run(
             ["podman", "ps", "-q", "--filter", f"name={container_name}", "--filter", "status=running"],
@@ -148,6 +200,14 @@ def cancel_chemex_job(job_id: str, timeout: int = 2) -> bool:
     container_name = get_container_name(job_id)
     logger.info(f"Attempting to cancel ChemEx container: {container_name}")
 
+    # 1. Try socket API
+    res = _podman_socket_request("POST", f"/v4.0.0/libpod/containers/{container_name}/stop?t={timeout}")
+    if res is not None:
+        _podman_socket_request("DELETE", f"/v4.0.0/libpod/containers/{container_name}?force=true")
+        logger.info(f"Successfully cancelled container via Podman socket: {container_name}")
+        return True
+
+    # 2. Fallback to CLI
     try:
         # Check if container is running
         ps_res = subprocess.run(
