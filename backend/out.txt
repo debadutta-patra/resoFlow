@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/home/debadutta/Documents/resoFlow/backend/test_plot.py", line 34, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/home/debadutta/anaconda3/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/home/debadutta/anaconda3/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/debadutta/anaconda3/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/home/debadutta/Documents/resoFlow/backend/test_plot.py", line 8, in main
+    import httpx
+ModuleNotFoundError: No module named 'httpx'

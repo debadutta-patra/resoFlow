@@ -1,0 +1,267 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Catppuccin Latte (Light Mode) RGB values */
+  --ct-rosewater: 220 138 120;
+  --ct-flamingo: 221 120 120;
+  --ct-pink: 234 118 203;
+  --ct-mauve: 136 57 239;
+  --ct-red: 210 15 57;
+  --ct-maroon: 230 69 83;
+  --ct-peach: 254 100 27;
+  --ct-yellow: 223 142 29;
+  --ct-green: 64 160 43;
+  --ct-teal: 23 146 153;
+  --ct-sky: 4 165 229;
+  --ct-sapphire: 32 159 181;
+  --ct-blue: 30 102 245;
+  --ct-lavender: 114 135 253;
+  --ct-text: 76 79 105;
+  --ct-subtext1: 92 95 119;
+  --ct-subtext0: 108 111 133;
+  --ct-overlay2: 124 127 147;
+  --ct-overlay1: 140 143 161;
+  --ct-overlay0: 156 160 176;
+  --ct-surface2: 172 176 190;
+  --ct-surface1: 188 192 204;
+  --ct-surface0: 204 208 218;
+  --ct-base: 239 241 245;
+  --ct-mantle: 230 233 239;
+  --ct-crust: 220 224 232;
+
+  /* Tailwind mappings for Light Mode */
+  --slate-50: var(--ct-base);
+  --slate-100: var(--ct-mantle);
+  --slate-200: var(--ct-crust);
+  --slate-300: var(--ct-surface0);
+  --slate-400: var(--ct-surface1);
+  --slate-500: var(--ct-surface2);
+  --slate-600: var(--ct-overlay0);
+  --slate-700: var(--ct-overlay1);
+  --slate-800: var(--ct-overlay2);
+  --slate-900: var(--ct-subtext1);
+  --slate-950: var(--ct-text);
+
+  /* Brand and Accents - Blue & Indigo map to blue / lavender */
+  --blue-50: 235 242 254;
+  --blue-100: 215 229 253;
+  --blue-200: 175 204 251;
+  --blue-300: 130 174 249;
+  --blue-400: 80 138 247;
+  --blue-500: var(--ct-blue);
+  --blue-600: var(--ct-blue);
+  --blue-700: 25 87 208;
+  --blue-800: 20 69 166;
+  --blue-900: 15 52 125;
+
+  --indigo-50: 240 242 254;
+  --indigo-100: 225 229 254;
+  --indigo-200: 197 203 254;
+  --indigo-300: 162 171 253;
+  --indigo-400: 135 147 252;
+  --indigo-500: var(--ct-lavender);
+  --indigo-600: var(--ct-lavender);
+  --indigo-700: 97 114 223;
+  --indigo-800: 75 88 173;
+  --indigo-900: 43 51 101;
+
+  --emerald-50: 240 248 239;
+  --emerald-100: 220 240 219;
+  --emerald-200: 180 225 178;
+  --emerald-300: 140 210 137;
+  --emerald-400: 100 190 97;
+  --emerald-500: var(--ct-green);
+  --emerald-600: var(--ct-green);
+  --emerald-700: 51 128 34;
+  --emerald-800: 38 96 26;
+  --emerald-900: 26 64 17;
+
+  --green-50: var(--emerald-50);
+  --green-100: var(--emerald-100);
+  --green-200: var(--emerald-200);
+  --green-300: var(--emerald-300);
+  --green-400: var(--emerald-400);
+  --green-500: var(--emerald-500);
+  --green-600: var(--emerald-600);
+  --green-700: var(--emerald-700);
+  --green-800: var(--emerald-800);
+  --green-900: var(--emerald-900);
+
+  --red-50: 253 235 237;
+  --red-100: 250 215 219;
+  --red-200: 246 175 183;
+  --red-300: 242 135 147;
+  --red-400: 238 95 111;
+  --red-500: var(--ct-red);
+  --red-600: var(--ct-red);
+  --red-700: 170 12 45;
+  --red-800: 130 9 34;
+  --red-900: 90 6 24;
+
+  --amber-50: 254 248 238;
+  --amber-100: 253 241 221;
+  --amber-200: 251 227 187;
+  --amber-300: 249 213 153;
+  --amber-400: 247 199 119;
+  --amber-500: var(--ct-yellow);
+  --amber-600: var(--ct-yellow);
+  --amber-700: 180 115 23;
+  --amber-800: 137 87 18;
+  --amber-900: 95 60 12;
+
+  --yellow-50: var(--amber-50);
+  --yellow-100: var(--amber-100);
+  --yellow-200: var(--amber-200);
+  --yellow-300: var(--amber-300);
+  --yellow-400: var(--amber-400);
+  --yellow-500: var(--amber-500);
+  --yellow-600: var(--amber-600);
+  --yellow-700: var(--amber-700);
+  --yellow-800: var(--amber-800);
+  --yellow-900: var(--amber-900);
+}
+
+.dark {
+  /* Catppuccin Mocha (Dark Mode) RGB values */
+  --ct-rosewater: 245 224 220;
+  --ct-flamingo: 242 205 205;
+  --ct-pink: 245 194 231;
+  --ct-mauve: 203 166 247;
+  --ct-red: 243 139 168;
+  --ct-maroon: 235 160 172;
+  --ct-peach: 250 179 135;
+  --ct-yellow: 249 226 175;
+  --ct-green: 166 227 161;
+  --ct-teal: 148 226 213;
+  --ct-sky: 137 220 235;
+  --ct-sapphire: 116 199 236;
+  --ct-blue: 137 180 250;
+  --ct-lavender: 180 190 254;
+  --ct-text: 205 214 244;
+  --ct-subtext1: 186 194 222;
+  --ct-subtext0: 166 173 200;
+  --ct-overlay2: 147 153 178;
+  --ct-overlay1: 127 132 156;
+  --ct-overlay0: 108 112 134;
+  --ct-surface2: 88 91 112;
+  --ct-surface1: 69 71 90;
+  --ct-surface0: 49 50 68;
+  --ct-base: 30 30 46;
+  --ct-mantle: 24 24 37;
+  --ct-crust: 17 17 27;
+
+  /* Tailwind mappings for Dark Mode */
+  --slate-50: var(--ct-text);
+  --slate-100: var(--ct-subtext1);
+  --slate-200: var(--ct-subtext0);
+  --slate-300: var(--ct-overlay2);
+  --slate-400: var(--ct-overlay1);
+  --slate-500: var(--ct-overlay0);
+  --slate-600: var(--ct-surface2);
+  --slate-700: var(--ct-surface1);
+  --slate-800: var(--ct-surface0);
+  --slate-900: var(--ct-base);
+  --slate-950: var(--ct-crust);
+
+  /* Brand and Accents - Blue & Indigo map to blue / lavender */
+  --blue-50: 45 47 68;
+  --blue-100: 59 61 91;
+  --blue-200: 78 81 122;
+  --blue-300: 104 108 162;
+  --blue-400: 139 144 207;
+  --blue-500: var(--ct-blue);
+  --blue-600: var(--ct-blue);
+  --blue-700: 159 166 235;
+  --blue-800: 138 142 209;
+  --blue-900: 117 118 184;
+
+  --indigo-50: 45 47 68;
+  --indigo-100: 59 61 91;
+  --indigo-200: 78 81 122;
+  --indigo-300: 104 108 162;
+  --indigo-400: 139 144 207;
+  --indigo-500: var(--ct-lavender);
+  --indigo-600: var(--ct-lavender);
+  --indigo-700: 159 166 235;
+  --indigo-800: 138 142 209;
+  --indigo-900: 117 118 184;
+
+  --emerald-50: 27 38 27;
+  --emerald-100: 38 54 38;
+  --emerald-200: 54 77 53;
+  --emerald-300: 77 110 75;
+  --emerald-400: 110 157 107;
+  --emerald-500: var(--ct-green);
+  --emerald-600: var(--ct-green);
+  --emerald-700: 140 195 135;
+  --emerald-800: 115 160 110;
+  --emerald-900: 90 125 85;
+
+  --green-50: var(--emerald-50);
+  --green-100: var(--emerald-100);
+  --green-200: var(--emerald-200);
+  --green-300: var(--emerald-300);
+  --green-400: var(--emerald-400);
+  --green-500: var(--emerald-500);
+  --green-600: var(--emerald-600);
+  --green-700: var(--emerald-700);
+  --green-800: var(--emerald-800);
+  --green-900: var(--emerald-900);
+
+  --red-50: 42 25 30;
+  --red-100: 59 31 39;
+  --red-200: 84 41 52;
+  --red-300: 120 54 70;
+  --red-400: 170 70 94;
+  --red-500: var(--ct-red);
+  --red-600: var(--ct-red);
+  --red-700: 205 115 140;
+  --red-800: 170 95 115;
+  --red-900: 135 75 90;
+
+  --amber-50: 42 38 30;
+  --amber-100: 59 54 39;
+  --amber-200: 84 77 52;
+  --amber-300: 120 110 70;
+  --amber-400: 170 155 94;
+  --amber-500: var(--ct-yellow);
+  --amber-600: var(--ct-yellow);
+  --amber-700: 215 195 150;
+  --amber-800: 180 160 120;
+  --amber-900: 145 130 95;
+
+  --yellow-50: var(--amber-50);
+  --yellow-100: var(--amber-100);
+  --yellow-200: var(--amber-200);
+  --yellow-300: var(--amber-300);
+  --yellow-400: var(--amber-400);
+  --yellow-500: var(--amber-500);
+  --yellow-600: var(--amber-600);
+  --yellow-700: var(--amber-700);
+  --yellow-800: var(--amber-800);
+  --yellow-900: var(--amber-900);
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 transition-colors duration-200;
+  }
+  
+  .dark body {
+    @apply bg-slate-900 text-slate-50;
+  }
+}
+
+.glass-panel {
+  @apply bg-white/5 backdrop-blur-md border border-white/10 shadow-xl;
+}
+
+.btn-primary {
+  @apply px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20 active:scale-95 duration-200 cursor-pointer;
+}
+
+.input-field {
+  @apply w-full bg-slate-900/50 border border-slate-700/50 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all;
+}

@@ -1,0 +1,10 @@
+method = "bootstrap"
+fitmethod = "leastsq"
+requested_samples = 500
+completed_samples = 500
+workers = 8
+parameters = ["__DW_AB_55N", "__R1_A_55N_600_3MHZ", "__R2_A_55N_600_3MHZ"]
+samples_file = "samples.tsv"
+summary_file = "summary.toml"
+correlations_file = "correlations.tsv"
+plots_file = "plots.pdf"

@@ -1,0 +1,14 @@
+[STEP1]
+CONSTRAINTS = [
+  "[R2_B] = 0.5 * [R2_A]",
+  "[R1_B] = [R1_A]"
+]
+GRID = [
+  "[PB] = log(0.001, 0.02, 20)",
+  "[KEX_AB] = log(10, 1000, 20)"
+]
+INCLUDE = ["55N", "65N", "14N"]
+
+[STEP2]
+INCLUDE = ["14N", "65N", "55N"]
+STATISTICS = { "MC" = 500, "BS" = 500, "BSN" = 500, "MCMC" = 5000 }

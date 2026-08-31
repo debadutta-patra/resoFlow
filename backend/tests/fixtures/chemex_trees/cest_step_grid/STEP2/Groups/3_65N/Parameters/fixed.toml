@@ -1,0 +1,6 @@
+[GLOBAL]
+KEX_AB =  3.79269e+02 # (fixed)
+PB     =  3.53022e-03 # (fixed)
+
+[CS_A]
+65N =  1.16672e+02 # (fixed)

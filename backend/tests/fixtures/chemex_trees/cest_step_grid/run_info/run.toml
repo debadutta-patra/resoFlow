@@ -1,0 +1,42 @@
+# ChemEx run information.
+# Input records distinguish the path provided by the user, its resolved
+# absolute path, and the archived copy relative to this run_info directory.
+
+schema_version = 1
+created_at_utc = "2026-08-27T13:44:35.482760+00:00"
+
+[run]
+kind = "fit"
+working_directory = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903"
+output_directory = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Output"
+
+[chemex]
+version = "2026.6.1"
+
+[python]
+version = "3.13.11"
+platform = "Linux-7.0.0-30-generic-x86_64-with-glibc2.43"
+
+[command]
+# Exact process arguments, including the executable.
+arguments = ["/home/debadutta/Documents/resoFlow/backend/.venv/bin/chemex", "fit", "-e", "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Experiments/cest_b1_0.toml", "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Experiments/cest_b1_1.toml", "-p", "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Parameters/parameters.toml", "-m", "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Methods/method.toml", "-d", "2st", "-o", "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Output", "-o", "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Output"]
+
+[[inputs.experiments]]
+provided_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Experiments/cest_b1_0.toml"
+resolved_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Experiments/cest_b1_0.toml"
+copied_path = "inputs/experiments/cest_b1_0.toml"
+
+[[inputs.experiments]]
+provided_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Experiments/cest_b1_1.toml"
+resolved_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Experiments/cest_b1_1.toml"
+copied_path = "inputs/experiments/cest_b1_1.toml"
+
+[[inputs.parameters]]
+provided_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Parameters/parameters.toml"
+resolved_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Parameters/parameters.toml"
+copied_path = "inputs/parameters/parameters.toml"
+
+[[inputs.methods]]
+provided_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Methods/method.toml"
+resolved_path = "/home/debadutta/Documents/test/cest_fitting/ba38acbb-3055-4a52-a228-9977a0d8d903/Methods/method.toml"
+copied_path = "inputs/methods/method.toml"

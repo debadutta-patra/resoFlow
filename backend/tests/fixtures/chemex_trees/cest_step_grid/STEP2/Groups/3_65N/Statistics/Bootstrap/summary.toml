@@ -1,0 +1,35 @@
+["DW_AB, NUC->65N"]
+interval = "95% percentile"
+sample_count = 500
+mean = 4.10232e+00
+standard_deviation = 8.35814e-02
+median = 4.08835e+00
+percentile_95_lower = 3.98758e+00
+percentile_95_upper = 4.30510e+00
+lower_1sigma = 4.03068e+00
+upper_1sigma = 4.17189e+00
+stderr = 7.06052e-02
+
+["R1_A, NUC->65N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 1.60718e+00
+standard_deviation = 2.57648e-03
+median = 1.60697e+00
+percentile_95_lower = 1.60248e+00
+percentile_95_upper = 1.61232e+00
+lower_1sigma = 1.60454e+00
+upper_1sigma = 1.61000e+00
+stderr = 2.73222e-03
+
+["R2_A, NUC->65N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 9.37741e+00
+standard_deviation = 1.96935e-01
+median = 9.39409e+00
+percentile_95_lower = 8.97861e+00
+percentile_95_upper = 9.72342e+00
+lower_1sigma = 9.15834e+00
+upper_1sigma = 9.58387e+00
+stderr = 2.12765e-01

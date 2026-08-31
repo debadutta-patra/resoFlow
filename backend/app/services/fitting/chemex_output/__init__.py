@@ -1,0 +1,78 @@
+"""
+chemex_output package: Normative ChemEx output parsing protocol engine for resoFlow.
+Conforms strictly to docs/chemex-output-protocol.md.
+"""
+
+from .models import (
+    DataFileModel,
+    DataPointModel,
+    DataProfileModel,
+    GitMetadata,
+    GoodnessOfFitModel,
+    GridGroupInfo,
+    GridPointModel,
+    GridResultModel,
+    GridSpecModel,
+    InputFileRef,
+    McmcDiagnostics,
+    McmcParameterSummary,
+    McmcResultModel,
+    OutcomeModel,
+    ParameterReportModel,
+    ProvenanceModel,
+    ResamplingDiagnostics,
+    ResamplingParameterSummary,
+    ResamplingResultModel,
+    RunResult,
+    RunState,
+    StartingParameter,
+    StatisticsCollectionModel,
+    StepResult,
+    StructuredWarning,
+    UncertaintyValue,
+)
+from .parser import parse_output_tree
+from .grid import parse_grid_directory
+from .grid_parser import (
+    compute_1d_profiles,
+    compute_2d_surface,
+    compute_grid_minimum,
+    get_grid_data_for_group,
+    load_grid_file,
+)
+
+__all__ = [
+    "DataFileModel",
+    "DataPointModel",
+    "DataProfileModel",
+    "GitMetadata",
+    "GoodnessOfFitModel",
+    "GridGroupInfo",
+    "GridPointModel",
+    "GridResultModel",
+    "GridSpecModel",
+    "InputFileRef",
+    "McmcDiagnostics",
+    "McmcParameterSummary",
+    "McmcResultModel",
+    "OutcomeModel",
+    "ParameterReportModel",
+    "ProvenanceModel",
+    "ResamplingDiagnostics",
+    "ResamplingParameterSummary",
+    "ResamplingResultModel",
+    "RunResult",
+    "RunState",
+    "StartingParameter",
+    "StatisticsCollectionModel",
+    "StepResult",
+    "StructuredWarning",
+    "UncertaintyValue",
+    "compute_1d_profiles",
+    "compute_2d_surface",
+    "compute_grid_minimum",
+    "get_grid_data_for_group",
+    "load_grid_file",
+    "parse_grid_directory",
+    "parse_output_tree",
+]

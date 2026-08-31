@@ -1,0 +1,47 @@
+["DW_AB, NUC->14N"]
+prior = "uniform"
+prior_lower = -1.00000e+02
+prior_upper = 1.00000e+02
+credible_interval = "95% equal-tailed"
+mean = 6.62555e+00
+standard_deviation = 4.60399e-02
+median = 6.62573e+00
+eti_95_lower = 6.53483e+00
+eti_95_upper = 6.71522e+00
+lower_1sigma = 6.57947e+00
+upper_1sigma = 6.67144e+00
+stderr = 4.59863e-02
+effective_sample_size = 4.38578e+03
+mcse_mean = 6.95201e-04
+
+["R1_A, NUC->14N, B0->600.3MHZ"]
+prior = "uniform"
+prior_lower = 0.00000e+00
+prior_upper = inf
+credible_interval = "95% equal-tailed"
+mean = 1.96622e+00
+standard_deviation = 1.02289e-02
+median = 1.96618e+00
+eti_95_lower = 1.94603e+00
+eti_95_upper = 1.98619e+00
+lower_1sigma = 1.95602e+00
+upper_1sigma = 1.97654e+00
+stderr = 1.02613e-02
+effective_sample_size = 4.06090e+03
+mcse_mean = 1.60516e-04
+
+["R2_A, NUC->14N, B0->600.3MHZ"]
+prior = "uniform"
+prior_lower = 0.00000e+00
+prior_upper = inf
+credible_interval = "95% equal-tailed"
+mean = 1.08168e+01
+standard_deviation = 1.19239e-01
+median = 1.08155e+01
+eti_95_lower = 1.05853e+01
+eti_95_upper = 1.10531e+01
+lower_1sigma = 1.06985e+01
+upper_1sigma = 1.09371e+01
+stderr = 1.19299e-01
+effective_sample_size = 4.32833e+03
+mcse_mean = 1.81241e-03

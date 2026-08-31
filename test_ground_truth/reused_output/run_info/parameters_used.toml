@@ -1,0 +1,28 @@
+# Starting independent parameters used by ChemEx for this fit.
+# Parameters defined by expressions are omitted here because they are
+# reconstructed from the independent parameters and model definition.
+# This file is intended to be usable as a starting parameter file for
+# re-running the fit.
+# Each array is [value, minimum, maximum, optional brute-force step].
+
+["CS_A"]
+"31N" = [126.388, -inf, inf]
+
+["DW_AB"]
+"31N" = [2.0, -100.0, 100.0]
+
+["GLOBAL"]
+"KEX_AB" = [400.0, 0.0, inf]
+"PB" = [0.07, 0.0, 1.0]
+
+["R1_A, B0->500.0MHZ"]
+"31N" = [2.6246505411660848, 0.0, inf]
+
+["R1_A, B0->800.0MHZ"]
+"31N" = [1.966371826839898, 0.0, inf]
+
+["R2_A, B0->500.0MHZ"]
+"31N" = [4.5551345598138235, 0.0, inf]
+
+["R2_A, B0->800.0MHZ"]
+"31N" = [5.274540394660508, 0.0, inf]
