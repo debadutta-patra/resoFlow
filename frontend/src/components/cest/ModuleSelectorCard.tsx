@@ -16,7 +16,7 @@ export const CEST_MODULE_GROUPS = [
   {
     groupName: "15N Amide",
     modules: [
-      { id: "cest_15n", name: "15N CW CEST", probe: "15N", key: "G2N", desc: "Pure in-phase 15N CEST experiment" },
+      { id: "cest_15n", name: "15N CEST", probe: "15N", key: "G2N", desc: "Pure in-phase 15N CEST experiment" },
       { id: "cest_15n_cw", name: "15N CW Decoupling CEST", probe: "15N", key: "G2N", desc: "15N CEST with 1H continuous-wave decoupling" },
       { id: "cest_15n_tr", name: "15N TROSY CEST", probe: "15N", key: "G2N-HN", desc: "TROSY 15N CEST for large macromolecules (>30 kDa)" },
     ],

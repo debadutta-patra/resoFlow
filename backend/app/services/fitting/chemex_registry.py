@@ -110,7 +110,7 @@ SPIN_KEY_FORMATS: Dict[str, Dict[str, Any]] = {
 MODULE_METADATA: Dict[str, Dict[str, Any]] = {
     # ── 15N Amide CEST Modules ───────────────────────────────────────────
     "cest_15n": {
-        "display_name": "15N CW CEST",
+        "display_name": "15N CEST",
         "family": "cest",
         "probe": "15N",
         "observed_nucleus": "15N",
