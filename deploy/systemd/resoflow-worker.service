@@ -15,7 +15,7 @@ Type=notify
 NotifyAccess=all
 ExecStop=-/usr/bin/podman rm -v -f -i resoflow-worker
 ExecStopPost=-/usr/bin/podman rm -v -f -i resoflow-worker
-ExecStart=/usr/bin/podman run --name resoflow-worker --replace --rm --cgroups=split --sdnotify=conmon -d -v __DATA_DIR__:/data/projects:z -v %t/podman/podman.sock:/run/podman/podman.sock:z --env CONTAINER_HOST=unix:///run/podman/podman.sock --env-file %h/.config/resoflow/resoflow.env --pod resoflow localhost/resoflow-worker:latest celery -A app.celery_app worker --loglevel=info -Q chemex,peakfit,stats,celery --concurrency=2
+ExecStart=/usr/bin/podman run --name resoflow-worker --pull=never --replace --rm --cgroups=split --sdnotify=conmon -d --user 0:0 -v __DATA_DIR__:/data/projects:z -v %t/podman/podman.sock:/run/podman/podman.sock:z --env CONTAINER_HOST=unix:///run/podman/podman.sock --env-file %h/.config/resoflow/resoflow.env --pod resoflow localhost/resoflow-worker:latest celery -A app.celery_app worker --loglevel=info -Q chemex,peakfit,stats,celery --concurrency=2
 
 [Install]
 WantedBy=default.target

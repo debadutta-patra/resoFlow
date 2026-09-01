@@ -15,7 +15,7 @@ Type=notify
 NotifyAccess=all
 ExecStop=-/usr/bin/podman rm -v -f -i resoflow-api
 ExecStopPost=-/usr/bin/podman rm -v -f -i resoflow-api
-ExecStart=/usr/bin/podman run --name resoflow-api --replace --rm --cgroups=split --sdnotify=conmon -d -v __DATA_DIR__:/data/projects:z --env-file %h/.config/resoflow/resoflow.env --pod resoflow localhost/resoflow-api:latest sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port \${API_PORT:-8000}"
+ExecStart=/usr/bin/podman run --name resoflow-api --pull=never --replace --rm --cgroups=split --sdnotify=conmon -d -v __DATA_DIR__:/data/projects:z --env-file %h/.config/resoflow/resoflow.env --pod resoflow localhost/resoflow-api:latest sh -c "python -c 'import os, time, psycopg; url = os.environ.get(\"DATABASE_URL\"); [time.sleep(1) for _ in range(30) if url and not (lambda: [True for c in [psycopg.connect(url, connect_timeout=2)] if c.close() is None])()]' 2>/dev/null || true; alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port __API_PORT__"
 
 [Install]
 WantedBy=default.target

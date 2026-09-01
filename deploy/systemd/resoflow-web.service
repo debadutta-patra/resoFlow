@@ -15,7 +15,7 @@ Type=notify
 NotifyAccess=all
 ExecStop=-/usr/bin/podman rm -v -f -i resoflow-web
 ExecStopPost=-/usr/bin/podman rm -v -f -i resoflow-web
-ExecStart=/usr/bin/podman run --name resoflow-web --replace --rm --cgroups=split --sdnotify=conmon -d --env-file %h/.config/resoflow/resoflow.env --pod resoflow localhost/resoflow-web:latest
+ExecStart=/usr/bin/podman run --name resoflow-web --pull=never --replace --rm --cgroups=split --sdnotify=conmon -d --env-file %h/.config/resoflow/resoflow.env --pod resoflow localhost/resoflow-web:latest
 
 [Install]
 WantedBy=default.target

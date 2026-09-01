@@ -238,6 +238,50 @@ if [ -d "${SCRIPT_DIR}/images" ]; then
     echo -e "${GREEN}✓ Offline images loaded.${NC}"
 fi
 
+# Verify required container images are present locally
+MISSING_IMAGES=()
+for img in "localhost/resoflow-api:latest" "localhost/resoflow-worker:latest" "localhost/resoflow-web:latest"; do
+    if ! podman image exists "${img}" 2>/dev/null; then
+        MISSING_IMAGES+=("${img}")
+    fi
+done
+
+if [ ${#MISSING_IMAGES[@]} -gt 0 ]; then
+    echo -e "\n${YELLOW}Notice: The following resoFlow container images are missing locally:${NC}"
+    for img in "${MISSING_IMAGES[@]}"; do
+        echo -e "  - ${img}"
+    done
+
+    BUILD_SCRIPT="${REPO_ROOT}/containers/build.sh"
+    if [ -f "${BUILD_SCRIPT}" ]; then
+        DO_BUILD="true"
+        if [ "$IS_TTY" = true ] && [ "$NON_INTERACTIVE" = false ]; then
+            read -r -p "Build missing container images now using ./containers/build.sh? [Y/n]: " input_build
+            case "${input_build}" in
+                [nN]|[nN][oO])
+                    DO_BUILD="false"
+                    ;;
+                *)
+                    DO_BUILD="true"
+                    ;;
+            esac
+        fi
+        if [ "${DO_BUILD}" = "true" ]; then
+            echo -e "\n${BLUE}Building container images via ${BUILD_SCRIPT}...${NC}"
+            "${BUILD_SCRIPT}"
+            echo -e "${GREEN}✓ Container images built successfully.${NC}"
+        else
+            echo -e "${RED}Error: Cannot start resoFlow without required container images.${NC}" >&2
+            echo -e "Please build them with: ./containers/build.sh" >&2
+            exit 1
+        fi
+    else
+        echo -e "\n${RED}Error: Required container images are missing and build script was not found.${NC}" >&2
+        echo -e "If installing from an offline bundle, ensure the 'images/' directory contains the image tarballs." >&2
+        exit 1
+    fi
+fi
+
 # 4. Directory setup
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 CONFIG_DIR="${HOME}/.config/resoflow"
@@ -348,6 +392,7 @@ else
         "${SCRIPT_DIR}/systemd/resoflow-pod.service" > "${USER_SYSTEMD_DIR}/resoflow-pod.service"
 
     sed -e "s|__DATA_DIR__|${DATA_DIR}|g" \
+        -e "s|__API_PORT__|${API_PORT}|g" \
         "${SCRIPT_DIR}/systemd/resoflow-api.service" > "${USER_SYSTEMD_DIR}/resoflow-api.service"
 
     sed -e "s|__DATA_DIR__|${DATA_DIR}|g" \
