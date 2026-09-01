@@ -17,6 +17,9 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRootWin = (Resolve-Path "$scriptDir\..\..").Path
 $repoRootWsl = (wsl.exe -e wslpath -u "$repoRootWin").Trim()
 
+$cleanCmd = "cd '$repoRootWsl' && sed -i 's/\r$//' deploy/uninstall.sh 2>/dev/null || true"
+wsl.exe -e bash -c "$cleanCmd"
+
 $purgeFlag = if ($PurgeData) { "--purge-data" } else { "" }
 $cmd = "cd '$repoRootWsl' && bash deploy/uninstall.sh $purgeFlag"
 

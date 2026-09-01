@@ -94,8 +94,13 @@ if ($NonInteractive) { $argsList += "-y" }
 
 $argsString = $argsList -join " "
 
-# 5. Execute install.sh inside WSL 2
-Write-Host "`n[2/4] Running resoFlow deployment inside WSL 2..." -ForegroundColor Blue
+# 5. Sanitize line endings (CRLF -> LF) for Linux/WSL execution
+Write-Host "`n[2/4] Normalizing line endings (CRLF -> LF) in WSL 2..." -ForegroundColor Blue
+$cleanCmd = "cd '$repoRootWsl' && find deploy containers backend -type f \( -name '*.sh' -o -name '*.container' -o -name '*.pod' -o -name '*.volume' -o -name '*.service' -o -name '*.timer' -o -name '*.env' -o -name '*.py' \) -exec sed -i 's/\r$//' {} + 2>/dev/null || true"
+wsl.exe -e bash -c "$cleanCmd"
+
+# 6. Execute install.sh inside WSL 2
+Write-Host "Running resoFlow deployment inside WSL 2..." -ForegroundColor Blue
 $cmd = "cd '$repoRootWsl' && bash deploy/install.sh $argsString"
 wsl.exe -e bash -c "$cmd"
 if ($LASTEXITCODE -ne 0) {
