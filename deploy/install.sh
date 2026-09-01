@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# resoFlow Rootless Podman Quadlet Deployment Script
+# resoFlow Cross-Platform Podman Deployment Script (Linux, macOS, Windows WSL 2)
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -23,6 +23,8 @@ ADMIN_NAME="Administrator"
 CREATE_ADMIN=""
 NON_INTERACTIVE=false
 BIND_HOST="127.0.0.1"
+
+OS_TYPE="$(uname -s)"
 
 usage() {
     cat << 'EOF'
@@ -108,12 +110,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo -e "${BLUE}${BOLD}======================================================${NC}"
-echo -e "${BLUE}${BOLD}          resoFlow Rootless Podman Installer          ${NC}"
+echo -e "${BLUE}${BOLD}              resoFlow Podman Installer               ${NC}"
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 
 # 1. Pre-flight checks
 if ! command -v podman > /dev/null 2>&1; then
-    echo -e "${RED}Error: 'podman' is not installed. Please install Podman 4.x or 5.x first.${NC}" >&2
+    echo -e "${RED}Error: 'podman' is not installed. Please install Podman first.${NC}" >&2
+    if [ "${OS_TYPE}" = "Darwin" ]; then
+        echo -e "${YELLOW}On macOS, install via Homebrew: brew install podman${NC}" >&2
+    fi
     exit 1
 fi
 
@@ -124,24 +129,47 @@ PODMAN_MAJOR="$(echo "${PODMAN_VER}" | cut -d. -f1)"
 if [ -z "${PODMAN_MAJOR}" ] || [ "${PODMAN_MAJOR}" -lt 4 ]; then
     echo -e "${RED}Error: Podman 4.0 or higher is required.${NC}" >&2
     echo -e "${RED}Detected: ${PODMAN_RAW_VER}${NC}" >&2
-    echo -e "${YELLOW}Please upgrade Podman to version 4.x or 5.x on this workstation.${NC}" >&2
+    echo -e "${YELLOW}Please upgrade Podman to version 4.x or 5.x.${NC}" >&2
     exit 1
 fi
 
-if [ "${PODMAN_MAJOR}" -ge 5 ]; then
-    DEPLOY_MODE="quadlet"
+# Determine deployment mode and OS-specific pre-flight
+if [ "${OS_TYPE}" = "Darwin" ]; then
+    DEPLOY_MODE="launchd"
+    SELINUX_MOUNT=""
+    echo -e "${BLUE}Detected OS: macOS (Darwin). Setting up launchd service supervisor...${NC}"
+
+    # Ensure Podman machine is operational
+    if ! podman machine info >/dev/null 2>&1; then
+        echo -e "\n${YELLOW}Podman machine is not currently running. Attempting to start default machine...${NC}"
+        if ! podman machine start 2>/dev/null; then
+            echo -e "${BLUE}Initializing new Podman machine (4 CPUs, 8GB RAM, 50GB disk)...${NC}"
+            podman machine init --cpus 4 --memory 8192 --disk-size 50
+            podman machine start
+        fi
+        echo -e "${GREEN}✓ Podman machine is active.${NC}"
+    fi
 else
-    DEPLOY_MODE="systemd"
-fi
+    # Linux / Windows WSL 2
+    SELINUX_MOUNT=":z"
+    if [ "${PODMAN_MAJOR}" -ge 5 ]; then
+        DEPLOY_MODE="quadlet"
+    else
+        DEPLOY_MODE="systemd"
+    fi
 
-if ! command -v systemctl > /dev/null 2>&1; then
-    echo -e "${RED}Error: 'systemctl' is not available. Systemd is required for resoFlow services.${NC}" >&2
-    exit 1
-fi
+    if ! command -v systemctl > /dev/null 2>&1; then
+        echo -e "${RED}Error: 'systemctl' is not available. Systemd is required for resoFlow services on Linux / WSL.${NC}" >&2
+        if grep -qi microsoft /proc/version 2>/dev/null; then
+            echo -e "${YELLOW}On Windows WSL 2, enable systemd in /etc/wsl.conf with: [boot] systemd=true${NC}" >&2
+        fi
+        exit 1
+    fi
 
-# Check subuid/subgid mapping
-if [ ! -r /etc/subuid ] || ! grep -q "^${USER}:" /etc/subuid 2>/dev/null; then
-    echo -e "${YELLOW}Warning: User '${USER}' does not have a subuid mapping in /etc/subuid. Rootless Podman may fail.${NC}"
+    # Check subuid/subgid mapping
+    if [ ! -r /etc/subuid ] || ! grep -q "^${USER}:" /etc/subuid 2>/dev/null; then
+        echo -e "${YELLOW}Warning: User '${USER}' does not have a subuid mapping in /etc/subuid. Rootless Podman may fail.${NC}"
+    fi
 fi
 
 # 2. Interactive configuration prompts (if TTY & interactive mode)
@@ -232,7 +260,6 @@ fi
 DATA_DIR="$(mkdir -p "${DATA_DIR}" 2>/dev/null && cd "${DATA_DIR}" && pwd || echo "${DATA_DIR}")"
 if [ ! -w "${DATA_DIR}" ]; then
     echo -e "${YELLOW}Warning: Data directory '${DATA_DIR}' is not writable by user '${USER}'.${NC}"
-    echo -e "${YELLOW}Please ensure your user has write permissions: sudo chown -R ${USER}:${USER} ${DATA_DIR}${NC}"
 fi
 
 # Resolve WEB_PORT and API_PORT
@@ -246,6 +273,7 @@ if [ -z "${API_PORT}" ]; then
 fi
 
 echo -e "\n${BLUE}Configuration summary:${NC}"
+echo -e "  - OS Platform:         ${BOLD}${OS_TYPE}${NC}"
 echo -e "  - Podman Version:      ${BOLD}${PODMAN_VER} (mode: ${DEPLOY_MODE})${NC}"
 echo -e "  - Web UI Port:         ${BOLD}${WEB_PORT}${NC}"
 echo -e "  - Backend API Port:    ${BOLD}${API_PORT}${NC}"
@@ -318,8 +346,9 @@ fi
 # 4. Directory setup
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 CONFIG_DIR="${HOME}/.config/resoflow"
+SCRIPTS_DIR="${HOME}/.local/share/resoflow/scripts"
 
-mkdir -p "${QUADLET_DIR}" "${CONFIG_DIR}" "${DATA_DIR}"
+mkdir -p "${QUADLET_DIR}" "${CONFIG_DIR}" "${DATA_DIR}" "${SCRIPTS_DIR}"
 chmod 700 "${CONFIG_DIR}"
 
 # 5. Dynamic Secrets and Environment Generation
@@ -333,6 +362,11 @@ gen_secret() {
     fi
 }
 
+SELINUX_SETTING="true"
+if [ "${OS_TYPE}" = "Darwin" ]; then
+    SELINUX_SETTING="false"
+fi
+
 if [ ! -f "${ENV_FILE}" ]; then
     echo -e "\n${BLUE}[1/5] Generating secure environment secrets in ${ENV_FILE}...${NC}"
     PG_PASS="$(gen_secret 16)"
@@ -340,7 +374,7 @@ if [ ! -f "${ENV_FILE}" ]; then
     PG_USER="resoflow"
     PG_DB="resoflow"
 
-    cat <<EOF > "${ENV_FILE}"
+    cat <<ENVEOF > "${ENV_FILE}"
 # resoFlow Runtime Environment Configuration
 POSTGRES_USER=${PG_USER}
 POSTGRES_PASSWORD=${PG_PASS}
@@ -354,36 +388,58 @@ PROJECTS_STORAGE_PATH=/data/projects
 RESOFLOW_HOST_DATA_ROOT=${DATA_DIR}
 RESOFLOW_CONTAINER_DATA_ROOT=/data/projects
 RESOFLOW_CHEMEX_IMAGE=localhost/resoflow-chemex:latest
+RESOFLOW_SELINUX_MOUNT=${SELINUX_SETTING}
 WEB_PORT=${WEB_PORT}
 API_PORT=${API_PORT}
-EOF
+ENVEOF
     chmod 600 "${ENV_FILE}"
     echo -e "${GREEN}✓ Generated ${ENV_FILE} with permissions 600.${NC}"
 else
     echo -e "\n${BLUE}[1/5] Updating environment configuration at ${ENV_FILE}...${NC}"
-    # Update existing env file with new data root and ports if modified
     update_env_var() {
         local key="$1"
         local val="$2"
         if grep -q "^${key}=" "${ENV_FILE}"; then
-            sed -i "s|^${key}=.*|${key}=${val}|g" "${ENV_FILE}"
+            sed -i "s|^${key}=.*|${key}=${val}|g" "${ENV_FILE}" 2>/dev/null || sed -i "" "s|^${key}=.*|${key}=${val}|g" "${ENV_FILE}"
         else
             echo "${key}=${val}" >> "${ENV_FILE}"
         fi
     }
     update_env_var "RESOFLOW_HOST_DATA_ROOT" "${DATA_DIR}"
+    update_env_var "RESOFLOW_SELINUX_MOUNT" "${SELINUX_SETTING}"
     update_env_var "WEB_PORT" "${WEB_PORT}"
     update_env_var "API_PORT" "${API_PORT}"
     echo -e "${GREEN}✓ Updated ${ENV_FILE}.${NC}"
 fi
 
 # 6. Copy and configure Service Unit Files & Backup Timers
-USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
-mkdir -p "${USER_SYSTEMD_DIR}"
+cp -f "${SCRIPT_DIR}/backup.sh" "${SCRIPTS_DIR}/backup.sh"
+chmod +x "${SCRIPTS_DIR}/backup.sh"
 
-if [ "${DEPLOY_MODE}" = "quadlet" ]; then
+USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
+
+if [ "${DEPLOY_MODE}" = "launchd" ]; then
+    echo -e "\n${BLUE}[2/5] Installing macOS launchd services and supervisor...${NC}"
+    LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
+    mkdir -p "${LAUNCH_AGENTS_DIR}" "${HOME}/.local/share/resoflow/logs"
+
+    # Install resoflow-service.sh
+    cp -f "${SCRIPT_DIR}/macos/resoflow-service.sh" "${SCRIPTS_DIR}/resoflow-service.sh"
+    chmod +x "${SCRIPTS_DIR}/resoflow-service.sh"
+
+    # Tailor LaunchAgent plists
+    sed -e "s|__SCRIPT_DIR__|${SCRIPTS_DIR}|g" \
+        -e "s|__HOME__|${HOME}|g" \
+        "${SCRIPT_DIR}/macos/org.resoflow.pod.plist" > "${LAUNCH_AGENTS_DIR}/org.resoflow.pod.plist"
+
+    sed -e "s|__HOME__|${HOME}|g" \
+        "${SCRIPT_DIR}/macos/org.resoflow.backup.plist" > "${LAUNCH_AGENTS_DIR}/org.resoflow.backup.plist"
+
+    echo -e "${GREEN}✓ LaunchAgent plists installed in ${LAUNCH_AGENTS_DIR}.${NC}"
+
+elif [ "${DEPLOY_MODE}" = "quadlet" ]; then
     echo -e "\n${BLUE}[2/5] Installing and tailoring Podman 5.x Quadlet unit files...${NC}"
-    # Clean any legacy direct systemd unit files to avoid conflicts
+    mkdir -p "${USER_SYSTEMD_DIR}"
     rm -f "${USER_SYSTEMD_DIR}/resoflow-pod.service" \
           "${USER_SYSTEMD_DIR}/resoflow-postgres.service" \
           "${USER_SYSTEMD_DIR}/resoflow-redis.service" \
@@ -396,31 +452,29 @@ if [ "${DEPLOY_MODE}" = "quadlet" ]; then
     cp -f "${SCRIPT_DIR}/quadlet/resoflow-redis.container" "${QUADLET_DIR}/" 2>/dev/null || true
     cp -f "${SCRIPT_DIR}/quadlet/resoflow-web.container" "${QUADLET_DIR}/" 2>/dev/null || true
 
-    # Copy & customize resoflow.pod (PublishPort)
     sed "s|PublishPort=.*|PublishPort=${BIND_HOST}:${WEB_PORT}:${WEB_PORT}|g" \
         "${SCRIPT_DIR}/quadlet/resoflow.pod" > "${QUADLET_DIR}/resoflow.pod"
 
-    # Copy & customize resoflow-api.container (Volume & Port)
     sed -e "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
         "${SCRIPT_DIR}/quadlet/resoflow-api.container" > "${QUADLET_DIR}/resoflow-api.container"
 
-    # Copy & customize resoflow-worker.container (Volume)
     sed "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
         "${SCRIPT_DIR}/quadlet/resoflow-worker.container" > "${QUADLET_DIR}/resoflow-worker.container"
 
+    cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.service" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
+    cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
     echo -e "${GREEN}✓ Quadlet units installed with customized ports and storage.${NC}"
+
 else
     echo -e "\n${BLUE}[2/5] Installing and tailoring Podman 4.x systemd user units...${NC}"
-    # Clean any quadlet units that Podman 4 cannot handle
+    mkdir -p "${USER_SYSTEMD_DIR}"
     rm -f "${QUADLET_DIR}/resoflow.pod" \
           "${QUADLET_DIR}/resoflow-"*.container \
           "${QUADLET_DIR}/resoflow-"*.volume 2>/dev/null || true
 
-    # Ensure persistent named volumes exist
     podman volume exists resoflow-pgdata 2>/dev/null || podman volume create resoflow-pgdata >/dev/null
     podman volume exists resoflow-redisdata 2>/dev/null || podman volume create resoflow-redisdata >/dev/null
 
-    # Tailor and install systemd service units
     sed -e "s|__BIND_HOST__|${BIND_HOST}|g" \
         -e "s|__WEB_PORT__|${WEB_PORT}|g" \
         "${SCRIPT_DIR}/systemd/resoflow-pod.service" > "${USER_SYSTEMD_DIR}/resoflow-pod.service"
@@ -435,62 +489,42 @@ else
     cp -f "${SCRIPT_DIR}/systemd/resoflow-postgres.service" "${USER_SYSTEMD_DIR}/resoflow-postgres.service"
     cp -f "${SCRIPT_DIR}/systemd/resoflow-redis.service" "${USER_SYSTEMD_DIR}/resoflow-redis.service"
     cp -f "${SCRIPT_DIR}/systemd/resoflow-web.service" "${USER_SYSTEMD_DIR}/resoflow-web.service"
-
+    cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.service" "${USER_SYSTEMD_DIR}/"
+    cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/"
     echo -e "${GREEN}✓ Systemd user units installed with customized ports and storage.${NC}"
 fi
 
-# Install backup scripts and timer (common to both modes)
-SCRIPTS_DIR="${HOME}/.local/share/resoflow/scripts"
-mkdir -p "${SCRIPTS_DIR}"
-cp -f "${SCRIPT_DIR}/backup.sh" "${SCRIPTS_DIR}/backup.sh"
-chmod +x "${SCRIPTS_DIR}/backup.sh"
-
-if [ -f "${SCRIPT_DIR}/systemd/resoflow-backup.service" ]; then
-    cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.service" "${USER_SYSTEMD_DIR}/"
-    cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/"
+# 7. Enable Daemons / Sockets / Timers
+if [ "${DEPLOY_MODE}" = "launchd" ]; then
+    echo -e "\n${BLUE}[3/5] Registering macOS LaunchAgents...${NC}"
+    launchctl unload "${LAUNCH_AGENTS_DIR}/org.resoflow.pod.plist" 2>/dev/null || true
+    launchctl load "${LAUNCH_AGENTS_DIR}/org.resoflow.pod.plist" 2>/dev/null || true
+    launchctl unload "${LAUNCH_AGENTS_DIR}/org.resoflow.backup.plist" 2>/dev/null || true
+    launchctl load "${LAUNCH_AGENTS_DIR}/org.resoflow.backup.plist" 2>/dev/null || true
+    echo -e "${GREEN}✓ LaunchAgents registered with launchd.${NC}"
 else
-    cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.service" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
-    cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
-fi
+    echo -e "\n${BLUE}[3/5] Configuring systemd user services, backup timer & Podman socket...${NC}"
+    systemctl --user daemon-reload
+    systemctl --user enable --now podman.socket > /dev/null 2>&1 || true
+    systemctl --user enable --now resoflow-backup.timer > /dev/null 2>&1 || true
 
-echo -e "${GREEN}✓ Service units and backup timers installed.${NC}"
-
-# 7. Enable Podman Socket, Backup Timer, and Linger
-echo -e "\n${BLUE}[3/5] Configuring systemd user services, backup timer & Podman socket...${NC}"
-systemctl --user daemon-reload
-systemctl --user enable --now podman.socket > /dev/null 2>&1 || true
-systemctl --user enable --now resoflow-backup.timer > /dev/null 2>&1 || true
-
-if command -v loginctl > /dev/null 2>&1; then
-    loginctl enable-linger "${USER}" 2>/dev/null || true
-fi
-
-# 8. Daemon reload and start pod
-echo -e "\n${BLUE}[4/5] Reloading systemd user daemon and starting resoFlow pod...${NC}"
-systemctl --user daemon-reload
-
-if ! systemctl --user list-unit-files resoflow-pod.service > /dev/null 2>&1 && ! systemctl --user cat resoflow-pod.service > /dev/null 2>&1; then
-    echo -e "${RED}Error: 'resoflow-pod.service' was not registered with systemd.${NC}" >&2
-    if [ "${DEPLOY_MODE}" = "quadlet" ]; then
-        echo -e "${YELLOW}Investigating Quadlet generator output:${NC}" >&2
-        QUADLET_BIN=""
-        for bin in /usr/libexec/podman/quadlet /usr/lib/podman/quadlet; do
-            if [ -x "$bin" ]; then
-                QUADLET_BIN="$bin"
-                break
-            fi
-        done
-        if [ -n "$QUADLET_BIN" ]; then
-            "$QUADLET_BIN" -dryrun -user 2>&1 || true
-        else
-            echo -e "${RED}Could not locate the quadlet generator binary in /usr/libexec/podman/ or /usr/lib/podman/.${NC}" >&2
-        fi
+    if command -v loginctl > /dev/null 2>&1; then
+        loginctl enable-linger "${USER}" 2>/dev/null || true
     fi
-    echo -e "\n${RED}Please verify that Podman (v4 or v5) and systemd user services are functioning.${NC}" >&2
-    exit 1
 fi
 
-systemctl --user restart resoflow-pod.service
+# 8. Start resoFlow pod
+echo -e "\n${BLUE}[4/5] Starting resoFlow pod...${NC}"
+if [ "${DEPLOY_MODE}" = "launchd" ]; then
+    "${SCRIPTS_DIR}/resoflow-service.sh" restart
+else
+    systemctl --user daemon-reload
+    if ! systemctl --user list-unit-files resoflow-pod.service > /dev/null 2>&1 && ! systemctl --user cat resoflow-pod.service > /dev/null 2>&1; then
+        echo -e "${RED}Error: 'resoflow-pod.service' was not registered with systemd.${NC}" >&2
+        exit 1
+    fi
+    systemctl --user restart resoflow-pod.service
+fi
 
 # 9. Health & Readiness Verification
 echo -e "\n${BLUE}[5/5] Verifying service readiness...${NC}"
@@ -567,7 +601,11 @@ if [ "$READY" = true ]; then
     echo -e "\n${BLUE}${BOLD}Access resoFlow in your web browser:${NC}"
     echo -e "  Local: ${GREEN}${BOLD}http://127.0.0.1:${WEB_PORT}${NC}"
     if [ "${BIND_HOST}" = "0.0.0.0" ]; then
-        LAN_IP="$(ip route get 1 2>/dev/null | awk '{print $7;exit}' || hostname -I 2>/dev/null | awk '{print $1}')"
+        if [ "${OS_TYPE}" = "Darwin" ]; then
+            LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo '')"
+        else
+            LAN_IP="$(ip route get 1 2>/dev/null | awk '{print $7;exit}' || hostname -I 2>/dev/null | awk '{print $1}')"
+        fi
         if [ -n "${LAN_IP}" ]; then
             echo -e "  LAN:   ${GREEN}${BOLD}http://${LAN_IP}:${WEB_PORT}${NC}"
         fi
@@ -577,13 +615,21 @@ if [ "$READY" = true ]; then
     if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ]; then
         echo -e "  - Admin login email:  ${BOLD}${ADMIN_EMAIL}${NC}"
     fi
-    echo -e "\n${BLUE}Systemd management commands:${NC}"
-    echo -e "  Status:  ${BOLD}systemctl --user status resoflow-pod.service${NC}"
-    echo -e "  Logs:    ${BOLD}journalctl --user -u resoflow-api -u resoflow-worker -f${NC}"
-    echo -e "  Stop:    ${BOLD}systemctl --user stop resoflow-pod.service${NC}"
-    echo -e "  Restart: ${BOLD}systemctl --user restart resoflow-pod.service${NC}"
-else
-    echo -e "${YELLOW}Warning: Services started, but healthcheck timed out. Check container logs:${NC}"
-    echo -e "  ${BOLD}journalctl --user -u resoflow-api.service -n 50${NC}"
-fi
 
+    if [ "${DEPLOY_MODE}" = "launchd" ]; then
+        echo -e "\n${BLUE}macOS management commands:${NC}"
+        echo -e "  Status:  ${BOLD}${SCRIPTS_DIR}/resoflow-service.sh status${NC}"
+        echo -e "  Logs:    ${BOLD}podman logs -f resoflow-api${NC}"
+        echo -e "  Stop:    ${BOLD}${SCRIPTS_DIR}/resoflow-service.sh stop${NC}"
+        echo -e "  Restart: ${BOLD}${SCRIPTS_DIR}/resoflow-service.sh restart${NC}"
+    else
+        echo -e "\n${BLUE}Systemd management commands:${NC}"
+        echo -e "  Status:  ${BOLD}systemctl --user status resoflow-pod.service${NC}"
+        echo -e "  Logs:    ${BOLD}journalctl --user -u resoflow-api -u resoflow-worker -f${NC}"
+        echo -e "  Stop:    ${BOLD}systemctl --user stop resoflow-pod.service${NC}"
+        echo -e "  Restart: ${BOLD}systemctl --user restart resoflow-pod.service${NC}"
+    fi
+else
+    echo -e "\n${YELLOW}Warning: Services started, but healthcheck timed out. Check container logs:${NC}"
+    echo -e "  ${BOLD}podman logs -n 50 resoflow-api${NC}"
+fi

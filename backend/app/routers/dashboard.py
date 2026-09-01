@@ -82,6 +82,12 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
                     log_is_stale = False
             except Exception:
                 pass
+        elif analysis.created_at:
+            created_tz = analysis.created_at.replace(tzinfo=timezone.utc) if analysis.created_at.tzinfo is None else analysis.created_at
+            now_tz = datetime.now(timezone.utc)
+            age_seconds = (now_tz - created_tz).total_seconds()
+            if age_seconds < 180:
+                log_is_stale = False
 
         if log_is_stale:
             analysis.status = "FAILED"

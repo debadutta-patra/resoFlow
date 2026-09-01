@@ -12,6 +12,7 @@ Executes ChemEx fits inside isolated rootless Podman containers with:
 """
 
 import os
+import sys
 import re
 import shutil
 import signal
@@ -129,8 +130,13 @@ def _podman_socket_request(method: str, path: str):
     """Execute a REST request directly against the Podman Unix socket."""
     sock_path = os.environ.get("CONTAINER_HOST", "").replace("unix://", "")
     if not sock_path:
-        for candidate in ["/run/podman/podman.sock", f"/run/user/{os.getuid()}/podman/podman.sock"]:
-            if os.path.exists(candidate):
+        for candidate in [
+            "/run/podman/podman.sock",
+            f"/run/user/{os.getuid()}/podman/podman.sock" if hasattr(os, "getuid") else None,
+            os.path.expanduser("~/.local/share/containers/podman/machine/podman.sock"),
+            os.path.expanduser("~/.local/share/containers/podman/machine/qemu/podman.sock"),
+        ]:
+            if candidate and os.path.exists(candidate):
                 sock_path = candidate
                 break
     if not sock_path or not os.path.exists(sock_path):
@@ -202,7 +208,7 @@ def cancel_chemex_job(job_id: str, timeout: int = 2) -> bool:
 
     # 1. Try socket API
     res = _podman_socket_request("POST", f"/v4.0.0/libpod/containers/{container_name}/stop?t={timeout}")
-    if res is not None:
+    if res is not None and res[0] in (200, 204, 304):
         _podman_socket_request("DELETE", f"/v4.0.0/libpod/containers/{container_name}?force=true")
         logger.info(f"Successfully cancelled container via Podman socket: {container_name}")
         return True
@@ -362,13 +368,17 @@ def run_chemex_job(
         pass
 
     # 3. Assemble Podman CLI command
+    selinux_opt = ":z"
+    if os.getenv("RESOFLOW_SELINUX_MOUNT", "").lower() in ("false", "0", "no") or sys.platform == "darwin":
+        selinux_opt = ""
+
     podman_cmd = [
         "podman", "run",
         "--name", container_name,
         "--replace",
         "--rm",
         "--userns=keep-id",
-        "-v", f"{host_work_dir}:/work:z",
+        "-v", f"{host_work_dir}:/work{selinux_opt}",
     ]
 
     if memory_limit:

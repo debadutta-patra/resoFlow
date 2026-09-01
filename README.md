@@ -87,9 +87,20 @@ This produces `dist/resoflow-<version>-offline-bundle.tar.gz`, containing the pr
 
 ### 2. Run the installer
 
+#### Linux / macOS
 ```bash
 ./deploy/install.sh
 ```
+*(On macOS, install Podman first via `brew install podman`. The installer initializes and starts `podman machine` and registers `launchd` LaunchAgents).*
+
+#### Windows (WSL 2)
+Open PowerShell and run:
+```powershell
+.\deploy\windows\install.ps1
+```
+*(The PowerShell script verifies WSL 2, enables native `systemd` support, delegates to `install.sh`, and creates a Windows Desktop shortcut).*
+
+---
 
 Run without flags in a terminal, it prompts interactively for:
 
@@ -97,7 +108,7 @@ Run without flags in a terminal, it prompts interactively for:
 2. **Host storage path** for project data — spectra, ChemEx output trees, the project JSON index (default `~/.local/share/resoflow/projects`).
 3. Whether to **create an administrator account** now (email, full name, password), so there's a usable login the moment the pod comes up.
 
-For scripted/unattended installs, everything is available as flags:
+For scripted/unattended installs on any platform, pass CLI flags:
 
 ```bash
 ./deploy/install.sh -y \
@@ -111,25 +122,27 @@ For scripted/unattended installs, everything is available as flags:
 |---|---|
 | `-p`, `--port PORT` | Base port for the web UI (default `8080`); the API port is derived from it unless overridden. |
 | `--api-port PORT` | Override the internal backend API port explicitly. |
+| `--lan` | Allow access over local network (binds to `0.0.0.0` instead of `127.0.0.1`). |
+| `--bind IP` | Bind IP address for Web UI (default `127.0.0.1`). |
 | `-d`, `--data-dir PATH` | Host directory for project/spectra storage (default `~/.local/share/resoflow/projects`). |
 | `--admin-email EMAIL` | Initial administrator account email. |
 | `--admin-password PWD` | Initial administrator account password. |
 | `--admin-name NAME` | Initial administrator full name (default `Administrator`). |
 | `--skip-admin` / `--no-admin` | Don't create an admin account during install. |
-| `-y`, `--non-interactive` | Run unattended, using flags/defaults instead of prompting (required for scripted installs, since no TTY means no prompts anyway). |
+| `-y`, `--non-interactive` | Run unattended, using flags/defaults instead of prompting. |
 | `-h`, `--help` | Show usage and exit. |
 
 ### What the installer does
 
-1. **Pre-flight checks** — verifies `podman` and `systemctl` are available, warns if there's no subuid mapping for the current user.
+1. **Pre-flight checks** — verifies `podman` is available, initializes `podman machine` on macOS, and verifies `systemd` on Linux/WSL.
 2. **Loads offline images**, if run from an offline bundle (an adjacent `images/` directory with image tarballs).
-3. **Generates secrets** on first run: a Postgres password and the JWT `SECRET_KEY`, written to `~/.config/resoflow/resoflow.env` (`chmod 600`). Re-running the installer against an existing install does **not** regenerate secrets — it only updates the storage path and ports in that file.
-4. **Installs and customizes the Quadlet units** into `~/.config/containers/systemd/`, substituting your chosen port and data directory into `resoflow.pod`, `resoflow-api.container`, and `resoflow-worker.container`.
-5. **Installs the backup script and timer** (`deploy/backup.sh`) into `~/.local/share/resoflow/scripts/` and `~/.config/systemd/user/`, enabling a nightly Postgres dump.
-6. **Enables the Podman socket, the backup timer, and `loginctl` linger** for your user, so rootless containers keep running after you log out and can start at boot.
-7. **Starts the pod** (`systemctl --user restart resoflow-pod.service`) and polls the web UI for up to ~35 seconds to confirm it's responding.
-8. **Bootstraps the administrator account**, if requested, by running a short Python snippet inside the running `resoflow-api` container against the live database (idempotent — re-running with the same email updates that user's password/name and ensures they're active + superuser rather than erroring).
-9. Prints the access URL and the systemd commands to manage the deployment.
+3. **Generates secrets** on first run: a Postgres password and the JWT `SECRET_KEY`, written to `~/.config/resoflow/resoflow.env` (`chmod 600`). Re-running the installer against an existing install preserves existing secrets and updates configurations.
+4. **Installs service definitions**:
+   - **Linux / WSL 2**: Installs Podman 5.x Quadlets (`~/.config/containers/systemd/`) or Podman 4.x systemd user units.
+   - **macOS**: Installs native `launchd` LaunchAgents in `~/Library/LaunchAgents/` (`org.resoflow.pod.plist`, `org.resoflow.backup.plist`).
+5. **Enables the Podman socket, backup timers, and background persistence**.
+6. **Starts the pod and verifies health** by polling the web interface on `http://127.0.0.1:<WEB_PORT>`.
+7. **Bootstraps the administrator account**, if requested, inside the running API container.
 
 ### Managing the deployment
 
@@ -137,31 +150,27 @@ For scripted/unattended installs, everything is available as flags:
 # Access
 http://127.0.0.1:<WEB_PORT>          # 8080 by default
 
-# Status / logs
+# Linux / WSL 2 Status & Logs
 systemctl --user status resoflow-pod.service
 journalctl --user -u resoflow-api -u resoflow-worker -f
 
-# Stop / restart
-systemctl --user stop resoflow-pod.service
-systemctl --user restart resoflow-pod.service
+# macOS Status & Logs
+~/.local/share/resoflow/scripts/resoflow-service.sh status
+podman logs -f resoflow-api
 ```
-
-Only `127.0.0.1:<WEB_PORT>` is published from the pod — Postgres and Redis are not exposed on the host network. Caddy (in `resoflow-web`) serves the built SPA and reverse-proxies `/api`, `/auth`, `/docs`, `/openapi.json`, and `/redoc` to the API container internally.
-
-If you didn't create an admin account during install, or need another one, run it after the fact:
-
-```bash
-podman exec -it resoflow-api python create_superuser.py
-```
-
-**Backups** run nightly via `resoflow-backup.timer` (installed automatically), dumping Postgres with `pg_dump` to `~/.local/share/resoflow/backups/` (gzip-compressed, 14-day retention). Run one manually with `~/.local/share/resoflow/scripts/backup.sh`.
 
 ### Uninstalling
 
-```bash
-./deploy/uninstall.sh                # stops services, removes Quadlet units; data/config/volumes are kept
-./deploy/uninstall.sh --purge-data    # also deletes the Postgres/Redis volumes, resoflow.env (secrets), and project data directory
-```
+- **Linux / macOS**:
+  ```bash
+  ./deploy/uninstall.sh                # stops services, removes service definitions; data/config/volumes are kept
+  ./deploy/uninstall.sh --purge-data    # also deletes database volumes, secrets, and project data directory
+  ```
+- **Windows (PowerShell)**:
+  ```powershell
+  .\deploy\windows\uninstall.ps1
+  .\deploy\windows\uninstall.ps1 -PurgeData
+  ```
 
 ## Local development
 

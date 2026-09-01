@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>org.resoflow.pod</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__SCRIPT_DIR__/resoflow-service.sh</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/.local/share/resoflow/logs/resoflow-service.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.local/share/resoflow/logs/resoflow-service-err.log</string>
+</dict>
+</plist>

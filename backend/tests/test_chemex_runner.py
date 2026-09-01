@@ -66,7 +66,8 @@ def test_get_chemex_image_info_mocked():
 
 def test_cancel_chemex_job_mocked():
     """Verify podman stop and rm commands during cancellation."""
-    with patch("subprocess.run") as mock_run:
+    with patch("app.services.fitting.chemex_runner._podman_socket_request", return_value=None), \
+         patch("subprocess.run") as mock_run:
         mock_ps = MagicMock(returncode=0, stdout="c12345\n")
         mock_stop = MagicMock(returncode=0, stdout="")
         mock_rm = MagicMock(returncode=0, stdout="")
@@ -77,6 +78,41 @@ def test_cancel_chemex_job_mocked():
         assert mock_run.call_count == 3
         # Check container name
         assert mock_run.call_args_list[0][0][0][4] == "name=rf-chemex-analysis-123"
+
+
+def test_cancel_chemex_job_socket():
+    """Verify cancellation via podman socket API."""
+    with patch("app.services.fitting.chemex_runner._podman_socket_request") as mock_sock:
+        mock_sock.side_effect = [(204, b""), (200, b"")]
+        res = cancel_chemex_job("analysis-456", timeout=2)
+        assert res is True
+        assert mock_sock.call_count == 2
+
+
+def test_chemex_selinux_flag():
+    """Verify :z flag is omitted when RESOFLOW_SELINUX_MOUNT=false."""
+    with patch.dict(os.environ, {"RESOFLOW_SELINUX_MOUNT": "false"}):
+        with patch("subprocess.Popen") as mock_popen, \
+             patch("app.services.fitting.chemex_runner.get_chemex_image_info", return_value=("sha256:1", "1.0")):
+            mock_proc = MagicMock()
+            mock_proc.stdout.readline.side_effect = [b"done\n", b""]
+            mock_proc.poll.side_effect = [None, 0]
+            mock_proc.returncode = 0
+            mock_popen.return_value = mock_proc
+
+            temp_dir = tempfile.mkdtemp()
+            try:
+                run_chemex_job(
+                    job_id="test-selinux",
+                    work_dir=temp_dir,
+                    cmd_args=["fit", "-e", "experiments.toml"],
+                )
+                cmd_launched = mock_popen.call_args[0][0]
+                vol_arg = cmd_launched[cmd_launched.index("-v") + 1]
+                assert vol_arg.endswith(":/work")
+                assert not vol_arg.endswith(":/work:z")
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_reap_orphaned_containers_mocked():

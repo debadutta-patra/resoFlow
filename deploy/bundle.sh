@@ -26,16 +26,18 @@ echo -e "${BLUE}${BOLD}======================================================${N
 
 # 1. Clean and prepare output directory
 rm -rf "${BUNDLE_DIR}" "${ARCHIVE_PATH}"
-mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet" "${BUNDLE_DIR}/systemd"
+mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet" "${BUNDLE_DIR}/systemd" "${BUNDLE_DIR}/macos" "${BUNDLE_DIR}/windows"
 
-# 2. Copy Quadlet units, systemd templates, and lifecycle scripts
-echo -e "\n${BLUE}[1/4] Copying deployment scripts, Quadlet units, and systemd templates...${NC}"
+# 2. Copy Quadlet units, systemd templates, macOS/Windows assets, and lifecycle scripts
+echo -e "\n${BLUE}[1/4] Copying deployment scripts and platform assets...${NC}"
 cp -f "${SCRIPT_DIR}/quadlet/"* "${BUNDLE_DIR}/quadlet/"
 cp -f "${SCRIPT_DIR}/systemd/"* "${BUNDLE_DIR}/systemd/" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/macos/"* "${BUNDLE_DIR}/macos/" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/windows/"* "${BUNDLE_DIR}/windows/" 2>/dev/null || true
 cp -f "${SCRIPT_DIR}/backup.sh" "${BUNDLE_DIR}/backup.sh"
 cp -f "${SCRIPT_DIR}/install.sh" "${BUNDLE_DIR}/install.sh"
 cp -f "${SCRIPT_DIR}/uninstall.sh" "${BUNDLE_DIR}/uninstall.sh"
-chmod +x "${BUNDLE_DIR}/install.sh" "${BUNDLE_DIR}/uninstall.sh" "${BUNDLE_DIR}/backup.sh"
+chmod +x "${BUNDLE_DIR}/install.sh" "${BUNDLE_DIR}/uninstall.sh" "${BUNDLE_DIR}/backup.sh" "${BUNDLE_DIR}/macos/resoflow-service.sh" 2>/dev/null || true
 
 # 3. Generate INSTALL.md
 echo -e "\n${BLUE}[2/4] Generating INSTALL.md documentation...${NC}"
