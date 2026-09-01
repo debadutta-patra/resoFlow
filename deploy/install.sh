@@ -102,12 +102,29 @@ echo -e "${BLUE}${BOLD}======================================================${N
 
 # 1. Pre-flight checks
 if ! command -v podman > /dev/null 2>&1; then
-    echo -e "${RED}Error: 'podman' is not installed. Please install Podman 5.x first.${NC}" >&2
+    echo -e "${RED}Error: 'podman' is not installed. Please install Podman 4.x or 5.x first.${NC}" >&2
     exit 1
 fi
 
+PODMAN_RAW_VER="$(podman --version 2>&1 || true)"
+PODMAN_VER="$(echo "${PODMAN_RAW_VER}" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)"
+PODMAN_MAJOR="$(echo "${PODMAN_VER}" | cut -d. -f1)"
+
+if [ -z "${PODMAN_MAJOR}" ] || [ "${PODMAN_MAJOR}" -lt 4 ]; then
+    echo -e "${RED}Error: Podman 4.0 or higher is required.${NC}" >&2
+    echo -e "${RED}Detected: ${PODMAN_RAW_VER}${NC}" >&2
+    echo -e "${YELLOW}Please upgrade Podman to version 4.x or 5.x on this workstation.${NC}" >&2
+    exit 1
+fi
+
+if [ "${PODMAN_MAJOR}" -ge 5 ]; then
+    DEPLOY_MODE="quadlet"
+else
+    DEPLOY_MODE="systemd"
+fi
+
 if ! command -v systemctl > /dev/null 2>&1; then
-    echo -e "${RED}Error: 'systemctl' is not available. Systemd is required for Quadlet.${NC}" >&2
+    echo -e "${RED}Error: 'systemctl' is not available. Systemd is required for resoFlow services.${NC}" >&2
     exit 1
 fi
 
@@ -201,6 +218,7 @@ if [ -z "${API_PORT}" ]; then
 fi
 
 echo -e "\n${BLUE}Configuration summary:${NC}"
+echo -e "  - Podman Version:      ${BOLD}${PODMAN_VER} (mode: ${DEPLOY_MODE})${NC}"
 echo -e "  - Web UI Port:         ${BOLD}${WEB_PORT}${NC}"
 echo -e "  - Backend API Port:    ${BOLD}${API_PORT}${NC}"
 echo -e "  - Accessible Data Dir: ${BOLD}${DATA_DIR}${NC}"
@@ -282,37 +300,81 @@ else
     echo -e "${GREEN}✓ Updated ${ENV_FILE}.${NC}"
 fi
 
-# 6. Copy and configure Quadlet Unit Files & Backup Timers
-echo -e "\n${BLUE}[2/5] Installing and tailoring Quadlet unit files...${NC}"
-cp -f "${SCRIPT_DIR}/quadlet/"*.volume "${QUADLET_DIR}/" 2>/dev/null || true
-cp -f "${SCRIPT_DIR}/quadlet/resoflow-postgres.container" "${QUADLET_DIR}/" 2>/dev/null || true
-cp -f "${SCRIPT_DIR}/quadlet/resoflow-redis.container" "${QUADLET_DIR}/" 2>/dev/null || true
-cp -f "${SCRIPT_DIR}/quadlet/resoflow-web.container" "${QUADLET_DIR}/" 2>/dev/null || true
+# 6. Copy and configure Service Unit Files & Backup Timers
+USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
+mkdir -p "${USER_SYSTEMD_DIR}"
 
-# Copy & customize resoflow.pod (PublishPort)
-sed "s|PublishPort=127.0.0.1:.*|PublishPort=127.0.0.1:${WEB_PORT}:${WEB_PORT}|g" \
-    "${SCRIPT_DIR}/quadlet/resoflow.pod" > "${QUADLET_DIR}/resoflow.pod"
+if [ "${DEPLOY_MODE}" = "quadlet" ]; then
+    echo -e "\n${BLUE}[2/5] Installing and tailoring Podman 5.x Quadlet unit files...${NC}"
+    # Clean any legacy direct systemd unit files to avoid conflicts
+    rm -f "${USER_SYSTEMD_DIR}/resoflow-pod.service" \
+          "${USER_SYSTEMD_DIR}/resoflow-postgres.service" \
+          "${USER_SYSTEMD_DIR}/resoflow-redis.service" \
+          "${USER_SYSTEMD_DIR}/resoflow-api.service" \
+          "${USER_SYSTEMD_DIR}/resoflow-worker.service" \
+          "${USER_SYSTEMD_DIR}/resoflow-web.service" 2>/dev/null || true
 
-# Copy & customize resoflow-api.container (Volume & Port)
-sed -e "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
-    "${SCRIPT_DIR}/quadlet/resoflow-api.container" > "${QUADLET_DIR}/resoflow-api.container"
+    cp -f "${SCRIPT_DIR}/quadlet/"*.volume "${QUADLET_DIR}/" 2>/dev/null || true
+    cp -f "${SCRIPT_DIR}/quadlet/resoflow-postgres.container" "${QUADLET_DIR}/" 2>/dev/null || true
+    cp -f "${SCRIPT_DIR}/quadlet/resoflow-redis.container" "${QUADLET_DIR}/" 2>/dev/null || true
+    cp -f "${SCRIPT_DIR}/quadlet/resoflow-web.container" "${QUADLET_DIR}/" 2>/dev/null || true
 
-# Copy & customize resoflow-worker.container (Volume)
-sed "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
-    "${SCRIPT_DIR}/quadlet/resoflow-worker.container" > "${QUADLET_DIR}/resoflow-worker.container"
+    # Copy & customize resoflow.pod (PublishPort)
+    sed "s|PublishPort=127.0.0.1:.*|PublishPort=127.0.0.1:${WEB_PORT}:${WEB_PORT}|g" \
+        "${SCRIPT_DIR}/quadlet/resoflow.pod" > "${QUADLET_DIR}/resoflow.pod"
 
-# Install backup scripts and timer
+    # Copy & customize resoflow-api.container (Volume & Port)
+    sed -e "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
+        "${SCRIPT_DIR}/quadlet/resoflow-api.container" > "${QUADLET_DIR}/resoflow-api.container"
+
+    # Copy & customize resoflow-worker.container (Volume)
+    sed "s|Volume=.*:/data/projects:z|Volume=${DATA_DIR}:/data/projects:z|g" \
+        "${SCRIPT_DIR}/quadlet/resoflow-worker.container" > "${QUADLET_DIR}/resoflow-worker.container"
+
+    echo -e "${GREEN}✓ Quadlet units installed with customized ports and storage.${NC}"
+else
+    echo -e "\n${BLUE}[2/5] Installing and tailoring Podman 4.x systemd user units...${NC}"
+    # Clean any quadlet units that Podman 4 cannot handle
+    rm -f "${QUADLET_DIR}/resoflow.pod" \
+          "${QUADLET_DIR}/resoflow-"*.container \
+          "${QUADLET_DIR}/resoflow-"*.volume 2>/dev/null || true
+
+    # Ensure persistent named volumes exist
+    podman volume exists resoflow-pgdata 2>/dev/null || podman volume create resoflow-pgdata >/dev/null
+    podman volume exists resoflow-redisdata 2>/dev/null || podman volume create resoflow-redisdata >/dev/null
+
+    # Tailor and install systemd service units
+    sed "s|__WEB_PORT__|${WEB_PORT}|g" \
+        "${SCRIPT_DIR}/systemd/resoflow-pod.service" > "${USER_SYSTEMD_DIR}/resoflow-pod.service"
+
+    sed -e "s|__DATA_DIR__|${DATA_DIR}|g" \
+        "${SCRIPT_DIR}/systemd/resoflow-api.service" > "${USER_SYSTEMD_DIR}/resoflow-api.service"
+
+    sed -e "s|__DATA_DIR__|${DATA_DIR}|g" \
+        "${SCRIPT_DIR}/systemd/resoflow-worker.service" > "${USER_SYSTEMD_DIR}/resoflow-worker.service"
+
+    cp -f "${SCRIPT_DIR}/systemd/resoflow-postgres.service" "${USER_SYSTEMD_DIR}/resoflow-postgres.service"
+    cp -f "${SCRIPT_DIR}/systemd/resoflow-redis.service" "${USER_SYSTEMD_DIR}/resoflow-redis.service"
+    cp -f "${SCRIPT_DIR}/systemd/resoflow-web.service" "${USER_SYSTEMD_DIR}/resoflow-web.service"
+
+    echo -e "${GREEN}✓ Systemd user units installed with customized ports and storage.${NC}"
+fi
+
+# Install backup scripts and timer (common to both modes)
 SCRIPTS_DIR="${HOME}/.local/share/resoflow/scripts"
 mkdir -p "${SCRIPTS_DIR}"
 cp -f "${SCRIPT_DIR}/backup.sh" "${SCRIPTS_DIR}/backup.sh"
 chmod +x "${SCRIPTS_DIR}/backup.sh"
 
-USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
-mkdir -p "${USER_SYSTEMD_DIR}"
-cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.service" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
-cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
+if [ -f "${SCRIPT_DIR}/systemd/resoflow-backup.service" ]; then
+    cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.service" "${USER_SYSTEMD_DIR}/"
+    cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/"
+else
+    cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.service" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
+    cp -f "${SCRIPT_DIR}/quadlet/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/" 2>/dev/null || true
+fi
 
-echo -e "${GREEN}✓ Quadlet units and backup timers installed with customized ports and storage.${NC}"
+echo -e "${GREEN}✓ Service units and backup timers installed.${NC}"
 
 # 7. Enable Podman Socket, Backup Timer, and Linger
 echo -e "\n${BLUE}[3/5] Configuring systemd user services, backup timer & Podman socket...${NC}"
@@ -327,6 +389,28 @@ fi
 # 8. Daemon reload and start pod
 echo -e "\n${BLUE}[4/5] Reloading systemd user daemon and starting resoFlow pod...${NC}"
 systemctl --user daemon-reload
+
+if ! systemctl --user list-unit-files resoflow-pod.service > /dev/null 2>&1 && ! systemctl --user cat resoflow-pod.service > /dev/null 2>&1; then
+    echo -e "${RED}Error: 'resoflow-pod.service' was not registered with systemd.${NC}" >&2
+    if [ "${DEPLOY_MODE}" = "quadlet" ]; then
+        echo -e "${YELLOW}Investigating Quadlet generator output:${NC}" >&2
+        QUADLET_BIN=""
+        for bin in /usr/libexec/podman/quadlet /usr/lib/podman/quadlet; do
+            if [ -x "$bin" ]; then
+                QUADLET_BIN="$bin"
+                break
+            fi
+        done
+        if [ -n "$QUADLET_BIN" ]; then
+            "$QUADLET_BIN" -dryrun -user 2>&1 || true
+        else
+            echo -e "${RED}Could not locate the quadlet generator binary in /usr/libexec/podman/ or /usr/lib/podman/.${NC}" >&2
+        fi
+    fi
+    echo -e "\n${RED}Please verify that Podman (v4 or v5) and systemd user services are functioning.${NC}" >&2
+    exit 1
+fi
+
 systemctl --user restart resoflow-pod.service
 
 # 9. Health & Readiness Verification

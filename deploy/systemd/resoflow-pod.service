@@ -1,0 +1,20 @@
+[Unit]
+Description=resoFlow Rootless Pod
+After=network-online.target
+Wants=network-online.target
+Wants=resoflow-postgres.service resoflow-redis.service resoflow-api.service resoflow-worker.service resoflow-web.service
+Before=resoflow-postgres.service resoflow-redis.service resoflow-api.service resoflow-worker.service resoflow-web.service
+
+[Service]
+SyslogIdentifier=%N
+Type=forking
+Restart=on-failure
+PIDFile=%t/%N.pid
+ExecStartPre=-/usr/bin/podman pod rm -f resoflow
+ExecStartPre=/usr/bin/podman pod create --infra-conmon-pidfile=%t/%N.pid --replace --exit-policy stop --publish 127.0.0.1:__WEB_PORT__:__WEB_PORT__ --infra-name resoflow-infra --name resoflow
+ExecStart=/usr/bin/podman pod start resoflow
+ExecStop=/usr/bin/podman pod stop --ignore --time=10 resoflow
+ExecStopPost=-/usr/bin/podman pod rm --ignore --force resoflow
+
+[Install]
+WantedBy=default.target

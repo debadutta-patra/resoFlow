@@ -1,0 +1,20 @@
+[Unit]
+Description=resoFlow Redis Cache Container
+After=resoflow-pod.service
+BindsTo=resoflow-pod.service
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+SyslogIdentifier=%N
+Delegate=yes
+Type=notify
+NotifyAccess=all
+ExecStop=-/usr/bin/podman rm -v -f -i resoflow-redis
+ExecStopPost=-/usr/bin/podman rm -v -f -i resoflow-redis
+ExecStart=/usr/bin/podman run --name resoflow-redis --replace --rm --cgroups=split --sdnotify=conmon -d -v resoflow-redisdata:/data:Z --health-cmd "redis-cli ping || exit 1" --health-interval 5s --health-retries 5 --health-timeout 5s --pod resoflow docker.io/library/redis:7-alpine
+
+[Install]
+WantedBy=default.target

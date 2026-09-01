@@ -26,14 +26,16 @@ echo -e "${BLUE}${BOLD}======================================================${N
 
 # 1. Clean and prepare output directory
 rm -rf "${BUNDLE_DIR}" "${ARCHIVE_PATH}"
-mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet"
+mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet" "${BUNDLE_DIR}/systemd"
 
-# 2. Copy Quadlet units and lifecycle scripts
-echo -e "\n${BLUE}[1/4] Copying deployment scripts and Quadlet units...${NC}"
+# 2. Copy Quadlet units, systemd templates, and lifecycle scripts
+echo -e "\n${BLUE}[1/4] Copying deployment scripts, Quadlet units, and systemd templates...${NC}"
 cp -f "${SCRIPT_DIR}/quadlet/"* "${BUNDLE_DIR}/quadlet/"
+cp -f "${SCRIPT_DIR}/systemd/"* "${BUNDLE_DIR}/systemd/" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/backup.sh" "${BUNDLE_DIR}/backup.sh"
 cp -f "${SCRIPT_DIR}/install.sh" "${BUNDLE_DIR}/install.sh"
 cp -f "${SCRIPT_DIR}/uninstall.sh" "${BUNDLE_DIR}/uninstall.sh"
-chmod +x "${BUNDLE_DIR}/install.sh" "${BUNDLE_DIR}/uninstall.sh"
+chmod +x "${BUNDLE_DIR}/install.sh" "${BUNDLE_DIR}/uninstall.sh" "${BUNDLE_DIR}/backup.sh"
 
 # 3. Generate INSTALL.md
 echo -e "\n${BLUE}[2/4] Generating INSTALL.md documentation...${NC}"
@@ -47,8 +49,9 @@ This archive is a standalone, self-contained distribution bundle for deploying *
 ## Prerequisites
 
 1. **Linux Workstation** (RHEL 9, Rocky Linux 9, Fedora, Ubuntu 22.04+, Debian 12+).
-2. **Podman 5.x** installed with user subuid/subgid configured:
+2. **Podman 4.x or 5.x** installed with user subuid/subgid configured:
    - Check with: `podman --version` and `grep "^$USER:" /etc/subuid`
+   - Both Podman 4.x (via systemd user services) and Podman 5.x (via Quadlet) are supported automatically.
 3. **Systemd User Session**:
    - Check with: `systemctl --user is-system-running`
 

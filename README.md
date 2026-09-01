@@ -63,7 +63,7 @@ resoFlow ships as a set of Podman containers (API, Celery worker, Postgres, Redi
 ### Prerequisites
 
 - A Linux host with **systemd** (user session support — `systemctl --user is-system-running`)
-- **Podman 5.x**, rootless, with a subuid/subgid range allocated for your user (`grep "^$USER:" /etc/subuid`) — the installer warns if this is missing
+- **Podman 4.x or 5.x**, rootless, with a subuid/subgid range allocated for your user (`grep "^$USER:" /etc/subuid`) — the installer auto-selects Quadlet on Podman 5.x and systemd user services on Podman 4.x
 - `curl` (used by the installer's post-start health check)
 - `openssl` for secret generation (falls back to `python3 -c "import secrets..."` if absent)
 

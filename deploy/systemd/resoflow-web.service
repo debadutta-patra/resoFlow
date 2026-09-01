@@ -1,0 +1,21 @@
+[Unit]
+Description=resoFlow Web UI & Reverse Proxy Container
+After=resoflow-pod.service resoflow-api.service
+Wants=resoflow-api.service
+BindsTo=resoflow-pod.service
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+SyslogIdentifier=%N
+Delegate=yes
+Type=notify
+NotifyAccess=all
+ExecStop=-/usr/bin/podman rm -v -f -i resoflow-web
+ExecStopPost=-/usr/bin/podman rm -v -f -i resoflow-web
+ExecStart=/usr/bin/podman run --name resoflow-web --replace --rm --cgroups=split --sdnotify=conmon -d --env-file %h/.config/resoflow/resoflow.env --pod resoflow localhost/resoflow-web:latest
+
+[Install]
+WantedBy=default.target

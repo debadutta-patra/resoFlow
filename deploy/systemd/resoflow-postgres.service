@@ -1,0 +1,20 @@
+[Unit]
+Description=resoFlow PostgreSQL Database Container
+After=resoflow-pod.service
+BindsTo=resoflow-pod.service
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+SyslogIdentifier=%N
+Delegate=yes
+Type=notify
+NotifyAccess=all
+ExecStop=-/usr/bin/podman rm -v -f -i resoflow-postgres
+ExecStopPost=-/usr/bin/podman rm -v -f -i resoflow-postgres
+ExecStart=/usr/bin/podman run --name resoflow-postgres --replace --rm --cgroups=split --sdnotify=conmon -d -v resoflow-pgdata:/var/lib/postgresql/data:Z --env-file %h/.config/resoflow/resoflow.env --health-cmd pg_isready --health-interval 5s --health-retries 5 --health-timeout 5s --pod resoflow docker.io/library/postgres:16-alpine
+
+[Install]
+WantedBy=default.target
