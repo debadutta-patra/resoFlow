@@ -22,6 +22,7 @@ ADMIN_PASSWORD=""
 ADMIN_NAME="Administrator"
 CREATE_ADMIN=""
 NON_INTERACTIVE=false
+BIND_HOST="127.0.0.1"
 
 usage() {
     cat << 'EOF'
@@ -31,6 +32,8 @@ Options:
   -p, --port PORT          Base port for resoFlow services (default: 8080)
                            Allocates PORT for Web UI and PORT+1 for API (or 8000 if port is 8080)
       --api-port PORT      Override internal backend API port
+      --lan                Allow access over local network (binds to 0.0.0.0 instead of 127.0.0.1)
+      --bind IP            Bind IP address for Web UI (default: 127.0.0.1)
   -d, --data-dir PATH      Host storage directory for projects and spectra
                            (default: ~/.local/share/resoflow/projects)
       --admin-email EMAIL  Initial administrator account email
@@ -42,7 +45,7 @@ Options:
 
 Examples:
   ./deploy/install.sh
-  ./deploy/install.sh --port 50000 --data-dir /mnt/nmr_data
+  ./deploy/install.sh --lan --port 50000 --data-dir /data
   ./deploy/install.sh -y --port 8080 --admin-email admin@lab.org --admin-password secret
 EOF
     exit 0
@@ -57,6 +60,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --api-port)
             API_PORT="$2"
+            shift 2
+            ;;
+        --lan)
+            BIND_HOST="0.0.0.0"
+            shift
+            ;;
+        --bind)
+            BIND_HOST="$2"
             shift 2
             ;;
         -d|--data-dir)
@@ -148,6 +159,19 @@ if [ "$IS_TTY" = true ]; then
         BASE_PORT="${input_port}"
     fi
 
+    # LAN prompt
+    if [ "${BIND_HOST}" = "127.0.0.1" ]; then
+        read -r -p "Allow access over local area network (LAN)? [y/N]: " input_lan
+        case "${input_lan}" in
+            [yY]|[yY][eE][sS])
+                BIND_HOST="0.0.0.0"
+                ;;
+            *)
+                BIND_HOST="127.0.0.1"
+                ;;
+        esac
+    fi
+
     # Accessible filesystem prompt
     read -r -p "Host accessible storage path for projects & spectra [${DATA_DIR}]: " input_data_dir
     if [ -n "${input_data_dir}" ]; then
@@ -222,6 +246,11 @@ echo -e "  - Podman Version:      ${BOLD}${PODMAN_VER} (mode: ${DEPLOY_MODE})${N
 echo -e "  - Web UI Port:         ${BOLD}${WEB_PORT}${NC}"
 echo -e "  - Backend API Port:    ${BOLD}${API_PORT}${NC}"
 echo -e "  - Accessible Data Dir: ${BOLD}${DATA_DIR}${NC}"
+if [ "${BIND_HOST}" = "0.0.0.0" ]; then
+    echo -e "  - Network Access:      ${BOLD}${GREEN}LAN Enabled (0.0.0.0)${NC}"
+else
+    echo -e "  - Network Access:      ${BOLD}Localhost Only (127.0.0.1)${NC}"
+fi
 if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ]; then
     echo -e "  - Administrator:       ${BOLD}${ADMIN_EMAIL}${NC}"
 fi
@@ -364,7 +393,7 @@ if [ "${DEPLOY_MODE}" = "quadlet" ]; then
     cp -f "${SCRIPT_DIR}/quadlet/resoflow-web.container" "${QUADLET_DIR}/" 2>/dev/null || true
 
     # Copy & customize resoflow.pod (PublishPort)
-    sed "s|PublishPort=127.0.0.1:.*|PublishPort=127.0.0.1:${WEB_PORT}:${WEB_PORT}|g" \
+    sed "s|PublishPort=.*|PublishPort=${BIND_HOST}:${WEB_PORT}:${WEB_PORT}|g" \
         "${SCRIPT_DIR}/quadlet/resoflow.pod" > "${QUADLET_DIR}/resoflow.pod"
 
     # Copy & customize resoflow-api.container (Volume & Port)
@@ -388,7 +417,8 @@ else
     podman volume exists resoflow-redisdata 2>/dev/null || podman volume create resoflow-redisdata >/dev/null
 
     # Tailor and install systemd service units
-    sed "s|__WEB_PORT__|${WEB_PORT}|g" \
+    sed -e "s|__BIND_HOST__|${BIND_HOST}|g" \
+        -e "s|__WEB_PORT__|${WEB_PORT}|g" \
         "${SCRIPT_DIR}/systemd/resoflow-pod.service" > "${USER_SYSTEMD_DIR}/resoflow-pod.service"
 
     sed -e "s|__DATA_DIR__|${DATA_DIR}|g" \
@@ -531,7 +561,13 @@ if [ "$READY" = true ]; then
     echo -e "${GREEN}${BOLD}✓ resoFlow is successfully installed and running!     ${NC}"
     echo -e "${GREEN}${BOLD}======================================================${NC}"
     echo -e "\n${BLUE}${BOLD}Access resoFlow in your web browser:${NC}"
-    echo -e "  ${GREEN}${BOLD}http://127.0.0.1:${WEB_PORT}${NC}"
+    echo -e "  Local: ${GREEN}${BOLD}http://127.0.0.1:${WEB_PORT}${NC}"
+    if [ "${BIND_HOST}" = "0.0.0.0" ]; then
+        LAN_IP="$(ip route get 1 2>/dev/null | awk '{print $7;exit}' || hostname -I 2>/dev/null | awk '{print $1}')"
+        if [ -n "${LAN_IP}" ]; then
+            echo -e "  LAN:   ${GREEN}${BOLD}http://${LAN_IP}:${WEB_PORT}${NC}"
+        fi
+    fi
     echo -e "\n${BLUE}Configuration details:${NC}"
     echo -e "  - Accessible storage: ${BOLD}${DATA_DIR}${NC}"
     if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ]; then
