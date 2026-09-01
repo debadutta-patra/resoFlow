@@ -229,7 +229,11 @@ fi
 if [[ "${DATA_DIR}" == ~* ]]; then
     DATA_DIR="${HOME}${DATA_DIR#\~}"
 fi
-DATA_DIR="$(mkdir -p "${DATA_DIR}" && cd "${DATA_DIR}" && pwd)"
+DATA_DIR="$(mkdir -p "${DATA_DIR}" 2>/dev/null && cd "${DATA_DIR}" && pwd || echo "${DATA_DIR}")"
+if [ ! -w "${DATA_DIR}" ]; then
+    echo -e "${YELLOW}Warning: Data directory '${DATA_DIR}' is not writable by user '${USER}'.${NC}"
+    echo -e "${YELLOW}Please ensure your user has write permissions: sudo chown -R ${USER}:${USER} ${DATA_DIR}${NC}"
+fi
 
 # Resolve WEB_PORT and API_PORT
 WEB_PORT="${BASE_PORT}"

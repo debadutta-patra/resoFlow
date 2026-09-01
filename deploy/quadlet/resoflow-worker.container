@@ -8,6 +8,7 @@ ContainerName=resoflow-worker
 Pod=resoflow.pod
 Image=localhost/resoflow-worker:latest
 Pull=never
+User=0:0
 Volume=%h/.local/share/resoflow/projects:/data/projects:z
 Volume=%t/podman/podman.sock:/run/podman/podman.sock:z
 Environment=CONTAINER_HOST=unix:///run/podman/podman.sock

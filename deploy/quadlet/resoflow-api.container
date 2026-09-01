@@ -8,6 +8,7 @@ ContainerName=resoflow-api
 Pod=resoflow.pod
 Image=localhost/resoflow-api:latest
 Pull=never
+User=0:0
 Volume=%h/.local/share/resoflow/projects:/data/projects:z
 EnvironmentFile=%h/.config/resoflow/resoflow.env
 Exec=sh -c "python -c 'import os, time, psycopg; url = os.environ.get(\"DATABASE_URL\"); [time.sleep(1) for _ in range(30) if url and not (lambda: [True for c in [psycopg.connect(url, connect_timeout=2)] if c.close() is None])()]' 2>/dev/null || true; alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port \${API_PORT:-8000}"
