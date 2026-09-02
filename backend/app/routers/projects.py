@@ -6,6 +6,7 @@ import re
 from typing import List
 from .. import models, schemas, database, security
 from ..services.json_sync import sync_project_to_json, load_project_from_json
+from ..services.path_utils import to_container_path
 from ..services.cleanup import delete_directory_safely, cleanup_spectrum_files
 from .deps import get_project, get_spectrum
 from ..services.spectrum import plotting
@@ -44,7 +45,8 @@ def list_projects(current_user: models.User = Depends(security.get_current_user)
 
 @router.post("", response_model=schemas.Project)
 def create_project(project: schemas.ProjectCreate, current_user: models.User = Depends(security.get_current_user), db: Session = Depends(database.get_db)):
-    if not os.path.isdir(project.local_directory_path):
+    container_base_dir = to_container_path(project.local_directory_path) or project.local_directory_path
+    if not os.path.isdir(container_base_dir):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Directory not found on host machine"
@@ -55,7 +57,7 @@ def create_project(project: schemas.ProjectCreate, current_user: models.User = D
     sanitized_name = re.sub(r'[-\s]+', '_', sanitized_name)
     
     # Create the project subfolder
-    project_folder_path = os.path.join(project.local_directory_path, sanitized_name)
+    project_folder_path = os.path.join(container_base_dir, sanitized_name)
     
     # If folder already exists, append a unique suffix
     if os.path.exists(project_folder_path):
@@ -278,6 +280,8 @@ def import_project(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to load project from JSON: {str(e)}")
 
+    local_dir = project_data.get("local_directory_path") or to_container_path(request.directory_path) or request.directory_path
+
     # 2. Check if project already exists in DB for this user
     p_uuid = project_data.get("project_uuid")
     existing_project = None
@@ -291,12 +295,14 @@ def import_project(
     if not existing_project:
         existing_project = db.query(models.Project).filter(
             models.Project.name == project_data["name"],
-            models.Project.local_directory_path == request.directory_path,
+            models.Project.local_directory_path == local_dir,
             models.Project.user_id == current_user.id
         ).first()
 
     if existing_project:
         # Update existing project metadata
+        existing_project.name = project_data["name"]
+        existing_project.local_directory_path = local_dir
         existing_project.protein_sequence = project_data.get("protein_sequence")
         existing_project.molecular_weight = project_data.get("molecular_weight")
         existing_project.experiments = project_data.get("experiments")
@@ -308,7 +314,7 @@ def import_project(
         db_project = models.Project(
             project_uuid=p_uuid or uuid.uuid4().hex,
             name=project_data["name"],
-            local_directory_path=request.directory_path,
+            local_directory_path=local_dir,
             protein_sequence=project_data.get("protein_sequence"),
             molecular_weight=project_data.get("molecular_weight"),
             experiments=project_data.get("experiments"),
@@ -324,9 +330,9 @@ def import_project(
         s_uuid = s_data.get("spectrum_uuid")
         existing_spectrum = None
         
+        # Check globally by spectrum_uuid first (handles orphaned or re-attached spectra)
         if s_uuid:
             existing_spectrum = db.query(models.Spectrum).filter(
-                models.Spectrum.project_id == db_project.id,
                 models.Spectrum.spectrum_uuid == s_uuid
             ).first()
             
@@ -337,31 +343,121 @@ def import_project(
             ).first()
 
         if existing_spectrum:
-            existing_spectrum.file_path = s_data["file_path"]
-            existing_spectrum.experiment_type = s_data["experiment_type"]
-            existing_spectrum.peaklist_path = s_data["peaklist_path"]
-            existing_spectrum.list_path = s_data["list_path"]
+            existing_spectrum.project_id = db_project.id
+            existing_spectrum.name = s_data["name"]
+            existing_spectrum.file_path = s_data.get("file_path", "")
+            existing_spectrum.experiment_type = s_data.get("experiment_type")
+            existing_spectrum.peaklist_path = s_data.get("peaklist_path")
+            existing_spectrum.list_path = s_data.get("list_path")
+            existing_spectrum.vclist_path = s_data.get("vclist_path")
+            existing_spectrum.vdlist_path = s_data.get("vdlist_path")
+            existing_spectrum.f3list_path = s_data.get("f3list_path")
+            existing_spectrum.delay = s_data.get("delay")
+            existing_spectrum.t_relax = s_data.get("t_relax")
+            existing_spectrum.b1 = s_data.get("b1")
+            existing_spectrum.hetnoe_mode = s_data.get("hetnoe_mode")
             existing_spectrum.is_fitted = s_data.get("is_fitted", False)
             existing_spectrum.results_json_path = s_data.get("results_json_path")
+            existing_spectrum.peaktable_json_path = s_data.get("peaktable_json_path")
             existing_spectrum.b0 = s_data.get("b0")
             existing_spectrum.temperature = s_data.get("temperature")
+            existing_spectrum.carrier = s_data.get("carrier")
             if s_uuid and not existing_spectrum.spectrum_uuid:
                 existing_spectrum.spectrum_uuid = s_uuid
         else:
             db_spectrum = models.Spectrum(
                 spectrum_uuid=s_uuid or uuid.uuid4().hex,
                 name=s_data["name"],
-                file_path=s_data["file_path"],
-                experiment_type=s_data["experiment_type"],
-                peaklist_path=s_data["peaklist_path"],
-                list_path=s_data["list_path"],
+                file_path=s_data.get("file_path", ""),
+                experiment_type=s_data.get("experiment_type"),
+                peaklist_path=s_data.get("peaklist_path"),
+                list_path=s_data.get("list_path"),
+                vclist_path=s_data.get("vclist_path"),
+                vdlist_path=s_data.get("vdlist_path"),
+                f3list_path=s_data.get("f3list_path"),
+                delay=s_data.get("delay"),
+                t_relax=s_data.get("t_relax"),
+                b1=s_data.get("b1"),
+                hetnoe_mode=s_data.get("hetnoe_mode"),
                 project_id=db_project.id,
                 is_fitted=s_data.get("is_fitted", False),
                 results_json_path=s_data.get("results_json_path"),
+                peaktable_json_path=s_data.get("peaktable_json_path"),
                 b0=s_data.get("b0"),
-                temperature=s_data.get("temperature")
+                temperature=s_data.get("temperature"),
+                carrier=s_data.get("carrier")
             )
             db.add(db_spectrum)
+
+    db.commit()
+    db.refresh(db_project)
+
+    # 4. Import / restore analyses
+    for a_data in project_data.get("analyses", []):
+        a_uuid = a_data.get("analysis_uuid")
+        if not a_uuid:
+            continue
+        
+        # Check globally by analysis_uuid first (handles orphaned or re-attached analyses)
+        existing_analysis = db.query(models.Analysis).filter(
+            models.Analysis.analysis_uuid == a_uuid
+        ).first()
+
+        if existing_analysis:
+            existing_analysis.project_id = db_project.id
+            if a_data.get("name"):
+                existing_analysis.name = a_data["name"]
+            if a_data.get("analysis_type"):
+                existing_analysis.analysis_type = a_data["analysis_type"]
+            if a_data.get("status"):
+                existing_analysis.status = a_data["status"]
+            if a_data.get("parameters"):
+                existing_analysis.parameters = a_data["parameters"]
+            if a_data.get("results_path"):
+                existing_analysis.results_path = a_data["results_path"]
+            if a_data.get("log_path"):
+                existing_analysis.log_path = a_data["log_path"]
+        else:
+            db_analysis = models.Analysis(
+                analysis_uuid=a_uuid,
+                name=a_data.get("name", f"analysis_{a_uuid[:8]}"),
+                analysis_type=a_data.get("analysis_type", "CEST"),
+                status=a_data.get("status", "PENDING"),
+                parameters=a_data.get("parameters"),
+                use_height=a_data.get("use_height", False),
+                project_id=db_project.id,
+                results_path=a_data.get("results_path"),
+                log_path=a_data.get("log_path")
+            )
+            db.add(db_analysis)
+
+    db.commit()
+    db.refresh(db_project)
+
+    # 5. Link spectra to analyses
+    for a in db_project.analyses:
+        if not a.spectra:
+            # Try to associate matching spectra
+            if a.analysis_type in ["R1", "T1"]:
+                matched = [s for s in db_project.spectra if (s.experiment_type or "").upper() in ["T1", "R1"]]
+                if matched:
+                    a.spectra = matched
+            elif a.analysis_type in ["R2", "T2"]:
+                matched = [s for s in db_project.spectra if (s.experiment_type or "").upper() in ["T2", "R2"]]
+                if matched:
+                    a.spectra = matched
+            elif a.analysis_type in ["15N-CEST", "CEST"]:
+                matched = [s for s in db_project.spectra if "CEST" in (s.experiment_type or "").upper()]
+                if matched:
+                    a.spectra = matched
+            elif a.analysis_type == "CPMG":
+                matched = [s for s in db_project.spectra if "CPMG" in (s.experiment_type or "").upper()]
+                if matched:
+                    a.spectra = matched
+            
+            # If still none matched and spectra exist, associate all
+            if not a.spectra and db_project.spectra:
+                a.spectra = list(db_project.spectra)
 
     db.commit()
     db.refresh(db_project)

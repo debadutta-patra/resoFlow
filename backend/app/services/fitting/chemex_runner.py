@@ -37,36 +37,7 @@ def get_container_name(job_id: str) -> str:
     return f"rf-chemex-{clean_id}"
 
 
-def to_host_path(container_path: Path | str) -> str:
-    """
-    Translate a path within the worker/API environment to the workstation host path.
-    Uses RESOFLOW_HOST_DATA_ROOT and RESOFLOW_CONTAINER_DATA_ROOT environment variables.
-    If not set, returns the absolute resolved local path.
-    """
-    p = Path(container_path).resolve()
-    host_data_root = os.getenv("RESOFLOW_HOST_DATA_ROOT")
-    container_data_root = os.getenv("RESOFLOW_CONTAINER_DATA_ROOT")
-
-    if host_data_root and container_data_root:
-        host_root_p = Path(host_data_root).resolve()
-        container_root_p = Path(container_data_root).resolve()
-        try:
-            rel = p.relative_to(container_root_p)
-            return str(host_root_p / rel)
-        except ValueError:
-            # Not a subpath of container_data_root
-            pass
-    elif host_data_root and not container_data_root:
-        # If host data root is provided without explicit container root,
-        # check common mounts like /data or /app/data
-        for candidate_root in [Path("/data"), Path("/app/data"), Path("/work")]:
-            try:
-                rel = p.relative_to(candidate_root)
-                return str(Path(host_data_root).resolve() / rel)
-            except ValueError:
-                continue
-
-    return str(p)
+from ..path_utils import to_host_path, to_container_path
 
 
 def get_chemex_image_info(image_name: str = DEFAULT_CHEMEX_IMAGE) -> Tuple[Optional[str], Optional[str]]:

@@ -41,11 +41,16 @@ SENSITIVE_PATTERNS = [
     re.compile(r"/\.config/google-chrome/.*/Login Data$"),
 ]
 
+from ..services.path_utils import to_container_path
+
 def _sanitize_path(path: str) -> str:
-    """Normalize and resolve path safely, checking for null-byte injection."""
+    """Normalize and resolve path safely, checking for null-byte injection and translating host paths."""
     if "\0" in path:
         raise HTTPException(status_code=400, detail="Invalid path characters")
     expanded = os.path.expanduser(path)
+    c_path = to_container_path(expanded)
+    if c_path and os.path.exists(c_path):
+        return str(Path(c_path).resolve())
     return str(Path(expanded).resolve())
 
 def _is_sensitive_path(path_str: str) -> bool:

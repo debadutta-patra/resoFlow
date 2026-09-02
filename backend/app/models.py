@@ -36,8 +36,8 @@ class Project(Base):
     is_archived = Column(Boolean, default=False, index=True)
 
     owner = relationship("User", back_populates="projects")
-    spectra = relationship("Spectrum", back_populates="project")
-    jobs = relationship("Job", back_populates="project")
+    spectra = relationship("Spectrum", back_populates="project", cascade="all, delete-orphan")
+    jobs = relationship("Job", back_populates="project", cascade="all, delete-orphan")
 
 
 class Spectrum(Base):
@@ -75,7 +75,7 @@ class Spectrum(Base):
         return os.path.exists(bak_path)
 
     project = relationship("Project", back_populates="spectra")
-    jobs = relationship("Job", back_populates="spectrum")
+    jobs = relationship("Job", back_populates="spectrum", cascade="all, delete-orphan")
 
 
 class Job(Base):
@@ -150,5 +150,5 @@ class Analysis(Base):
     spectra = relationship("Spectrum", secondary=analysis_spectra, back_populates="analyses")
 
 # Update Project and Spectrum relationships
-Project.analyses = relationship("Analysis", back_populates="project")
+Project.analyses = relationship("Analysis", back_populates="project", cascade="all, delete-orphan")
 Spectrum.analyses = relationship("Analysis", secondary=analysis_spectra, back_populates="spectra")

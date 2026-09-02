@@ -147,7 +147,9 @@ def sanitize_floats_for_json(obj: Any) -> Any:
 def get_analysis_results(
     analysis: models.Analysis = Depends(get_analysis)
 ):
-    
+    if analysis.status in ["RUNNING", "PENDING"]:
+        return {"status": analysis.status, "results": None}
+
     if analysis.analysis_type.lower() in ["cest", "15n-cest", "cpmg"]:
         run_dir = os.path.dirname(analysis.results_path) if analysis.results_path else None
         if run_dir and os.path.exists(run_dir):
@@ -308,13 +310,16 @@ def run_cest_analysis(
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2)
 
+    import uuid
+    task_id = str(uuid.uuid4())
+
     # Set up log and results paths
     analysis.log_path = os.path.join(run_dir, "chemex.log")
     analysis.results_path = os.path.join(run_dir, "results.json")
     analysis.status = "PENDING"
-
-    import uuid
-    task_id = str(uuid.uuid4())
+    analysis.completed_at = None
+    analysis.error_message = None
+    analysis.celery_task_id = task_id
 
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params["config_path"] = config_path

@@ -18,6 +18,7 @@ from datetime import datetime
 from ...celery_app import celery_app
 from ... import models, database
 from .chemex_runner import run_chemex_job, get_chemex_image_info
+from ..path_utils import resolve_existing_path
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,16 @@ def _setup_cest_directory(run_dir: str, config: dict):
     for d in [experiments_dir, parameters_dir, methods_dir, data_dir, output_dir]:
         os.makedirs(d, exist_ok=True)
 
+    # Clean up any stale or dangling symlinks in data_dir
+    if os.path.exists(data_dir):
+        for fname in os.listdir(data_dir):
+            fpath = os.path.join(data_dir, fname)
+            if os.path.islink(fpath):
+                try:
+                    os.remove(fpath)
+                except Exception:
+                    pass
+
     # Extract excluded residues from config
     param_cfg = config.get("parameter_config") or {}
     excluded_residues = set(
@@ -112,15 +123,25 @@ def _setup_cest_directory(run_dir: str, config: dict):
     # Check for multi-experiment config: generatedExperiments or experiments list
     generated_experiments = config.get("generatedExperiments", []) or config.get("experiments", [])
     if isinstance(generated_experiments, list) and len(generated_experiments) > 0:
+        # Clear existing toml files in experiments_dir to avoid mixing stale runs
+        if os.path.exists(experiments_dir):
+            for f in os.listdir(experiments_dir):
+                if f.endswith(".toml"):
+                    try:
+                        os.remove(os.path.join(experiments_dir, f))
+                    except Exception:
+                        pass
         for i, exp_entry in enumerate(generated_experiments):
             fname = exp_entry.get("filename") if isinstance(exp_entry, dict) else f"exp_{i}.toml"
             exp_toml = exp_entry.get("toml_content", "") if isinstance(exp_entry, dict) else str(exp_entry)
-            if not exp_toml and isinstance(exp_entry, dict) and exp_entry.get("path") and os.path.exists(exp_entry["path"]):
-                try:
-                    with open(exp_entry["path"], "r") as f:
-                        exp_toml = f.read()
-                except Exception:
-                    pass
+            if not exp_toml and isinstance(exp_entry, dict) and exp_entry.get("path"):
+                p = resolve_existing_path(exp_entry["path"], run_dir) or exp_entry["path"]
+                if os.path.exists(p):
+                    try:
+                        with open(p, "r") as f:
+                            exp_toml = f.read()
+                    except Exception:
+                        pass
             exp_toml = _update_experiment_toml_exclusions(exp_toml, excluded_residues)
             _write_toml(os.path.join(experiments_dir, fname), exp_toml)
     else:
@@ -140,17 +161,25 @@ def _setup_cest_directory(run_dir: str, config: dict):
     if method_toml.strip():
         _write_toml(os.path.join(methods_dir, "method.toml"), method_toml)
 
-    # Symlink or copy data files into Data/ directory
+    # Symlink or copy data files into Data/ directory safely
     data_files = config.get("data_files", {})
     for residue_name, src_path in data_files.items():
-        if os.path.exists(src_path):
-            dest = os.path.join(data_dir, os.path.basename(src_path))
-            if not os.path.exists(dest):
+        actual_src = resolve_existing_path(src_path, run_dir) or src_path
+        if os.path.exists(actual_src):
+            dest = os.path.join(data_dir, os.path.basename(actual_src))
+            if os.path.lexists(dest):
                 try:
-                    os.symlink(src_path, dest)
-                except OSError:
-                    # Fallback to copy if symlinks not supported
-                    shutil.copy2(src_path, dest)
+                    os.remove(dest)
+                except Exception:
+                    pass
+            try:
+                rel_src = os.path.relpath(actual_src, data_dir)
+                os.symlink(rel_src, dest)
+            except Exception:
+                try:
+                    shutil.copy2(actual_src, dest)
+                except Exception as ce:
+                    logger.warning(f"Failed to copy data file {actual_src} to {dest}: {ce}")
 
     return {
         "experiments_dir": experiments_dir,
@@ -189,6 +218,11 @@ def _backup_output_directory(run_dir: str):
             shutil.move(results_path, results_bak)
         except Exception as e:
             logger.warning(f"Failed to backup results.json: {e}")
+        if os.path.exists(results_path):
+            try:
+                os.remove(results_path)
+            except Exception:
+                pass
 
     # Backup chemex.log
     if os.path.exists(log_path):
@@ -431,6 +465,8 @@ def run_cest_analysis_task(self, analysis_uuid: str, config: dict):
         return
 
     analysis.status = "RUNNING"
+    analysis.completed_at = None
+    analysis.error_message = None
     analysis.celery_task_id = self.request.id if self.request else None
 
     # Record ChemEx container image digest and version
