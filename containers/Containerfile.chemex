@@ -10,8 +10,10 @@ FROM ${PYTHON_IMAGE} AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 RUN useradd -u 1000 -m -s /bin/bash appuser
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser resoflow /app/resoflow
 
 ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app:$PYTHONPATH" \
     MPLBACKEND=Agg \
     MPLCONFIGDIR=/tmp/mpl \
     PYTHONUNBUFFERED=1 \
@@ -22,4 +24,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER appuser
 WORKDIR /work
-ENTRYPOINT ["chemex"]
+ENTRYPOINT ["python", "-m", "resoflow.progress"]

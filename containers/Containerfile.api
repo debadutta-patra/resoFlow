@@ -5,6 +5,7 @@ COPY backend/app /app/app
 COPY backend/alembic.ini /app/alembic.ini
 COPY backend/migrations /app/migrations
 COPY backend/create_superuser.py /app/create_superuser.py
+COPY resoflow /app/resoflow
 
 USER appuser
 EXPOSE 8000

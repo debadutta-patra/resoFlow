@@ -398,6 +398,23 @@ def run_chemex_job(
     child_env = os.environ.copy()
     child_env["RESOFLOW_PROGRESS_FD"] = str(w_fd)
 
+    def _dispatch_progress_event(event: Dict[str, Any]) -> None:
+        if progress_callback:
+            try:
+                progress_callback(event)
+            except Exception as e:
+                logger.debug(f"progress_callback error: {e}")
+        if log_fp:
+            try:
+                k = event.get("kind", "progress")
+                if k == "fit":
+                    log_fp.write(f"[Progress] Fit iteration {event.get('iteration')}: chisqr={event.get('chisqr')}, redchi={event.get('redchi')}\n")
+                elif k in ("grid", "resample", "mcmc"):
+                    log_fp.write(f"[Progress] {k.capitalize()}: {event.get('done')}/{event.get('total')}\n")
+                log_fp.flush()
+            except Exception:
+                pass
+
     def _drain_progress(fd: int) -> None:
         try:
             with os.fdopen(fd, "r", encoding="utf-8") as pipe_in:
@@ -407,8 +424,7 @@ def run_chemex_job(
                         continue
                     try:
                         event = json.loads(stripped)
-                        if progress_callback:
-                            progress_callback(event)
+                        _dispatch_progress_event(event)
                     except Exception as err:
                         logger.warning(f"Malformed progress event skipped: {stripped[:100]!r} ({err})")
         except Exception as err:
@@ -438,21 +454,34 @@ def run_chemex_job(
             pass
 
         # Stream lines in real-time
+        def _handle_stdout_line(line: Any) -> None:
+            if isinstance(line, bytes):
+                str_line = line.decode("utf-8", errors="replace")
+            else:
+                str_line = str(line)
+
+            stripped = str_line.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    event = json.loads(stripped)
+                    if isinstance(event, dict) and event.get("kind") in ("grid", "resample", "mcmc", "fit"):
+                        _dispatch_progress_event(event)
+                        return
+                except Exception:
+                    pass
+            if log_fp:
+                log_fp.write(str_line)
+                log_fp.flush()
+            else:
+                logger.debug(f"[{container_name}] {stripped}")
+
         if process.stdout:
             if hasattr(process.stdout, "readline"):
                 for line in iter(process.stdout.readline, ''):
-                    if log_fp:
-                        log_fp.write(line)
-                        log_fp.flush()
-                    else:
-                        logger.debug(f"[{container_name}] {line.rstrip()}")
+                    _handle_stdout_line(line)
             else:
                 for line in process.stdout:
-                    if log_fp:
-                        log_fp.write(line)
-                        log_fp.flush()
-                    else:
-                        logger.debug(f"[{container_name}] {line.rstrip()}")
+                    _handle_stdout_line(line)
 
         process.wait(timeout=timeout_seconds)
         return_code = process.returncode
