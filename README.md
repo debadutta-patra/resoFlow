@@ -228,6 +228,42 @@ cd backend
 uv run python create_superuser.py
 ```
 
+## ChemEx Progress Capture
+
+resoFlow captures real-time fit progress from ChemEx in-process to report live status to the frontend.
+
+### Why in-process patching?
+
+ChemEx uses `rich` for its terminal progress rendering. When executed in headless or piped environments (such as Celery worker tasks or child subprocesses without a pseudo-terminal), `rich.live.Live.refresh()` suppresses progress display because `console.is_terminal` evaluates to `False`. Piped stdout scraping yields only a final summary frame without incremental updates. Instead of fragile ANSI scraping or pty wrappers, resoFlow patches ChemEx's progress call sites directly in-process.
+
+### Pinned ChemEx Version
+
+Pinned target is **ChemEx 2026.6.1** (GPL-3.0-or-later).
+
+Patch targets in `chemex.optimize`:
+- `chemex.optimize.gridding.track`: grid search progress iterations.
+- `chemex.optimize.resampling.track`: Monte Carlo and bootstrap sample iterations.
+- `chemex.optimize.mcmc._RichEmceeProgressBar`: MCMC walker steps.
+- `chemex.optimize.minimizer.Reporter.print_line`: plain fit optimization iterations ($\chi^2$, reduced $\chi^2$).
+
+### File Descriptor Contract
+
+The entry point `python -m resoflow.progress` reads the target file descriptor from the `RESOFLOW_PROGRESS_FD` environment variable:
+- When `RESOFLOW_PROGRESS_FD` is set, events are emitted as single-line JSON records to that descriptor with line buffering.
+- When unset or invalid, output falls back to `sys.stderr` so the module stays runnable by hand.
+- **Parent Process Obligation**: The parent process creating the pipe **must drain the fd**. An unread pipe buffer (typically 64 KiB on Linux) will block the child fit process when full.
+
+### Event Schema
+
+Events are flat, JSON-serializable dictionaries with a `kind` discriminator:
+
+| `kind` | Fields | Description |
+|---|---|---|
+| `grid` | `done: int`, `total: int` | Grid search iteration progress |
+| `resample` | `done: int`, `total: int` | Monte Carlo / Bootstrap sample progress |
+| `mcmc` | `done: int`, `total: int` | MCMC sampling progress |
+| `fit` | `iteration: int`, `chisqr: float`, `redchi: float` | Minimizer convergence iteration |
+
 ## Configuration
 
 The backend reads configuration entirely from environment variables (see `deploy/install.sh`'s generated `resoflow.env` for the production set):

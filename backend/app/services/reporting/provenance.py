@@ -121,6 +121,14 @@ def extract_report_provenance(
         except Exception:
             pass
 
+    if not chemex_version:
+        try:
+            from resoflow.progress.targets import chemex_build
+            b_info = chemex_build()
+            chemex_version = b_info.get("version")
+        except Exception:
+            pass
+
     # Read outcome.toml if available
     outcome_path = out_dir / "run_info" / "outcome.toml"
     if not outcome_path.is_file():

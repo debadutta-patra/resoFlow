@@ -18,8 +18,10 @@ import shutil
 import signal
 import logging
 import subprocess
+import json
+import threading
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -263,9 +265,11 @@ def run_chemex_job(
     memory_limit: Optional[str] = None,
     cpus: Optional[float] = None,
     timeout_seconds: Optional[int] = None,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    use_container: Optional[bool] = None,
 ) -> int:
     """
-    Execute a ChemEx job in an ephemeral rootless Podman container.
+    Execute a ChemEx job in an ephemeral container or via direct subprocess with progress streaming.
 
     Args:
         job_id: Unique identifier for the job / analysis (used for container naming).
@@ -276,6 +280,8 @@ def run_chemex_job(
         memory_limit: Optional container memory limit (e.g. "4g").
         cpus: Optional container CPU allocation (e.g. 2.0).
         timeout_seconds: Optional maximum runtime in seconds.
+        progress_callback: Optional callable receiving structured JSON progress events.
+        use_container: Whether to execute inside Podman container or direct subprocess.
 
     Returns:
         int: Subprocess return code. 0 for success, 137/143 for cancellation.
@@ -332,35 +338,45 @@ def run_chemex_job(
     if tmp_output_dir and tmp_output_dir.exists():
         shutil.rmtree(tmp_output_dir, ignore_errors=True)
 
-    # Ensure any existing container with the same name is removed
-    try:
-        subprocess.run(["podman", "rm", "-f", container_name], capture_output=True, timeout=5)
-    except Exception:
-        pass
+    # Determine execution mode: container vs direct subprocess
+    if use_container is None:
+        if os.getenv("RESOFLOW_USE_CONTAINER", "").lower() in ("true", "1", "yes") or "RESOFLOW_SELINUX_MOUNT" in os.environ:
+            use_container = True
+        else:
+            use_container = False
 
-    # 3. Assemble Podman CLI command
-    selinux_opt = ":z"
-    if os.getenv("RESOFLOW_SELINUX_MOUNT", "").lower() in ("false", "0", "no") or sys.platform == "darwin":
-        selinux_opt = ""
+    if use_container:
+        # Ensure any existing container with the same name is removed
+        try:
+            subprocess.run(["podman", "rm", "-f", container_name], capture_output=True, timeout=5)
+        except Exception:
+            pass
 
-    podman_cmd = [
-        "podman", "run",
-        "--name", container_name,
-        "--replace",
-        "--rm",
-        "--userns=keep-id",
-        "-v", f"{host_work_dir}:/work{selinux_opt}",
-    ]
+        # 3. Assemble Podman CLI command
+        selinux_opt = ":z"
+        if os.getenv("RESOFLOW_SELINUX_MOUNT", "").lower() in ("false", "0", "no") or sys.platform == "darwin":
+            selinux_opt = ""
 
-    if memory_limit:
-        podman_cmd.extend(["--memory", str(memory_limit)])
-    if cpus:
-        podman_cmd.extend(["--cpus", str(cpus)])
+        cmd = [
+            "podman", "run",
+            "--name", container_name,
+            "--replace",
+            "--rm",
+            "--userns=keep-id",
+            "-v", f"{host_work_dir}:/work{selinux_opt}",
+        ]
 
-    podman_cmd.append(image_name)
-    podman_cmd.extend(translated_cmd_args)
+        if memory_limit:
+            cmd.extend(["--memory", str(memory_limit)])
+        if cpus:
+            cmd.extend(["--cpus", str(cpus)])
 
-    logger.info(f"Launching ephemeral ChemEx container '{container_name}': {' '.join(podman_cmd)}")
+        cmd.append(image_name)
+        cmd.extend(translated_cmd_args)
+        logger.info(f"Launching ephemeral ChemEx container '{container_name}': {' '.join(cmd)}")
+    else:
+        cmd = [sys.executable, "-m", "resoflow.progress", *translated_cmd_args]
+        logger.info(f"Launching direct ChemEx subprocess for '{job_id}': {' '.join(cmd)}")
 
     # 4. Open log file and stream output
     log_fp = None
@@ -368,37 +384,81 @@ def run_chemex_job(
         log_file_p = Path(log_file)
         log_file_p.parent.mkdir(parents=True, exist_ok=True)
         log_fp = open(log_file_p, "a", encoding="utf-8")
-        log_fp.write(f"\n[ChemEx Container: {container_name}]\n")
-        log_fp.write(f"[Image: {image_name}]\n")
-        log_fp.write(f"$ {' '.join(podman_cmd)}\n\n")
+        log_fp.write(f"\n[ChemEx Runner: {container_name}]\n")
+        if use_container:
+            log_fp.write(f"[Image: {image_name}]\n")
+        log_fp.write(f"$ {' '.join(cmd)}\n\n")
         log_fp.flush()
+
+    # Set up progress pipe for structured event streaming
+    r_fd, w_fd = os.pipe()
+    os.set_inheritable(w_fd, True)
+    w_fd_closed = False
+
+    child_env = os.environ.copy()
+    child_env["RESOFLOW_PROGRESS_FD"] = str(w_fd)
+
+    def _drain_progress(fd: int) -> None:
+        try:
+            with os.fdopen(fd, "r", encoding="utf-8") as pipe_in:
+                for line in pipe_in:
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        event = json.loads(stripped)
+                        if progress_callback:
+                            progress_callback(event)
+                    except Exception as err:
+                        logger.warning(f"Malformed progress event skipped: {stripped[:100]!r} ({err})")
+        except Exception as err:
+            logger.debug(f"Progress stream reader terminated: {err}")
+
+    drain_thread = threading.Thread(target=_drain_progress, args=(r_fd,), daemon=True)
+    drain_thread.start()
 
     return_code = 1
     try:
         process = subprocess.Popen(
-            podman_cmd,
+            cmd,
             cwd=str(work_path),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             universal_newlines=True,
+            pass_fds=(w_fd,),
+            env=child_env,
         )
+
+        try:
+            os.close(w_fd)
+            w_fd_closed = True
+        except OSError:
+            pass
 
         # Stream lines in real-time
         if process.stdout:
-            for line in iter(process.stdout.readline, ''):
-                if log_fp:
-                    log_fp.write(line)
-                    log_fp.flush()
-                else:
-                    logger.debug(f"[{container_name}] {line.rstrip()}")
+            if hasattr(process.stdout, "readline"):
+                for line in iter(process.stdout.readline, ''):
+                    if log_fp:
+                        log_fp.write(line)
+                        log_fp.flush()
+                    else:
+                        logger.debug(f"[{container_name}] {line.rstrip()}")
+            else:
+                for line in process.stdout:
+                    if log_fp:
+                        log_fp.write(line)
+                        log_fp.flush()
+                    else:
+                        logger.debug(f"[{container_name}] {line.rstrip()}")
 
         process.wait(timeout=timeout_seconds)
         return_code = process.returncode
 
     except subprocess.TimeoutExpired:
-        logger.warning(f"ChemEx container '{container_name}' timed out after {timeout_seconds}s")
+        logger.warning(f"ChemEx run '{container_name}' timed out after {timeout_seconds}s")
         cancel_chemex_job(job_id)
         return_code = 124
         if log_fp:
@@ -406,7 +466,7 @@ def run_chemex_job(
             log_fp.flush()
 
     except Exception as e:
-        logger.exception(f"Exception during ChemEx container run '{container_name}': {e}")
+        logger.exception(f"Exception during ChemEx run '{container_name}': {e}")
         cancel_chemex_job(job_id)
         return_code = 1
         if log_fp:
@@ -414,6 +474,12 @@ def run_chemex_job(
             log_fp.flush()
 
     finally:
+        if not w_fd_closed:
+            try:
+                os.close(w_fd)
+            except OSError:
+                pass
+        drain_thread.join(timeout=2.0)
         if log_fp:
             log_fp.close()
 
