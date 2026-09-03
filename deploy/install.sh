@@ -544,11 +544,18 @@ echo ""
 # 10. Bootstrap administrator account if requested
 if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ] && [ -n "${ADMIN_PASSWORD}" ]; then
     echo -e "\n${BLUE}Configuring administrator account (${ADMIN_EMAIL})...${NC}"
-    if podman exec -i \
-        -e ADMIN_EMAIL="${ADMIN_EMAIL}" \
-        -e ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
-        -e ADMIN_NAME="${ADMIN_NAME}" \
-        resoflow-api python - << 'PYEOF' > /dev/null 2>&1
+    # The API container runs its own DB-wait + `alembic upgrade head` before serving,
+    # so the `users` table may not exist yet even though the web readiness check above
+    # already passed (Caddy serves the static UI independently of API/DB readiness).
+    # Retry for a while instead of failing on the first attempt.
+    ADMIN_BOOTSTRAP_OK=false
+    ADMIN_BOOTSTRAP_OUTPUT=""
+    for i in {1..15}; do
+        if ADMIN_BOOTSTRAP_OUTPUT="$(podman exec -i \
+            -e ADMIN_EMAIL="${ADMIN_EMAIL}" \
+            -e ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+            -e ADMIN_NAME="${ADMIN_NAME}" \
+            resoflow-api python - << 'PYEOF' 2>&1
 import os
 import sys
 from app import database, models, security
@@ -582,14 +589,24 @@ try:
         db.commit()
 except Exception as e:
     db.rollback()
+    print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
 finally:
     db.close()
 PYEOF
-    then
+        )"; then
+            ADMIN_BOOTSTRAP_OK=true
+            break
+        fi
+        sleep 2
+    done
+
+    if [ "${ADMIN_BOOTSTRAP_OK}" = true ]; then
         echo -e "${GREEN}✓ Administrator account configured successfully.${NC}"
     else
-        echo -e "${YELLOW}Warning: Could not create admin account automatically. You can create one anytime with:${NC}"
+        echo -e "${YELLOW}Warning: Could not create admin account automatically:${NC}"
+        echo -e "${YELLOW}${ADMIN_BOOTSTRAP_OUTPUT}${NC}"
+        echo -e "${YELLOW}You can create one anytime with:${NC}"
         echo -e "  ${BOLD}podman exec -it resoflow-api python create_superuser.py${NC}"
     fi
 fi

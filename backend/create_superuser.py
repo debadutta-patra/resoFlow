@@ -79,7 +79,7 @@ def main():
     full_name = args.name
 
     if not email or not password:
-        if args.non-interactive:
+        if args.non_interactive:
             print("Error: --email and --password are required in non-interactive mode.", file=sys.stderr)
             sys.exit(1)
 
