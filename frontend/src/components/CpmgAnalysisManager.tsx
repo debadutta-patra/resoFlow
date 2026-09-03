@@ -79,6 +79,19 @@ interface Spectrum {
   is_fitted?: boolean;
 }
 
+interface ProgressInfo {
+  kind: string;
+  stage?: string;
+  done?: number;
+  total?: number;
+  percent?: number;
+  iteration?: number;
+  chisqr?: number;
+  redchi?: number;
+  message?: string;
+  updated_at?: number;
+}
+
 interface Analysis {
   id: number;
   analysis_uuid: string;
@@ -128,6 +141,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   const [isFitting, setIsFitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ name: string; content: string } | null>(null);
+  const [progressInfo, setProgressInfo] = useState<ProgressInfo | null>(null);
 
   // ── Experiments Tab State ──
   const [selectedSpectrumIds, setSelectedSpectrumIds] = useState<number[]>([]);
@@ -252,10 +266,16 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     try {
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/logs`);
       if (res.data.logs) setLogs(res.data.logs);
+      if (res.data.progress) {
+        setProgressInfo(res.data.progress);
+      } else if (res.data.status === "COMPLETED" || res.data.status === "FAILED") {
+        setProgressInfo(null);
+      }
       if (res.data.status && res.data.status !== status) {
         setStatus(res.data.status);
         if (res.data.status === "COMPLETED" || res.data.status === "FAILED") {
           setIsFitting(false);
+          setProgressInfo(null);
           await fetchResults();
           if (res.data.status === "COMPLETED") {
             setActiveTab("results");
@@ -873,6 +893,13 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             <span>{status}</span>
           </span>
 
+          {(status === "RUNNING" || status === "CANCELLING" || isFitting) && progressInfo && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 flex items-center gap-1.5 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span>{progressInfo.percent !== undefined ? `${progressInfo.stage || 'Progress'}: ${progressInfo.percent.toFixed(0)}%` : (progressInfo.message || progressInfo.stage)}</span>
+            </span>
+          )}
+
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border ${
             fitMode === 'global' 
               ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800'
@@ -1456,6 +1483,32 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
 
           {activeTab === "logs" && (
             <div className="space-y-3 animate-in fade-in">
+              {(status === "RUNNING" || isFitting) && progressInfo && (
+                <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+                      <span className="font-bold text-blue-900 dark:text-blue-100">
+                        {progressInfo.message || progressInfo.stage || "Fitting in progress..."}
+                      </span>
+                    </div>
+                    {progressInfo.percent !== undefined && (
+                      <span className="font-mono font-extrabold text-blue-800 dark:text-blue-300">
+                        {progressInfo.percent.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                  {progressInfo.percent !== undefined && (
+                    <div className="w-full bg-blue-200/60 dark:bg-blue-900/50 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${Math.min(100, Math.max(0, progressInfo.percent))}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${status === 'RUNNING' ? 'bg-emerald-500 animate-ping' : status === 'COMPLETED' ? 'bg-emerald-500' : status === 'FAILED' ? 'bg-rose-500' : 'bg-slate-400'}`} />

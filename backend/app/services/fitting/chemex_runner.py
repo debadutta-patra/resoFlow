@@ -20,6 +20,7 @@ import logging
 import subprocess
 import json
 import threading
+import time
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any, Callable
 
@@ -398,22 +399,86 @@ def run_chemex_job(
     child_env = os.environ.copy()
     child_env["RESOFLOW_PROGRESS_FD"] = str(w_fd)
 
+    progress_file = work_path / "progress.json"
+    last_file_write_time = 0.0
+    last_milestones: Dict[str, int] = {}
+    is_terminal = False
+
+    def _format_progress_data(event: Dict[str, Any]) -> Dict[str, Any]:
+        k = event.get("kind", "progress")
+        prog: Dict[str, Any] = {
+            "kind": k,
+            "updated_at": time.time(),
+        }
+        if k == "fit":
+            prog["stage"] = "Minimization"
+            prog["iteration"] = event.get("iteration", 0)
+            prog["chisqr"] = event.get("chisqr")
+            prog["redchi"] = event.get("redchi")
+            cs = f"{event.get('chisqr'):.2f}" if isinstance(event.get('chisqr'), (int, float)) else "?"
+            rc = f"{event.get('redchi'):.2f}" if isinstance(event.get('redchi'), (int, float)) else "?"
+            prog["message"] = f"Minimization iter {event.get('iteration')} (χ²: {cs}, red-χ²: {rc})"
+        elif k in ("grid", "resample", "mcmc"):
+            labels = {
+                "grid": "Grid Search",
+                "resample": "Resampling",
+                "mcmc": "MCMC Sampling",
+            }
+            stage_name = labels.get(k, k.capitalize())
+            prog["stage"] = stage_name
+            done = event.get("done", 0)
+            total = event.get("total")
+            prog["done"] = done
+            prog["total"] = total
+            if total and total > 0:
+                pct = round((done / total) * 100, 1)
+                prog["percent"] = pct
+                prog["message"] = f"{stage_name}: {done}/{total} ({pct}%)"
+            else:
+                prog["message"] = f"{stage_name}: {done} steps"
+        else:
+            prog["stage"] = k.capitalize()
+            prog["message"] = str(event)
+        return prog
+
     def _dispatch_progress_event(event: Dict[str, Any]) -> None:
+        nonlocal last_file_write_time
+        if is_terminal:
+            return
+        # 1. Forward raw event to callback
         if progress_callback:
             try:
                 progress_callback(event)
             except Exception as e:
                 logger.debug(f"progress_callback error: {e}")
-        if log_fp:
+
+        # 2. Write structured progress.json (throttled to at most once per 250ms)
+        prog_data = _format_progress_data(event)
+        now = time.time()
+        pct = prog_data.get("percent", 0)
+        if pct >= 100 or (now - last_file_write_time >= 0.25):
+            last_file_write_time = now
             try:
-                k = event.get("kind", "progress")
-                if k == "fit":
-                    log_fp.write(f"[Progress] Fit iteration {event.get('iteration')}: chisqr={event.get('chisqr')}, redchi={event.get('redchi')}\n")
-                elif k in ("grid", "resample", "mcmc"):
-                    log_fp.write(f"[Progress] {k.capitalize()}: {event.get('done')}/{event.get('total')}\n")
-                log_fp.flush()
+                tmp_p = progress_file.with_name(f"{progress_file.name}.tmp")
+                tmp_p.write_text(json.dumps(prog_data), encoding="utf-8")
+                tmp_p.replace(progress_file)
             except Exception:
                 pass
+
+        # 3. Log to chemex.log sparingly (milestones at 0%, 25%, 50%, 75%, 100%)
+        # Note: For 'fit', ChemEx already outputs its minimization chi2 table, so omit redundant fit lines.
+        if log_fp:
+            k = event.get("kind")
+            if k in ("grid", "resample", "mcmc"):
+                total = event.get("total")
+                done = event.get("done", 0)
+                if total and total > 0:
+                    pct_int = int((done / total) * 100)
+                    bucket = (pct_int // 25) * 25
+                    if bucket > last_milestones.get(k, -1):
+                        last_milestones[k] = bucket
+                        log_fp.write(f"[{container_name}] {k.upper()} progress: {bucket}% ({done}/{total})\n")
+                        log_fp.flush()
 
     def _drain_progress(fd: int) -> None:
         try:
@@ -509,6 +574,24 @@ def run_chemex_job(
             except OSError:
                 pass
         drain_thread.join(timeout=2.0)
+
+        # Write final completion state to progress.json after all stream lines are processed
+        is_terminal = True
+        final_stage = "Completed" if return_code == 0 else ("Cancelled" if return_code in (137, 143) else "Failed")
+        final_prog = {
+            "kind": "completed" if return_code == 0 else ("cancelled" if return_code in (137, 143) else "failed"),
+            "stage": final_stage,
+            "percent": 100.0 if return_code == 0 else 0.0,
+            "message": f"Run {final_stage.lower()}",
+            "updated_at": time.time(),
+        }
+        try:
+            tmp_p = progress_file.with_name(f"{progress_file.name}.tmp")
+            tmp_p.write_text(json.dumps(final_prog), encoding="utf-8")
+            tmp_p.replace(progress_file)
+        except Exception:
+            pass
+
         if log_fp:
             log_fp.close()
 

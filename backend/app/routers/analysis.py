@@ -389,14 +389,36 @@ def stop_cest_analysis(
 def get_cest_logs(
     analysis: models.Analysis = Depends(get_analysis),
 ):
-    """Return the live log content from the ChemEx run."""
+    """Return the live log content and progress state from the ChemEx run."""
     if not analysis.log_path or not os.path.exists(analysis.log_path):
-        return {"logs": "", "status": analysis.status}
+        return {"logs": "", "status": analysis.status if analysis else "PENDING", "progress": None}
 
-    with open(analysis.log_path, "r") as f:
-        logs = f.read()
+    progress_data = None
+    progress_file = os.path.join(os.path.dirname(analysis.log_path), "progress.json")
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file, "r", encoding="utf-8") as pf:
+                progress_data = json.load(pf)
+        except Exception:
+            pass
 
-    return {"logs": logs, "status": analysis.status}
+    try:
+        file_size = os.path.getsize(analysis.log_path)
+        if file_size > 500 * 1024:
+            with open(analysis.log_path, "rb") as f:
+                f.seek(-250 * 1024, os.SEEK_END)
+                raw = f.read()
+                first_nl = raw.find(b"\n")
+                if first_nl != -1:
+                    raw = raw[first_nl + 1 :]
+                logs = "[... earlier log lines truncated for performance ...]\n" + raw.decode("utf-8", errors="replace")
+        else:
+            with open(analysis.log_path, "r", errors="replace") as f:
+                logs = f.read()
+    except Exception:
+        logs = ""
+
+    return {"logs": logs, "status": analysis.status, "progress": progress_data}
 
 
 @router.get("/{analysis_uuid}/cest/config")

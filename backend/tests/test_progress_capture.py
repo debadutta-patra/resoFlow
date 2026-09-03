@@ -286,3 +286,50 @@ def test_job_runner_progress_pipe_integration(tmp_path):
     log_content = log_file.read_text(encoding="utf-8")
     assert "Chi2 Table Header" in log_content
     assert "1  10.0  1.0" in log_content
+
+    # Verify progress.json was created with final completion
+    prog_file = tmp_path / "progress.json"
+    assert prog_file.exists()
+    prog_data = json.loads(prog_file.read_text(encoding="utf-8"))
+    assert prog_data["kind"] == "completed"
+    assert prog_data["percent"] == 100.0
+
+
+def test_progress_log_does_not_flood_file(tmp_path):
+    """
+    Ensure emitting many iterations (e.g. 500 mcmc steps) writes structured
+    progress.json but does NOT spam chemex.log with 500 lines.
+    """
+    def mock_popen(cmd, *args, **kwargs):
+        w_fd_val = int(kwargs["env"]["RESOFLOW_PROGRESS_FD"])
+        with os.fdopen(w_fd_val, "w", encoding="utf-8") as pf:
+            for step in range(501):
+                pf.write(json.dumps({"kind": "mcmc", "done": step, "total": 500}) + "\n")
+            pf.flush()
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout.readline.side_effect = ["Starting MCMC\n", "Done MCMC\n", ""]
+        mock_proc.wait.return_value = 0
+        return mock_proc
+
+    log_file = tmp_path / "chemex.log"
+
+    with patch("subprocess.Popen", side_effect=mock_popen):
+        rc = run_chemex_job(
+            job_id="test-mcmc-throttled",
+            work_dir=tmp_path,
+            cmd_args=["fit", "-o", "Output"],
+            log_file=log_file,
+        )
+
+    assert rc == 0
+    log_content = log_file.read_text(encoding="utf-8")
+    lines = [line for line in log_content.splitlines() if "MCMC progress:" in line]
+    # Milestones bucketed at 0%, 25%, 50%, 75%, 100% -> at most 5 milestone lines, NOT 501 lines!
+    assert len(lines) <= 6
+    assert any("100%" in line for line in lines)
+
+    # progress.json should exist
+    prog_file = tmp_path / "progress.json"
+    assert prog_file.exists()
