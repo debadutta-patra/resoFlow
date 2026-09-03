@@ -18,8 +18,11 @@ import shutil
 import signal
 import logging
 import subprocess
+import json
+import threading
+import time
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -263,9 +266,11 @@ def run_chemex_job(
     memory_limit: Optional[str] = None,
     cpus: Optional[float] = None,
     timeout_seconds: Optional[int] = None,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    use_container: Optional[bool] = None,
 ) -> int:
     """
-    Execute a ChemEx job in an ephemeral rootless Podman container.
+    Execute a ChemEx job in an ephemeral container or via direct subprocess with progress streaming.
 
     Args:
         job_id: Unique identifier for the job / analysis (used for container naming).
@@ -276,6 +281,8 @@ def run_chemex_job(
         memory_limit: Optional container memory limit (e.g. "4g").
         cpus: Optional container CPU allocation (e.g. 2.0).
         timeout_seconds: Optional maximum runtime in seconds.
+        progress_callback: Optional callable receiving structured JSON progress events.
+        use_container: Whether to execute inside Podman container or direct subprocess.
 
     Returns:
         int: Subprocess return code. 0 for success, 137/143 for cancellation.
@@ -332,35 +339,45 @@ def run_chemex_job(
     if tmp_output_dir and tmp_output_dir.exists():
         shutil.rmtree(tmp_output_dir, ignore_errors=True)
 
-    # Ensure any existing container with the same name is removed
-    try:
-        subprocess.run(["podman", "rm", "-f", container_name], capture_output=True, timeout=5)
-    except Exception:
-        pass
+    # Determine execution mode: container vs direct subprocess
+    if use_container is None:
+        if os.getenv("RESOFLOW_USE_CONTAINER", "").lower() in ("true", "1", "yes") or "RESOFLOW_SELINUX_MOUNT" in os.environ:
+            use_container = True
+        else:
+            use_container = False
 
-    # 3. Assemble Podman CLI command
-    selinux_opt = ":z"
-    if os.getenv("RESOFLOW_SELINUX_MOUNT", "").lower() in ("false", "0", "no") or sys.platform == "darwin":
-        selinux_opt = ""
+    if use_container:
+        # Ensure any existing container with the same name is removed
+        try:
+            subprocess.run(["podman", "rm", "-f", container_name], capture_output=True, timeout=5)
+        except Exception:
+            pass
 
-    podman_cmd = [
-        "podman", "run",
-        "--name", container_name,
-        "--replace",
-        "--rm",
-        "--userns=keep-id",
-        "-v", f"{host_work_dir}:/work{selinux_opt}",
-    ]
+        # 3. Assemble Podman CLI command
+        selinux_opt = ":z"
+        if os.getenv("RESOFLOW_SELINUX_MOUNT", "").lower() in ("false", "0", "no") or sys.platform == "darwin":
+            selinux_opt = ""
 
-    if memory_limit:
-        podman_cmd.extend(["--memory", str(memory_limit)])
-    if cpus:
-        podman_cmd.extend(["--cpus", str(cpus)])
+        cmd = [
+            "podman", "run",
+            "--name", container_name,
+            "--replace",
+            "--rm",
+            "--userns=keep-id",
+            "-v", f"{host_work_dir}:/work{selinux_opt}",
+        ]
 
-    podman_cmd.append(image_name)
-    podman_cmd.extend(translated_cmd_args)
+        if memory_limit:
+            cmd.extend(["--memory", str(memory_limit)])
+        if cpus:
+            cmd.extend(["--cpus", str(cpus)])
 
-    logger.info(f"Launching ephemeral ChemEx container '{container_name}': {' '.join(podman_cmd)}")
+        cmd.append(image_name)
+        cmd.extend(translated_cmd_args)
+        logger.info(f"Launching ephemeral ChemEx container '{container_name}': {' '.join(cmd)}")
+    else:
+        cmd = [sys.executable, "-m", "resoflow.progress", *translated_cmd_args]
+        logger.info(f"Launching direct ChemEx subprocess for '{job_id}': {' '.join(cmd)}")
 
     # 4. Open log file and stream output
     log_fp = None
@@ -368,37 +385,174 @@ def run_chemex_job(
         log_file_p = Path(log_file)
         log_file_p.parent.mkdir(parents=True, exist_ok=True)
         log_fp = open(log_file_p, "a", encoding="utf-8")
-        log_fp.write(f"\n[ChemEx Container: {container_name}]\n")
-        log_fp.write(f"[Image: {image_name}]\n")
-        log_fp.write(f"$ {' '.join(podman_cmd)}\n\n")
+        log_fp.write(f"\n[ChemEx Runner: {container_name}]\n")
+        if use_container:
+            log_fp.write(f"[Image: {image_name}]\n")
+        log_fp.write(f"$ {' '.join(cmd)}\n\n")
         log_fp.flush()
+
+    # Set up progress pipe for structured event streaming
+    r_fd, w_fd = os.pipe()
+    os.set_inheritable(w_fd, True)
+    w_fd_closed = False
+
+    child_env = os.environ.copy()
+    child_env["RESOFLOW_PROGRESS_FD"] = str(w_fd)
+
+    progress_file = work_path / "progress.json"
+    last_file_write_time = 0.0
+    last_milestones: Dict[str, int] = {}
+    is_terminal = False
+
+    def _format_progress_data(event: Dict[str, Any]) -> Dict[str, Any]:
+        k = event.get("kind", "progress")
+        prog: Dict[str, Any] = {
+            "kind": k,
+            "updated_at": time.time(),
+        }
+        if k == "fit":
+            prog["stage"] = "Minimization"
+            prog["iteration"] = event.get("iteration", 0)
+            prog["chisqr"] = event.get("chisqr")
+            prog["redchi"] = event.get("redchi")
+            cs = f"{event.get('chisqr'):.2f}" if isinstance(event.get('chisqr'), (int, float)) else "?"
+            rc = f"{event.get('redchi'):.2f}" if isinstance(event.get('redchi'), (int, float)) else "?"
+            prog["message"] = f"Minimization iter {event.get('iteration')} (χ²: {cs}, red-χ²: {rc})"
+        elif k in ("grid", "resample", "mcmc"):
+            labels = {
+                "grid": "Grid Search",
+                "resample": "Resampling",
+                "mcmc": "MCMC Sampling",
+            }
+            stage_name = labels.get(k, k.capitalize())
+            prog["stage"] = stage_name
+            done = event.get("done", 0)
+            total = event.get("total")
+            prog["done"] = done
+            prog["total"] = total
+            if total and total > 0:
+                pct = round((done / total) * 100, 1)
+                prog["percent"] = pct
+                prog["message"] = f"{stage_name}: {done}/{total} ({pct}%)"
+            else:
+                prog["message"] = f"{stage_name}: {done} steps"
+        else:
+            prog["stage"] = k.capitalize()
+            prog["message"] = str(event)
+        return prog
+
+    def _dispatch_progress_event(event: Dict[str, Any]) -> None:
+        nonlocal last_file_write_time
+        if is_terminal:
+            return
+        # 1. Forward raw event to callback
+        if progress_callback:
+            try:
+                progress_callback(event)
+            except Exception as e:
+                logger.debug(f"progress_callback error: {e}")
+
+        # 2. Write structured progress.json (throttled to at most once per 250ms)
+        prog_data = _format_progress_data(event)
+        now = time.time()
+        pct = prog_data.get("percent", 0)
+        if pct >= 100 or (now - last_file_write_time >= 0.25):
+            last_file_write_time = now
+            try:
+                tmp_p = progress_file.with_name(f"{progress_file.name}.tmp")
+                tmp_p.write_text(json.dumps(prog_data), encoding="utf-8")
+                tmp_p.replace(progress_file)
+            except Exception:
+                pass
+
+        # 3. Log to chemex.log sparingly (milestones at 0%, 25%, 50%, 75%, 100%)
+        # Note: For 'fit', ChemEx already outputs its minimization chi2 table, so omit redundant fit lines.
+        if log_fp:
+            k = event.get("kind")
+            if k in ("grid", "resample", "mcmc"):
+                total = event.get("total")
+                done = event.get("done", 0)
+                if total and total > 0:
+                    pct_int = int((done / total) * 100)
+                    bucket = (pct_int // 25) * 25
+                    if bucket > last_milestones.get(k, -1):
+                        last_milestones[k] = bucket
+                        log_fp.write(f"[{container_name}] {k.upper()} progress: {bucket}% ({done}/{total})\n")
+                        log_fp.flush()
+
+    def _drain_progress(fd: int) -> None:
+        try:
+            with os.fdopen(fd, "r", encoding="utf-8") as pipe_in:
+                for line in pipe_in:
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        event = json.loads(stripped)
+                        _dispatch_progress_event(event)
+                    except Exception as err:
+                        logger.warning(f"Malformed progress event skipped: {stripped[:100]!r} ({err})")
+        except Exception as err:
+            logger.debug(f"Progress stream reader terminated: {err}")
+
+    drain_thread = threading.Thread(target=_drain_progress, args=(r_fd,), daemon=True)
+    drain_thread.start()
 
     return_code = 1
     try:
         process = subprocess.Popen(
-            podman_cmd,
+            cmd,
             cwd=str(work_path),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             universal_newlines=True,
+            pass_fds=(w_fd,),
+            env=child_env,
         )
 
+        try:
+            os.close(w_fd)
+            w_fd_closed = True
+        except OSError:
+            pass
+
         # Stream lines in real-time
+        def _handle_stdout_line(line: Any) -> None:
+            if isinstance(line, bytes):
+                str_line = line.decode("utf-8", errors="replace")
+            else:
+                str_line = str(line)
+
+            stripped = str_line.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    event = json.loads(stripped)
+                    if isinstance(event, dict) and event.get("kind") in ("grid", "resample", "mcmc", "fit"):
+                        _dispatch_progress_event(event)
+                        return
+                except Exception:
+                    pass
+            if log_fp:
+                log_fp.write(str_line)
+                log_fp.flush()
+            else:
+                logger.debug(f"[{container_name}] {stripped}")
+
         if process.stdout:
-            for line in iter(process.stdout.readline, ''):
-                if log_fp:
-                    log_fp.write(line)
-                    log_fp.flush()
-                else:
-                    logger.debug(f"[{container_name}] {line.rstrip()}")
+            if hasattr(process.stdout, "readline"):
+                for line in iter(process.stdout.readline, ''):
+                    _handle_stdout_line(line)
+            else:
+                for line in process.stdout:
+                    _handle_stdout_line(line)
 
         process.wait(timeout=timeout_seconds)
         return_code = process.returncode
 
     except subprocess.TimeoutExpired:
-        logger.warning(f"ChemEx container '{container_name}' timed out after {timeout_seconds}s")
+        logger.warning(f"ChemEx run '{container_name}' timed out after {timeout_seconds}s")
         cancel_chemex_job(job_id)
         return_code = 124
         if log_fp:
@@ -406,7 +560,7 @@ def run_chemex_job(
             log_fp.flush()
 
     except Exception as e:
-        logger.exception(f"Exception during ChemEx container run '{container_name}': {e}")
+        logger.exception(f"Exception during ChemEx run '{container_name}': {e}")
         cancel_chemex_job(job_id)
         return_code = 1
         if log_fp:
@@ -414,6 +568,30 @@ def run_chemex_job(
             log_fp.flush()
 
     finally:
+        if not w_fd_closed:
+            try:
+                os.close(w_fd)
+            except OSError:
+                pass
+        drain_thread.join(timeout=2.0)
+
+        # Write final completion state to progress.json after all stream lines are processed
+        is_terminal = True
+        final_stage = "Completed" if return_code == 0 else ("Cancelled" if return_code in (137, 143) else "Failed")
+        final_prog = {
+            "kind": "completed" if return_code == 0 else ("cancelled" if return_code in (137, 143) else "failed"),
+            "stage": final_stage,
+            "percent": 100.0 if return_code == 0 else 0.0,
+            "message": f"Run {final_stage.lower()}",
+            "updated_at": time.time(),
+        }
+        try:
+            tmp_p = progress_file.with_name(f"{progress_file.name}.tmp")
+            tmp_p.write_text(json.dumps(final_prog), encoding="utf-8")
+            tmp_p.replace(progress_file)
+        except Exception:
+            pass
+
         if log_fp:
             log_fp.close()
 

@@ -3,15 +3,17 @@ ARG PYTHON_IMAGE=docker.io/library/python:3.13-slim-trixie@sha256:16f75ad0fbc6c4
 
 FROM ${UV_IMAGE} AS builder
 WORKDIR /app
-RUN uv venv /app/.venv && uv pip install --no-cache "chemex>=0.9"
+RUN uv venv /app/.venv && uv pip install --no-cache "chemex==2026.6.1"
 COPY containers/chemex_catalog/ /app/.venv/lib/python3.13/site-packages/chemex/experiments/catalog/
 
 FROM ${PYTHON_IMAGE} AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 RUN useradd -u 1000 -m -s /bin/bash appuser
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser resoflow /app/resoflow
 
 ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app:$PYTHONPATH" \
     MPLBACKEND=Agg \
     MPLCONFIGDIR=/tmp/mpl \
     PYTHONUNBUFFERED=1 \
@@ -22,4 +24,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER appuser
 WORKDIR /work
-ENTRYPOINT ["chemex"]
+ENTRYPOINT ["python", "-m", "resoflow.progress"]

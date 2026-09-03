@@ -205,6 +205,19 @@ interface CestPick {
   cs_f: number | null;
 }
 
+interface ProgressInfo {
+  kind: string;
+  stage?: string;
+  done?: number;
+  total?: number;
+  percent?: number;
+  iteration?: number;
+  chisqr?: number;
+  redchi?: number;
+  message?: string;
+  updated_at?: number;
+}
+
 interface CestAnalysisManagerProps {
   analysis: Analysis;
   projectUuid: string;
@@ -335,6 +348,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   // ── Logs State ──
   const [logs, setLogs] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [progressInfo, setProgressInfo] = useState<ProgressInfo | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
 
   // ── Preview File State ──
@@ -568,11 +582,17 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     try {
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/logs`);
       setLogs(res.data.logs || '');
+      if (res.data.progress) {
+        setProgressInfo(res.data.progress);
+      } else if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') {
+        setProgressInfo(null);
+      }
       if (res.data.status && res.data.status !== status) {
         setStatus(res.data.status);
         onStatusChange?.(res.data.status);
         if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') {
           setIsRunning(false);
+          setProgressInfo(null);
           loadResults();
         }
       }
@@ -1157,6 +1177,13 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             {status === 'COMPLETED' && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
             <span>{status}</span>
           </span>
+
+          {(status === 'RUNNING' || status === 'CANCELLING' || isRunning) && progressInfo && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 flex items-center gap-1.5 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span>{progressInfo.percent !== undefined ? `${progressInfo.stage || 'Progress'}: ${progressInfo.percent.toFixed(0)}%` : (progressInfo.message || progressInfo.stage)}</span>
+            </span>
+          )}
 
           {staleParamCount > 0 && (
             <span
@@ -2142,6 +2169,32 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
 
           {activeTab === 'logs' && (
             <div className="space-y-3 animate-in fade-in">
+              {(status === 'RUNNING' || isRunning) && progressInfo && (
+                <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80 rounded-xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+                      <span className="font-bold text-blue-900 dark:text-blue-100">
+                        {progressInfo.message || progressInfo.stage || "Fitting in progress..."}
+                      </span>
+                    </div>
+                    {progressInfo.percent !== undefined && (
+                      <span className="font-mono font-extrabold text-blue-800 dark:text-blue-300">
+                        {progressInfo.percent.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                  {progressInfo.percent !== undefined && (
+                    <div className="w-full bg-blue-200/60 dark:bg-blue-900/50 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${Math.min(100, Math.max(0, progressInfo.percent))}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${status === 'RUNNING' ? 'bg-emerald-500 animate-ping' : status === 'COMPLETED' ? 'bg-emerald-500' : status === 'FAILED' ? 'bg-rose-500' : 'bg-slate-400'}`} />
