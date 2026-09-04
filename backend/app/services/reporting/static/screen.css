@@ -1,4 +1,8 @@
 /* backend/app/services/reporting/static/screen.css */
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -10,16 +14,16 @@ body {
 }
 
 .report-container {
-  max-width: 1000px;
+  max-width: 1280px;
   margin: 0 auto;
   background-color: #FFFFFF;
-  padding: 32px;
+  padding: 32px 40px;
   border-radius: 8px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   color: #111827;
   margin-top: 0;
@@ -33,13 +37,21 @@ h1 {
 }
 
 h2 {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 600;
   color: #111827;
-  margin-top: 24px;
+  margin-top: 28px;
   margin-bottom: 12px;
   border-bottom: 1px solid #E5E7EB;
-  padding-bottom: 6px;
+  padding-bottom: 8px;
+}
+
+h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 20px;
+  margin-bottom: 10px;
 }
 
 table {
@@ -52,21 +64,28 @@ th {
   background-color: #F3F4F6;
   font-weight: 600;
   text-align: left;
-  padding: 8px 12px;
-  border-bottom: 2px solid #E5E7EB;
+  padding: 10px 14px;
+  border-bottom: 2px solid #D1D5DB;
   position: sticky;
   top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 td {
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-bottom: 1px solid #E5E7EB;
+}
+
+tr:hover td {
+  background-color: #F9FAFB;
 }
 
 td.n {
   text-align: right;
   font-variant-numeric: tabular-nums;
   padding-right: 0;
+  white-space: nowrap;
 }
 
 td.e {
@@ -74,6 +93,30 @@ td.e {
   font-variant-numeric: tabular-nums;
   padding-left: 4px;
   color: #4B5563;
+  white-space: nowrap;
+}
+
+a.xref {
+  color: #2563EB;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+a.xref:hover {
+  color: #1D4ED8;
+  background-color: #EFF6FF;
+  text-decoration: underline;
+}
+
+.table-key {
+  font-size: 12px;
+  color: #4B5563;
+  margin-top: 8px;
+  margin-bottom: 24px;
+  line-height: 1.6;
 }
 
 .badge-flag {
@@ -97,21 +140,28 @@ td.e {
   border-radius: 4px;
 }
 
+.page-break {
+  margin: 40px 0;
+  border-top: 1px dashed #E5E7EB;
+}
+
 .profile-grid, .distribution-grid, .grid-1d-grid {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 20px;
+  margin-bottom: 28px;
 }
 
 .profile-card, .distribution-card, .grid-1d-card {
-  width: 48%;
+  flex: 1 1 calc(50% - 20px);
+  min-width: 340px;
   background: #FFFFFF;
   border: 1px solid #E5E7EB;
-  border-radius: 6px;
-  padding: 8px;
+  border-radius: 8px;
+  padding: 12px;
   box-sizing: border-box;
+  scroll-margin-top: 60px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .profile-card svg, .distribution-card svg, .grid-1d-card svg, .residue-plot svg {
@@ -121,19 +171,25 @@ td.e {
 }
 
 .residue-detail {
-  margin-top: 32px;
+  margin-top: 36px;
   padding-top: 24px;
   border-top: 1px solid #E5E7EB;
+  scroll-margin-top: 60px;
+}
+
+tr[id] {
+  scroll-margin-top: 60px;
 }
 
 .correlation-plot, .kinetic-plot {
   text-align: center;
-  margin: 16px 0;
+  margin: 20px 0;
 }
 
 .correlation-plot img, .kinetic-plot img {
   max-width: 100%;
   height: auto;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid #E5E7EB;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
 }

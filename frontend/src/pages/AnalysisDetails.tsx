@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AnalysisManager from '../components/AnalysisManager';
 import CestAnalysisManager from '../components/CestAnalysisManager';
@@ -61,18 +61,29 @@ const AnalysisDetails: React.FC = () => {
 
   return (
     <div className="space-y-6">
-        <div className="flex items-center space-x-4">
-            <button 
-              onClick={handleClose}
-              className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-800 rounded-xl shadow-sm border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {selectedAnalysis.name}
-              </h1>
+        <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+                <button 
+                  onClick={handleClose}
+                  className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-800 rounded-xl shadow-sm border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                    {selectedAnalysis.name}
+                  </h1>
+                </div>
             </div>
+            {selectedAnalysis.status === 'COMPLETED' && (
+              <button
+                onClick={() => navigate(`/projects/${projectUuid}/analysis/${analysisUuid}/report`)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all shadow-sm active:scale-[0.98]"
+              >
+                <FileText className="w-4 h-4" />
+                View Interactive Report
+              </button>
+            )}
         </div>
 
         {selectedAnalysis.analysis_type === '15N-CEST' || selectedAnalysis.analysis_type === 'CEST' ? (

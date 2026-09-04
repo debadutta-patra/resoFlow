@@ -9,6 +9,11 @@
   {% else %}
   <link rel="stylesheet" href="{{ static_dir }}/print.css">
   {% endif %}
+  {% if css_content is defined and css_content %}
+  <style>
+    {{ css_content | safe }}
+  </style>
+  {% endif %}
 </head>
 <body>
   {% block content %}{% endblock %}

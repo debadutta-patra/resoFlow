@@ -347,3 +347,215 @@ def test_retire_matplotlib_assembler():
     assert "page_generators" not in source
     assert "GridSpec" not in source
 
+
+class TestPhaseEReportEndpoints:
+    @pytest.fixture(autouse=True)
+    def setup_app(self, monkeypatch):
+        import tempfile
+        import shutil
+        from fastapi.testclient import TestClient
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from app import models, database, security
+        from app.main import app
+        from app.services.reporting.tasks import generate_report_pdf_task
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        models.Base.metadata.create_all(bind=engine)
+
+        def override_get_db():
+            db = TestingSessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[database.get_db] = override_get_db
+
+        self.db = TestingSessionLocal()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.project_dir = Path(self.tmpdir.name)
+
+        user = models.User(
+            email="report_user@test.com",
+            hashed_password=security.get_password_hash("password123"),
+            full_name="Report Tester",
+            is_active=True,
+        )
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        self.user = user
+
+        token = security.create_access_token(data={"sub": user.email})
+        self.headers = {"Authorization": f"Bearer {token}"}
+
+        project = models.Project(
+            project_uuid="proj-phase-e",
+            name="Phase E Project",
+            user_id=user.id,
+            local_directory_path=str(self.project_dir),
+        )
+        self.db.add(project)
+        self.db.commit()
+        self.db.refresh(project)
+        self.project = project
+
+        analysis = models.Analysis(
+            analysis_uuid="analysis-phase-e",
+            name="Phase E Analysis",
+            analysis_type="CPMG",
+            project_id=project.id,
+            status="COMPLETED",
+        )
+        self.db.add(analysis)
+        self.db.commit()
+        self.db.refresh(analysis)
+        self.analysis = analysis
+
+        # Copy single_step fixture to run_dir
+        fixture_src = Path(__file__).parent / "fixtures" / "chemex_trees" / "single_step"
+        self.run_dir = self.project_dir / "cpmg_fitting" / analysis.analysis_uuid
+        shutil.copytree(fixture_src, self.run_dir)
+
+        analysis.results_path = str(self.run_dir / "results.json")
+        self.db.commit()
+
+        self.client = TestClient(app)
+
+        yield
+
+        app.dependency_overrides.clear()
+        self.tmpdir.cleanup()
+        self.db.close()
+
+    def test_report_html_endpoints(self):
+        """Verify report.html returns 200, styled with screen.css and sticky headers."""
+        # 1. Nested endpoint
+        res = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/report.html?style=screen",
+            headers=self.headers,
+        )
+        assert res.status_code == 200
+        assert "text/html" in res.headers["content-type"]
+        assert "Phase E Analysis" in res.text
+        assert "position: sticky" in res.text
+        assert "scroll-margin-top" in res.text
+        assert "id=\"res-" in res.text
+
+        # 2. Standalone endpoint per spec §9
+        res_standalone = self.client.get(
+            f"/analysis/{self.analysis.analysis_uuid}/report.html",
+            headers=self.headers,
+        )
+        assert res_standalone.status_code == 200
+        assert "text/html" in res_standalone.headers["content-type"]
+
+    def test_report_json_endpoints(self):
+        """Verify report.json returns 200, returning serialized ReportModel."""
+        # 1. Nested endpoint
+        res = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/report.json",
+            headers=self.headers,
+        )
+        assert res.status_code == 200
+        assert "application/json" in res.headers["content-type"]
+        data = res.json()
+        assert data["analysis_name"] == "Phase E Analysis"
+        assert len(data["residues"]) > 0
+        assert "global_params" in data
+        assert "derived_kinetics" in data
+
+        # 2. Standalone endpoint per spec §9
+        res_standalone = self.client.get(
+            f"/analysis/{self.analysis.analysis_uuid}/report.json",
+            headers=self.headers,
+        )
+        assert res_standalone.status_code == 200
+        assert res_standalone.json()["analysis_name"] == "Phase E Analysis"
+
+    def test_report_pdf_endpoint(self):
+        """Verify report.pdf returns publication PDF."""
+        res = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/report.pdf",
+            headers=self.headers,
+        )
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "application/pdf"
+        reader = pypdf.PdfReader(io.BytesIO(res.content))
+        assert len(reader.pages) >= 5
+
+    def test_async_task_and_token_download_flow(self):
+        """Verify Celery task dispatch and signed expiring token delivery."""
+        from app.services.reporting.tasks import generate_report_pdf_task
+
+        # 1. Trigger async report generation
+        res = self.client.post(
+            f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/report/async",
+            json={"style": "publication"},
+            headers=self.headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "task_id" in data
+        assert "token" in data
+        assert "download_url" in data
+
+        # 2. Check task status endpoint
+        status_res = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/report/status/{data['task_id']}",
+            headers=self.headers,
+        )
+        assert status_res.status_code == 200
+        assert "ready" in status_res.json()
+
+        # 3. Run the Celery task directly to produce report.pdf
+        task_res = generate_report_pdf_task(self.analysis.analysis_uuid, style="publication", db=self.db)
+        assert task_res["status"] == "COMPLETED"
+        assert (self.run_dir / "report.pdf").exists()
+
+        # 4. Download report using signed token
+        dl_res = self.client.get(data["download_url"])
+        assert dl_res.status_code == 200
+        assert dl_res.headers["content-type"] == "application/pdf"
+        assert len(dl_res.content) > 1000
+
+        # 5. Verify single-use token replay fails
+        dl_replay = self.client.get(data["download_url"])
+        assert dl_replay.status_code == 401
+
+    def test_report_auth_and_scoping(self):
+        """Verify authentication requirements and cross-user scoping."""
+        from app import models, security
+
+        # Unauthenticated request
+        res_no_auth = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/report.html"
+        )
+        assert res_no_auth.status_code == 401
+
+        # Other user's token
+        other_user = models.User(
+            email="intruder@test.com",
+            hashed_password=security.get_password_hash("password123"),
+            full_name="Intruder",
+            is_active=True,
+        )
+        self.db.add(other_user)
+        self.db.commit()
+        other_token = security.create_access_token(data={"sub": other_user.email})
+        other_headers = {"Authorization": f"Bearer {other_token}"}
+
+        res_forbidden = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{self.analysis.analysis_uuid}/report.html",
+            headers=other_headers,
+        )
+        assert res_forbidden.status_code in (403, 404)
+
+

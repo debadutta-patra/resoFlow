@@ -538,10 +538,14 @@ def build_report_context(
     index_data = build_index_data(model, fallback_anchors=False)
     prov_data = build_provenance_data(model)
 
+    css_file = s_dir / ("screen.css" if style == "screen" else "print.css")
+    css_content = css_file.read_text(encoding="utf-8") if css_file.is_file() else ""
+
     return {
         "model": model,
         "style": style,
         "static_dir": str(s_dir.resolve()),
+        "css_content": css_content,
         "summary_data": summary_data,
         "index_data": index_data,
         "kinetic_data": kinetic_data,
@@ -562,7 +566,9 @@ def render_weasy_html(
     """Render a Jinja2 template to an HTML string."""
     env = create_jinja_env(template_dir=template_dir)
     template = env.get_template(template_name)
-    return template.render(**context)
+    ctx = dict(context)
+    ctx.setdefault("css_content", "")
+    return template.render(**ctx)
 
 
 def render_weasy_pdf(
@@ -573,8 +579,10 @@ def render_weasy_pdf(
 ) -> bytes:
     """Render a Jinja2 template directly to PDF bytes via WeasyPrint."""
     s_dir = static_dir or STATIC_DIR
-    context["static_dir"] = str(s_dir.resolve())
-    html_str = render_weasy_html(template_name, context, template_dir=template_dir)
+    ctx = dict(context)
+    ctx["static_dir"] = str(s_dir.resolve())
+    ctx.setdefault("css_content", "")
+    html_str = render_weasy_html(template_name, ctx, template_dir=template_dir)
     html = weasyprint.HTML(string=html_str, base_url=str(s_dir.resolve()))
     return html.write_pdf()
 

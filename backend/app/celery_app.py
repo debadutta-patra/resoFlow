@@ -17,8 +17,8 @@ celery_app = Celery(
         "app.services.fitting.relaxation_tasks",
         "app.services.fitting.cest_tasks",
         "app.services.fitting.cpmg_tasks",
+        "app.services.reporting.tasks",
     ]  # Ensure tasks are discovered
-
 )
 
 # Optional configuration
@@ -39,6 +39,7 @@ celery_app.conf.task_routes = {
     "app.services.fitting.service.fit_cluster_task": {"queue": "peakfit"},
     "app.services.fitting.service.compile_results_task": {"queue": "peakfit"},
     "app.services.fitting.relaxation_tasks.run_relaxation_analysis_task": {"queue": "stats"},
+    "app.services.reporting.tasks.generate_report_pdf_task": {"queue": "stats"},
 }
 
 @worker_process_init.connect

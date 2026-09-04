@@ -18,9 +18,15 @@ from .deps import get_project, get_analysis
 from ..celery_app import celery_app
 from ..services.fitting.cest_report import generate_cest_pdf_report
 from ..services.fitting.cest_tasks import _update_experiment_toml_exclusions
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse, Response
+from ..services.reporting.model import build_report_model
+from ..services.reporting.render import render_html, render_pdf
+from ..services.reporting.report_generator import generate_modern_pdf_report
+from ..services.reporting.tasks import generate_report_pdf_task
+from ..services.export.zip_export import generate_export_token, verify_export_token
 
 router = APIRouter(prefix="/api/projects/{project_uuid}/analysis", tags=["analysis"])
+analysis_report_router = APIRouter(prefix="/analysis", tags=["analysis-report"])
 @router.post("", response_model=schemas.Analysis)
 def create_analysis(
     analysis_data: schemas.AnalysisCreate,
@@ -1085,73 +1091,336 @@ def restore_cest_analysis(
         raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
 
 
-@router.get("/{analysis_uuid}/cest/report")
-def export_cest_report(
-    style: str = "publication",
-    analysis: models.Analysis = Depends(get_analysis),
-    db: Session = Depends(database.get_db)
-):
-    """Generate and return a multi-page PDF report for the CEST analysis."""
+def _get_analysis_run_dir(analysis: models.Analysis) -> str:
+    """Resolve the directory containing ChemEx results for an analysis."""
     project = analysis.project
+    is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
     if analysis.results_path and os.path.exists(analysis.results_path):
-        run_dir = os.path.dirname(analysis.results_path)
-    else:
-        run_dir = os.path.join(project.local_directory_path, "cest_fitting", analysis.analysis_uuid)
-    
+        return os.path.dirname(analysis.results_path)
+    return os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
+
+
+def _render_analysis_html(analysis: models.Analysis, style: str = "screen") -> HTMLResponse:
+    run_dir = _get_analysis_run_dir(analysis)
+    if not os.path.exists(run_dir):
+        raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
-        pdf_buffer = generate_cest_pdf_report(
-            run_dir,
-            analysis.name,
-            analysis_type="CEST",
+        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        model = build_report_model(
+            analysis_dir=run_dir,
+            analysis_name=analysis.name,
+            analysis_type="CPMG" if is_cpmg else "CEST",
+            chemex_image_digest=analysis.chemex_image_digest,
+        )
+        html_str = render_html(model, style=style)
+        return HTMLResponse(content=html_str)
+    except Exception as e:
+        logger.exception("Failed to render HTML report for %s: %s", analysis.analysis_uuid, e)
+        raise HTTPException(status_code=500, detail="Failed to generate report. Please check server logs.")
+
+
+def _render_analysis_json(analysis: models.Analysis) -> Response:
+    run_dir = _get_analysis_run_dir(analysis)
+    if not os.path.exists(run_dir):
+        raise HTTPException(status_code=404, detail="Analysis results directory not found")
+    try:
+        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        model = build_report_model(
+            analysis_dir=run_dir,
+            analysis_name=analysis.name,
+            analysis_type="CPMG" if is_cpmg else "CEST",
+            chemex_image_digest=analysis.chemex_image_digest,
+        )
+        json_str = json.dumps(model.to_dict())
+        return Response(content=json_str, media_type="application/json")
+    except Exception as e:
+        logger.exception("Failed to generate report JSON for %s: %s", analysis.analysis_uuid, e)
+        raise HTTPException(status_code=500, detail="Failed to generate report data. Please check server logs.")
+
+
+def _render_or_serve_pdf(analysis: models.Analysis, style: str = "publication"):
+    run_dir = _get_analysis_run_dir(analysis)
+    if not os.path.exists(run_dir):
+        raise HTTPException(status_code=404, detail="Analysis results directory not found")
+    is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+    type_name = "cpmg" if is_cpmg else "cest"
+
+    pdf_path = os.path.join(run_dir, "report.pdf")
+    if os.path.exists(pdf_path):
+        return FileResponse(
+            pdf_path,
+            media_type="application/pdf",
+            filename=f"{type_name}_{analysis.analysis_uuid}_report.pdf",
+        )
+
+    try:
+        pdf_buf = generate_modern_pdf_report(
+            analysis_dir=run_dir,
+            analysis_name=analysis.name,
+            analysis_type=type_name.upper(),
             style=style,
             chemex_image_digest=analysis.chemex_image_digest,
         )
         return StreamingResponse(
-            pdf_buffer,
+            pdf_buf,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"attachment; filename=cest_{analysis.analysis_uuid}_report.pdf"
-            }
+                "Content-Disposition": f"attachment; filename={type_name}_{analysis.analysis_uuid}_report.pdf"
+            },
         )
     except Exception as e:
-        logger.exception("Failed to generate CEST report for %s: %s", analysis.analysis_uuid, e)
+        logger.exception("Failed to generate PDF report for %s: %s", analysis.analysis_uuid, e)
         raise HTTPException(status_code=500, detail="Failed to generate report. Please check server logs.")
+
+
+def _trigger_pdf_async(
+    analysis: models.Analysis,
+    current_user: models.User,
+    style: str = "publication",
+    options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if analysis.status != "COMPLETED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Analysis report requires status COMPLETED (current status: {analysis.status})",
+        )
+
+    task = generate_report_pdf_task.delay(
+        analysis_uuid=analysis.analysis_uuid,
+        style=style,
+        options=options,
+    )
+    token = generate_export_token(
+        project_uuid=analysis.project.project_uuid,
+        analysis_uuid=analysis.analysis_uuid,
+        user_id=current_user.id,
+        options={"style": style, "type": "report"},
+        validity_seconds=600,
+    )
+    download_url = (
+        f"/api/projects/{analysis.project.project_uuid}/analysis/{analysis.analysis_uuid}/report/download?token={token}"
+    )
+    return {
+        "task_id": task.id,
+        "token": token,
+        "download_url": download_url,
+        "expires_in": 600,
+    }
+
+
+def _poll_pdf_status(task_id: str) -> Dict[str, Any]:
+    res = celery_app.AsyncResult(task_id)
+    if res.state == "SUCCESS":
+        return {"status": "SUCCESS", "ready": True, "result": res.result}
+    elif res.state == "FAILURE":
+        return {
+            "status": "FAILURE",
+            "ready": True,
+            "error": "Report generation failed. Please check server logs.",
+        }
+    return {"status": res.state, "ready": False}
+
+
+def _get_analysis_for_standalone_report(
+    analysis_uuid: str,
+    db: Session,
+    current_user: Optional[models.User] = None,
+    token: Optional[str] = None,
+) -> models.Analysis:
+    analysis = db.query(models.Analysis).filter(
+        models.Analysis.analysis_uuid == analysis_uuid
+    ).first()
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+
+    if token:
+        valid, _, err = verify_export_token(token, analysis.project.project_uuid, analysis_uuid)
+        if not valid:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err)
+        return analysis
+
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    project = analysis.project
+    if project.user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
+    return analysis
+
+
+# ==============================================================================
+# Nested Endpoints (/api/projects/{project_uuid}/analysis/{analysis_uuid}/...)
+# ==============================================================================
+
+@router.get("/{analysis_uuid}/report.html", response_class=HTMLResponse)
+def get_report_html(
+    analysis: models.Analysis = Depends(get_analysis),
+    style: str = "screen",
+):
+    """Render and return the interactive HTML report using screen.css."""
+    return _render_analysis_html(analysis, style=style)
+
+
+@router.get("/{analysis_uuid}/report.json", response_class=JSONResponse)
+def get_report_json(
+    analysis: models.Analysis = Depends(get_analysis),
+):
+    """Return the ReportModel data serialized to dictionary per WeasyPrint spec §9."""
+    return _render_analysis_json(analysis)
+
+
+@router.get("/{analysis_uuid}/report.pdf")
+def get_report_pdf(
+    style: str = "publication",
+    analysis: models.Analysis = Depends(get_analysis),
+):
+    """Return the publication-ready PDF report."""
+    return _render_or_serve_pdf(analysis, style=style)
+
+
+@router.get("/{analysis_uuid}/cest/report")
+def export_cest_report(
+    style: str = "publication",
+    analysis: models.Analysis = Depends(get_analysis),
+    db: Session = Depends(database.get_db),
+):
+    """Generate and return a multi-page PDF report for the CEST analysis."""
+    return _render_or_serve_pdf(analysis, style=style)
+
 
 @router.get("/{analysis_uuid}/cpmg/report")
 @router.get("/{analysis_uuid}/report")
 def export_cpmg_report(
     style: str = "publication",
     analysis: models.Analysis = Depends(get_analysis),
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
 ):
     """Generate and return a multi-page PDF report for the CPMG or general analysis."""
-    project = analysis.project
-    is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
-    if analysis.results_path and os.path.exists(analysis.results_path):
-        run_dir = os.path.dirname(analysis.results_path)
-    else:
-        run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
-    type_name = "cpmg" if is_cpmg else "cest"
-    
-    try:
-        pdf_buffer = generate_cest_pdf_report(
-            run_dir,
-            analysis.name,
-            analysis_type=type_name.upper(),
-            style=style,
-            chemex_image_digest=analysis.chemex_image_digest,
-        )
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f"attachment; filename={type_name}_{analysis.analysis_uuid}_report.pdf"
-            }
-        )
-    except Exception as e:
-        logger.exception("Failed to generate CPMG report for %s: %s", analysis.analysis_uuid, e)
-        raise HTTPException(status_code=500, detail="Failed to generate report. Please check server logs.")
+    return _render_or_serve_pdf(analysis, style=style)
+
+
+@router.post("/{analysis_uuid}/report/async")
+def trigger_report_pdf_async(
+    request: Optional[Dict[str, Any]] = None,
+    analysis: models.Analysis = Depends(get_analysis),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """
+    Dispatch asynchronous PDF report generation to Celery 'stats' queue.
+    Returns task_id, signed download token, and download_url.
+    """
+    req = request or {}
+    style = req.get("style", "publication")
+    return _trigger_pdf_async(analysis, current_user, style=style, options=req)
+
+
+@router.get("/{analysis_uuid}/report/status/{task_id}")
+def check_report_pdf_status(
+    task_id: str,
+    analysis: models.Analysis = Depends(get_analysis),
+):
+    """Poll Celery task status for asynchronous report generation."""
+    return _poll_pdf_status(task_id)
+
+
+@router.get("/{analysis_uuid}/report/download")
+def download_report_pdf(
+    project_uuid: str,
+    analysis_uuid: str,
+    token: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+):
+    """Download the generated PDF report via signed token or active session."""
+    analysis = _get_analysis_for_standalone_report(
+        analysis_uuid=analysis_uuid,
+        db=db,
+        current_user=current_user,
+        token=token,
+    )
+    return _render_or_serve_pdf(analysis)
+
+
+# ==============================================================================
+# Top-level Endpoints (/analysis/{analysis_uuid}/...) per WeasyPrint spec §9
+# ==============================================================================
+
+@analysis_report_router.get("/{analysis_uuid}/report.html", response_class=HTMLResponse)
+def get_standalone_report_html(
+    analysis_uuid: str,
+    style: str = "screen",
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+    token: Optional[str] = None,
+):
+    """Standalone GET /analysis/{uuid}/report.html per spec §9."""
+    analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
+    return _render_analysis_html(analysis, style=style)
+
+
+@analysis_report_router.get("/{analysis_uuid}/report.json", response_class=JSONResponse)
+def get_standalone_report_json(
+    analysis_uuid: str,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+    token: Optional[str] = None,
+):
+    """Standalone GET /analysis/{uuid}/report.json per spec §9."""
+    analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
+    return _render_analysis_json(analysis)
+
+
+@analysis_report_router.get("/{analysis_uuid}/report.pdf")
+def get_standalone_report_pdf(
+    analysis_uuid: str,
+    style: str = "publication",
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+    token: Optional[str] = None,
+):
+    """Standalone GET /analysis/{uuid}/report.pdf per spec §9."""
+    analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
+    return _render_or_serve_pdf(analysis, style=style)
+
+
+@analysis_report_router.post("/{analysis_uuid}/report/async")
+def trigger_standalone_report_async(
+    analysis_uuid: str,
+    request: Optional[Dict[str, Any]] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Standalone POST /analysis/{uuid}/report/async."""
+    analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user)
+    req = request or {}
+    style = req.get("style", "publication")
+    return _trigger_pdf_async(analysis, current_user, style=style, options=req)
+
+
+@analysis_report_router.get("/{analysis_uuid}/report/status/{task_id}")
+def check_standalone_report_status(
+    analysis_uuid: str,
+    task_id: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Standalone GET /analysis/{uuid}/report/status/{task_id}."""
+    _get_analysis_for_standalone_report(analysis_uuid, db, current_user)
+    return _poll_pdf_status(task_id)
+
+
+@analysis_report_router.get("/{analysis_uuid}/report/download")
+def download_standalone_report(
+    analysis_uuid: str,
+    token: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+):
+    """Standalone GET /analysis/{uuid}/report/download."""
+    analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
+    return _render_or_serve_pdf(analysis)
 
 
 @router.post("/{analysis_uuid}/export-token")
