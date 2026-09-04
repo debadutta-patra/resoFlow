@@ -23,14 +23,14 @@
     {% for row in summary_data.global_rows %}
     <tr>
       <td>{{ row.name }}</td>
-      <td class="num-center">{{ row.symbol }}</td>
+      <td class="num-center">{{ row.symbol|safe }}</td>
       <td>
         <span class="badge-status {% if row.status == 'FITTED' %}badge-fitted{% elif row.status == 'FIXED' %}badge-fixed{% endif %}">
           {{ row.status }}
         </span>
       </td>
       <td style="text-align: right;">{{ row.value_html|safe }}</td>
-      <td>{{ row.source_text }}</td>
+      <td>{{ row.source_text|safe }}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -52,8 +52,8 @@
     {% for k in summary_data.derived_rows %}
     <tr>
       <td><strong>{{ k.name }}</strong></td>
-      <td class="num-center">{{ k.symbol }}</td>
-      <td><code>{{ k.expression }}</code></td>
+      <td class="num-center">{{ k.symbol|safe }}</td>
+      <td><code>{{ k.expression|safe }}</code></td>
       <td style="text-align: right;">{{ k.value_html|safe }}</td>
       <td>{{ k.method }}</td>
     </tr>

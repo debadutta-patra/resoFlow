@@ -21,7 +21,7 @@
       {% for p in rec.params %}
       <tr>
         <td>{{ p.name }}</td>
-        <td class="num-center">{{ p.symbol }}</td>
+        <td class="num-center">{{ p.symbol|safe }}</td>
         <td>
           <span class="badge-status {% if p.status == 'FITTED' %}badge-fitted{% elif p.status == 'FIXED' %}badge-fixed{% endif %}">
             {{ p.status }}

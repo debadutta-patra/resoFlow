@@ -18,7 +18,7 @@ import pypdf
 import weasyprint
 
 from .model import ReportModel, ResidueRecord
-from .formatting import format_with_error, SOURCE_SUPERSCRIPTS_HTML
+from .formatting import format_with_error, SOURCE_SUPERSCRIPTS_HTML, format_subscript_html
 from .uncertainty import ParameterStatus, UncertaintySource, ResolvedParameter
 from .plot_styles import apply_report_style
 from . import figures
@@ -45,8 +45,12 @@ def create_jinja_env(template_dir: Optional[Path] = None) -> Environment:
             return Markup(SOURCE_SUPERSCRIPTS_HTML.get(s_val, ""))
         return Markup("")
 
+    def _subscript_filter(text: Any) -> Markup:
+        return Markup(format_subscript_html(str(text) if text is not None else ""))
+
     env.filters["val"] = _val_filter
     env.filters["srcmk"] = _srcmk_filter
+    env.filters["subscript"] = _subscript_filter
     return env
 
 
@@ -61,7 +65,7 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
         kex_src = kex_res.source.value if kex_res.status == ParameterStatus.FITTED else "—"
         global_rows.append({
             "name": "Exchange Rate",
-            "symbol": "k_ex",
+            "symbol": format_subscript_html("k_ex"),
             "status": kex_res.status.value,
             "value_html": kex_html,
             "source_text": kex_src,
@@ -74,7 +78,7 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
         pb_src = pb_res.source.value if pb_res.status == ParameterStatus.FITTED else "—"
         global_rows.append({
             "name": "Excited Population",
-            "symbol": "p_b",
+            "symbol": format_subscript_html("p_b"),
             "status": pb_res.status.value,
             "value_html": pb_html,
             "source_text": pb_src,
@@ -88,10 +92,10 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
             pa_html = "—"
         global_rows.append({
             "name": "Major State Pop.",
-            "symbol": "p_a",
+            "symbol": format_subscript_html("p_a"),
             "status": "DERIVED",
             "value_html": pa_html,
-            "source_text": "Derived (1 − p_b)",
+            "source_text": format_subscript_html("Derived (1 − p_b)"),
         })
 
     # 4. Correlation time (if present in model)
@@ -100,7 +104,7 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
         tauc_html = format_with_error(tauc_res, style="html")
         global_rows.append({
             "name": "Correlation Time",
-            "symbol": "τ_c",
+            "symbol": format_subscript_html("τ_c"),
             "status": tauc_res.status.value,
             "value_html": tauc_html,
             "source_text": tauc_res.source.value,
@@ -117,7 +121,7 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
     })
     global_rows.append({
         "name": "Reduced Chi-Square",
-        "symbol": "χ²_red",
+        "symbol": format_subscript_html("χ²_red"),
         "status": "STATISTIC",
         "value_html": f'<span class="v">{dof_info.chi2_red_global:.2f}</span>',
         "source_text": "Goodness of fit",
@@ -132,8 +136,8 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
                 val_html = format_with_error(k_obj.value, k_obj.err_low, k_obj.err_high, unit=k_obj.unit, source=k_obj.source.value, status="FITTED", style="html")
                 derived_rows.append({
                     "name": k_obj.name.upper(),
-                    "symbol": k_obj.symbol,
-                    "expression": k_obj.expression,
+                    "symbol": format_subscript_html(k_obj.symbol),
+                    "expression": format_subscript_html(k_obj.expression),
                     "value_html": val_html,
                     "method": k_obj.propagation_method,
                 })
@@ -168,10 +172,10 @@ def build_index_data(
     rows = []
     for idx, r in enumerate(model.residues):
         chi2_red_str = f"{r.chi2_red:.2f}" if r.chi2_red is not None else "—"
-        dw_html = format_with_error(r.dw, style="html")
-        r2a_html = format_with_error(r.r2a, style="html")
-        r2b_html = format_with_error(r.r2b, style="html")
-        r1a_html = format_with_error(r.r1a, style="html")
+        dw_html = format_with_error(r.dw, style="html", include_unit=False)
+        r2a_html = format_with_error(r.r2a, style="html", include_unit=False)
+        r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
+        r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
 
         if r.raw_key in detailed_indices:
             target_page = detailed_start_page + detailed_indices[r.raw_key]
@@ -303,12 +307,12 @@ def build_detailed_residues(model: ReportModel) -> List[Dict[str, Any]]:
         svg = figures.detailed_residue_plot(r, analysis_type=model.analysis_type)
 
         p_items = [
-            ("Chemical Shift A", "CS_A", r.csa),
-            ("Chemical Shift B", "CS_B", r.csb),
-            ("Chemical Shift Diff", "Δω_AB", r.dw),
-            ("Transverse Rel. A", "R₂A", r.r2a),
-            ("Transverse Rel. B", "R₂B", r.r2b),
-            ("Longitudinal Rel. A", "R₁A", r.r1a),
+            ("Chemical Shift A", format_subscript_html("CS_A"), r.csa),
+            ("Chemical Shift B", format_subscript_html("CS_B"), r.csb),
+            ("Chemical Shift Diff", format_subscript_html("Δω_AB"), r.dw),
+            ("Transverse Rel. A", format_subscript_html("R₂A"), r.r2a),
+            ("Transverse Rel. B", format_subscript_html("R₂B"), r.r2b),
+            ("Longitudinal Rel. A", format_subscript_html("R₁A"), r.r1a),
         ]
         params = []
         for name, sym, p_res in p_items:

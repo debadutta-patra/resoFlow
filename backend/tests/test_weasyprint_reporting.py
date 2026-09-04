@@ -559,3 +559,51 @@ class TestPhaseEReportEndpoints:
         assert res_forbidden.status_code in (403, 404)
 
 
+def test_format_subscript_html():
+    from app.services.reporting.formatting import format_subscript_html
+
+    assert format_subscript_html("k_ex") == "k<sub>ex</sub>"
+    assert format_subscript_html("p_b") == "p<sub>b</sub>"
+    assert format_subscript_html("p_a") == "p<sub>a</sub>"
+    assert format_subscript_html("χ²_red") == "χ²<sub>red</sub>"
+    assert format_subscript_html("k_AB") == "k<sub>AB</sub>"
+    assert format_subscript_html("k_BA") == "k<sub>BA</sub>"
+    assert format_subscript_html("τ_B") == "τ<sub>B</sub>"
+    assert format_subscript_html("τ_A") == "τ<sub>A</sub>"
+    assert format_subscript_html("CS_A") == "CS<sub>A</sub>"
+    assert format_subscript_html("CS_B") == "CS<sub>B</sub>"
+    assert format_subscript_html("Δω_AB") == "Δω<sub>AB</sub>"
+    assert format_subscript_html("R₂A") == "R<sub>2A</sub>"
+    assert format_subscript_html("R₂B") == "R<sub>2B</sub>"
+    assert format_subscript_html("R₁A") == "R<sub>1A</sub>"
+    assert format_subscript_html("k_ex · p_b") == "k<sub>ex</sub> · p<sub>b</sub>"
+    assert format_subscript_html("1 / k_BA") == "1 / k<sub>BA</sub>"
+    assert format_subscript_html("Derived (1 − p_b)") == "Derived (1 − p<sub>b</sub>)"
+
+
+def test_asymmetric_error_symmetric_rounding():
+    """Verify that when err_low and err_high round to the exact same string, ± is used."""
+    from app.services.reporting.formatting import format_with_error
+    from app.services.reporting.uncertainty import ResolvedParameter, UncertaintySource, ParameterStatus
+
+    param = ResolvedParameter(
+        name="dw",
+        scope="residue",
+        status=ParameterStatus.FITTED,
+        value=6.65,
+        err_low=0.048,
+        err_high=0.052,
+        source=UncertaintySource.RESAMPLED,
+        unit="ppm",
+    )
+    html = format_with_error(param, style="html")
+    assert '<span class="pm">&plusmn;0.05</span>' in html
+    assert '<sup>+0.05</sup>' not in html
+
+    # With include_unit=False
+    html_no_unit = format_with_error(param, style="html", include_unit=False)
+    assert '<span class="pm">&plusmn;0.05</span>' in html_no_unit
+    assert 'ppm' not in html_no_unit
+
+
+
