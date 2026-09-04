@@ -1,0 +1,52 @@
+<!-- backend/app/services/reporting/templates/_index.html -->
+<h2>Residue Results Index</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 14%;">Residue</th>
+      <th style="width: 10%; text-align: right;">Red. χ²</th>
+      <th style="width: 17%; text-align: right;">Δω (ppm)</th>
+      <th style="width: 17%; text-align: right;">R₂A (s⁻¹)</th>
+      <th style="width: 17%; text-align: right;">R₂B (s⁻¹)</th>
+      <th style="width: 17%; text-align: right;">R₁A (s⁻¹)</th>
+      <th style="width: 8%; text-align: center;">Flags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in index_data.rows %}
+    <tr>
+      <td><a class="xref" href="#{{ r.anchor }}">{{ r.display_name }}</a></td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.chi2_red_str }}</td>
+      <td style="text-align: right;">{{ r.dw_html|safe }}</td>
+      <td style="text-align: right;">{{ r.r2a_html|safe }}</td>
+      <td style="text-align: right;">{{ r.r2b_html|safe }}</td>
+      <td style="text-align: right;">{{ r.r1a_html|safe }}</td>
+      <td style="text-align: center;">
+        {% if r.flags %}
+          {% for f in r.flags %}
+            <span class="badge-flag" title="{{ f }}">{{ f }}</span>
+          {% endfor %}
+        {% else %}
+          <span class="badge-good">PASS</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="table-key">
+  <strong>Uncertainty Legend:</strong>
+  <sup>ᵍ</sup> 1D Grid Likelihood Scan &nbsp;|&nbsp;
+  <sup>ᵐ</sup> Resampling (Monte Carlo / Bootstrap) &nbsp;|&nbsp;
+  <sup>ᶜ</sup> Covariance Analytical Approximation &nbsp;|&nbsp;
+  <sup>*</sup> Defensible Value (No Uncertainty Available)
+</div>
+
+<!-- Hidden anchor targets for cross-reference pagination and structural text extraction -->
+<div class="hidden-anchors">
+  {% for r in index_data.rows %}
+    <div id="{{ r.anchor }}" style="counter-reset: page {{ r.target_page }};">{{ r.anchor }}</div>
+  {% endfor %}
+</div>

@@ -1,0 +1,70 @@
+<!-- backend/app/services/reporting/templates/_summary.html -->
+<div class="doc-header">
+  <h1>{{ model.analysis_type }} Relaxation Dispersion Analysis Report</h1>
+  <div class="subtitle">
+    Analysis: <strong>{{ model.analysis_name }}</strong> &nbsp;|&nbsp;
+    Kinetic Model: <strong>{{ model.provenance.model_name|upper }}</strong> &nbsp;|&nbsp;
+    Residues: <strong>{{ model.residues|length }}</strong>
+  </div>
+</div>
+
+<h2>Global Relaxation &amp; Exchange Parameters</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 26%;">Parameter</th>
+      <th style="width: 12%;">Symbol</th>
+      <th style="width: 16%;">Status</th>
+      <th style="width: 26%; text-align: right;">Fitted / Fixed Value</th>
+      <th style="width: 20%;">Uncertainty Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in summary_data.global_rows %}
+    <tr>
+      <td>{{ row.name }}</td>
+      <td class="num-center">{{ row.symbol }}</td>
+      <td>
+        <span class="badge-status {% if row.status == 'FITTED' %}badge-fitted{% elif row.status == 'FIXED' %}badge-fixed{% endif %}">
+          {{ row.status }}
+        </span>
+      </td>
+      <td style="text-align: right;">{{ row.value_html|safe }}</td>
+      <td>{{ row.source_text }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if summary_data.derived_rows %}
+<h2>Derived Kinetic Quantities (Covariance-Aware Propagation)</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 20%;">Quantity</th>
+      <th style="width: 12%;">Symbol</th>
+      <th style="width: 24%;">Expression</th>
+      <th style="width: 24%; text-align: right;">Propagated Value</th>
+      <th style="width: 20%;">Propagation Method</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for k in summary_data.derived_rows %}
+    <tr>
+      <td><strong>{{ k.name }}</strong></td>
+      <td class="num-center">{{ k.symbol }}</td>
+      <td><code>{{ k.expression }}</code></td>
+      <td style="text-align: right;">{{ k.value_html|safe }}</td>
+      <td>{{ k.method }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<div class="warning-callout" style="background-color: #F9FAFB; border-left: 3pt solid #6B7280; color: #374151;">
+  <strong>Key Notes &amp; Interpretation Guidelines:</strong><br>
+  • Uncertainties follow strict precedence: 1D Grid Search (Δχ²=1.00/3.84) &gt; Resampled Percentiles &gt; Covariance σ.<br>
+  • Numerical values are rounded strictly to the least significant digit of their uncertainty.<br>
+  • Fixed or constrained parameters are explicitly labeled and never displayed with pseudo-uncertainties.
+</div>

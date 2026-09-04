@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.gridspec import GridSpec
 import numpy as np
+import pypdf
 
 from .formatting import format_with_error, format_defensible_value
 from .uncertainty import UncertaintyResolver, UncertaintySource, ParameterStatus, ResolvedParameter
@@ -182,41 +183,71 @@ class ReportBuilder:
 
     def render_pdf(self) -> io.BytesIO:
         """
-        Build and render the entire multi-page PDF document into a BytesIO stream.
+        Build and render the entire multi-page PDF document using WeasyPrint for front/back matter
+        and matplotlib for plot pages, stitched with pypdf per Phase C of WeasyPrint migration.
         """
-        buf = io.BytesIO()
+        from .render import (
+            build_summary_data,
+            build_index_data,
+            build_provenance_data,
+            render_weasy_pdf,
+            stitch_pdf_report,
+        )
 
-        # Temporary collection of page builder functions to calculate total page count dynamically
-        page_generators = []
-
-        # 1. Executive Summary Page
-        page_generators.append(self._build_summary_page)
-
-        # 2. Residue Index Table Page(s)
+        has_kinetic_corr = self._has_kinetic_correlation_data()
         n_res = len(self.residue_records)
-        res_per_idx_page = 28
-        n_idx_pages = max(1, math.ceil(n_res / res_per_idx_page)) if n_res > 0 else 1
-        for p_idx in range(n_idx_pages):
-            page_generators.append(lambda fig, p_i=p_idx: self._build_index_page(fig, p_i, res_per_idx_page))
 
-        # 3. Kinetic Correlation / 2D Grid Page (Phase 4)
-        if self._has_kinetic_correlation_data():
-            page_generators.append(self._build_kinetic_correlation_page)
+        # 1. First pass estimate for front pages (Summary is 1 page, Index is ceil(n_res / 28) or 1)
+        est_idx_pages = max(1, math.ceil(n_res / 28)) if n_res > 0 else 1
+        est_front_pages = 1 + est_idx_pages
 
-        # 4. Profile Scanning Grid (4 per page)
+        summary_data = build_summary_data(self.model)
+        index_data = build_index_data(self.model, front_pages=est_front_pages, has_kinetic_correlation=has_kinetic_corr)
+        prov_data = build_provenance_data(self.model)
+
+        ctx_front = {
+            "model": self.model,
+            "summary_data": summary_data,
+            "index_data": index_data,
+            "style": self.style_name,
+        }
+
+        # Render WeasyPrint front matter
+        weasy_front_bytes = render_weasy_pdf("front.html", ctx_front)
+        actual_front_pages = len(pypdf.PdfReader(io.BytesIO(weasy_front_bytes)).pages)
+
+        # If actual front pages differs from estimate, re-render index_data with exact actual_front_pages
+        if actual_front_pages != est_front_pages:
+            index_data = build_index_data(self.model, front_pages=actual_front_pages, has_kinetic_correlation=has_kinetic_corr)
+            ctx_front["index_data"] = index_data
+            weasy_front_bytes = render_weasy_pdf("front.html", ctx_front)
+            actual_front_pages = len(pypdf.PdfReader(io.BytesIO(weasy_front_bytes)).pages)
+
+        # 2. Middle Plot Pages (Matplotlib)
+        plot_generators = []
+        plot_bookmarks: List[Tuple[str, int]] = []
+
+        # Kinetic Correlation / 2D Grid Page
+        if has_kinetic_corr:
+            plot_bookmarks.append(("Kinetic Likelihood Surface (2D Grid)", actual_front_pages + len(plot_generators)))
+            plot_generators.append(self._build_kinetic_correlation_page)
+
+        # Profile Scanning Grid (4 per page)
         if n_res > 0:
             grid_per_page = 4
             n_grid_pages = max(1, math.ceil(n_res / grid_per_page))
+            plot_bookmarks.append(("Residue Profiles (Scanning Grid)", actual_front_pages + len(plot_generators)))
             for g_i in range(n_grid_pages):
-                page_generators.append(lambda fig, idx=g_i: self._build_profile_grid_page(fig, idx, grid_per_page))
+                plot_generators.append(lambda fig, idx=g_i: self._build_profile_grid_page(fig, idx, grid_per_page))
 
-            # 5. Flagged Residue Detail Pages (with 25% residuals strip) (Phase 5a/5b)
-            # If total residues <= 4, detail all of them; otherwise detail only flagged residues
+            # Flagged Residue Detail Pages (with 25% residuals strip)
             detailed_records = self.residue_records if n_res <= 4 else [r for r in self.residue_records if r["has_flags"]]
+            if detailed_records:
+                plot_bookmarks.append(("Detailed Residue Profiles & Residuals", actual_front_pages + len(plot_generators)))
             for r_rec in detailed_records:
-                page_generators.append(lambda fig, rec=r_rec: self._build_detailed_residue_page(fig, rec))
+                plot_generators.append(lambda fig, rec=r_rec: self._build_detailed_residue_page(fig, rec))
 
-        # 6. Comprehensive Statistics Section (Phase 8: Distributions, Correlation Matrices, 1D Grids)
+        # Comprehensive Statistics Section
         if self.resolver.resampled_cache:
             for method_name, sm_data in self.resolver.resampled_cache.items():
                 reps = sm_data.get("replicates")
@@ -224,59 +255,82 @@ class ReportBuilder:
                 if reps is not None and len(p_names) > 0:
                     params_per_dist_page = 4
                     n_dist_pages = max(1, math.ceil(len(p_names) / params_per_dist_page))
+                    plot_bookmarks.append((f"{method_name} Parameter Distributions", actual_front_pages + len(plot_generators)))
                     for p_page_i in range(n_dist_pages):
-                        page_generators.append(
+                        plot_generators.append(
                             lambda fig, m_n=method_name, s_d=sm_data, p_i=p_page_i, p_per=params_per_dist_page:
                             self._build_statistics_distributions_page(fig, m_n, s_d, p_i, p_per)
                         )
 
-                    # Correlation Matrix Heatmap & Coupling Analysis Page
-                    page_generators.append(
+                    plot_bookmarks.append((f"{method_name} Parameter Correlation Matrix", actual_front_pages + len(plot_generators)))
+                    plot_generators.append(
                         lambda fig, m_n=method_name, s_d=sm_data:
                         self._build_statistics_correlation_page(fig, m_n, s_d)
                     )
         else:
-            # Generate Covariance-derived Error Distributions & Correlation Matrix pages for all fitted parameters
             fitted_params_list = self._collect_all_fitted_parameters()
             if fitted_params_list:
                 params_per_dist_page = 4
                 n_dist_pages = max(1, math.ceil(len(fitted_params_list) / params_per_dist_page))
+                plot_bookmarks.append(("Parameter Error Distributions (Covariance)", actual_front_pages + len(plot_generators)))
                 for p_page_i in range(n_dist_pages):
-                    page_generators.append(
+                    plot_generators.append(
                         lambda fig, p_l=fitted_params_list, p_i=p_page_i, p_per=params_per_dist_page:
                         self._build_covariance_distributions_page(fig, p_l, p_i, p_per)
                     )
-                page_generators.append(
+                plot_bookmarks.append(("Parameter Correlation Matrix (Covariance)", actual_front_pages + len(plot_generators)))
+                plot_generators.append(
                     lambda fig, p_l=fitted_params_list:
                     self._build_covariance_correlation_page(fig, p_l)
                 )
 
-        # 1D Grid Profiles (if 1D grid data is available)
         if self.resolver.grid_1d_cache:
-            page_generators.append(self._build_1d_grid_profiles_page)
+            plot_bookmarks.append(("1D Grid Search Profiles", actual_front_pages + len(plot_generators)))
+            plot_generators.append(self._build_1d_grid_profiles_page)
 
-        # 7. Provenance & DOF Accounting Page (Phase 6)
-        page_generators.append(self._build_provenance_page)
+        # 3. Render WeasyPrint back matter (Provenance & DOF)
+        ctx_back = {
+            "model": self.model,
+            "prov": self.model.provenance,
+            "prov_data": prov_data,
+            "style": self.style_name,
+        }
+        weasy_back_bytes = render_weasy_pdf("back.html", ctx_back)
+        actual_back_pages = len(pypdf.PdfReader(io.BytesIO(weasy_back_bytes)).pages)
 
-        total_pages = len(page_generators)
+        # Total pages for header/footer calculation
+        total_pages = actual_front_pages + len(plot_generators) + actual_back_pages
 
-        with apply_report_style(self.style_name):
-            with PdfPages(buf) as pdf:
-                for page_num, builder_fn in enumerate(page_generators, start=1):
-                    fig = plt.figure(figsize=(8.5, 11.0))
-                    try:
-                        builder_fn(fig)
-                    except Exception as exc:
-                        logger.error("Error building report page %d: %s", page_num, exc, exc_info=True)
-                        fig.clf()
-                        fig.text(0.5, 0.5, f"Error rendering page {page_num}: {str(exc)}", ha="center", color="red")
+        # Render middle plot pages with matplotlib
+        mpl_plots_bytes = None
+        if plot_generators:
+            mpl_buf = io.BytesIO()
+            with apply_report_style(self.style_name):
+                with PdfPages(mpl_buf) as pdf:
+                    for p_idx, builder_fn in enumerate(plot_generators):
+                        cur_page_num = actual_front_pages + p_idx + 1
+                        fig = plt.figure(figsize=(8.5, 11.0))
+                        try:
+                            builder_fn(fig)
+                        except Exception as exc:
+                            logger.error("Error building report page %d: %s", cur_page_num, exc, exc_info=True)
+                            fig.clf()
+                            fig.text(0.5, 0.5, f"Error rendering page {cur_page_num}: {str(exc)}", ha="center", color="red")
 
-                    self._draw_header_footer(fig, page_num, total_pages)
-                    pdf.savefig(fig, dpi=300)
-                    plt.close(fig)
+                        self._draw_header_footer(fig, cur_page_num, total_pages)
+                        pdf.savefig(fig, dpi=300)
+                        plt.close(fig)
 
-        buf.seek(0)
-        return buf
+            mpl_buf.seek(0)
+            mpl_plots_bytes = mpl_buf.getvalue()
+
+        # Stitch all chunks together with pypdf
+        return stitch_pdf_report(
+            weasy_front_bytes=weasy_front_bytes,
+            mpl_plots_bytes=mpl_plots_bytes,
+            weasy_back_bytes=weasy_back_bytes,
+            plot_bookmarks=plot_bookmarks,
+        )
 
     # --- Page Builders ---
 

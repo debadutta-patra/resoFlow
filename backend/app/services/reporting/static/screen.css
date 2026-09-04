@@ -1,0 +1,98 @@
+/* backend/app/services/reporting/static/screen.css */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #111827;
+  background-color: #F9FAFB;
+  margin: 0;
+  padding: 24px;
+}
+
+.report-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  background-color: #FFFFFF;
+  padding: 32px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #6B7280;
+  margin-bottom: 24px;
+}
+
+h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #E5E7EB;
+  padding-bottom: 6px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+th {
+  background-color: #F3F4F6;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid #E5E7EB;
+  position: sticky;
+  top: 0;
+}
+
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding-right: 0;
+}
+
+td.e {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  padding-left: 4px;
+  color: #4B5563;
+}
+
+.badge-flag {
+  display: inline-block;
+  background-color: #FEE2E2;
+  color: #991B1B;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+.badge-good {
+  display: inline-block;
+  background-color: #ECFDF5;
+  color: #065F46;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}

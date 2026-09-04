@@ -1,0 +1,114 @@
+<!-- backend/app/services/reporting/templates/_provenance.html -->
+<h2>Provenance &amp; Acquisition Metadata</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 24%;">Attribute</th>
+      <th style="width: 26%;">Value</th>
+      <th style="width: 24%;">Attribute</th>
+      <th style="width: 26%;">Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>resoFlow Version</strong></td>
+      <td>{{ prov.resoflow_version }} ({{ prov.git_sha or 'clean' }})</td>
+      <td><strong>ChemEx Version</strong></td>
+      <td>{{ prov.chemex_version or '2026.6.1' }}</td>
+    </tr>
+    <tr>
+      <td><strong>Container Digest</strong></td>
+      <td><code>{{ prov.chemex_image_digest[:20] }}...</code></td>
+      <td><strong>Kinetic Model</strong></td>
+      <td>{{ prov.model_name|upper }}</td>
+    </tr>
+    <tr>
+      <td><strong>Static Field (B₀)</strong></td>
+      <td>{{ prov.b0_fields|join(', ') if prov.b0_fields else '—' }}</td>
+      <td><strong>Temperature</strong></td>
+      <td>{{ prov.temperature_k }} K{% if not prov.temperature_k %} (298.15 K){% endif %}</td>
+    </tr>
+    <tr>
+      <td><strong>Minimizer</strong></td>
+      <td>{{ prov.minimizer }}</td>
+      <td><strong>Status</strong></td>
+      <td><span class="badge-status">{{ prov.convergence_status|upper }}</span></td>
+    </tr>
+    <tr>
+      <td><strong>Δω Sign Convention</strong></td>
+      <td>{{ prov.delta_omega_convention[:35] }}...</td>
+      <td><strong>Uncertainty Sources</strong></td>
+      <td>{{ prov.uncertainty_sources_used|join(', ') }}</td>
+    </tr>
+  </tbody>
+</table>
+
+{% if prov_data.fallback_params %}
+<div class="warning-callout">
+  <strong>⚠ Partial Resolution Warning:</strong> Some fitted parameters lacked resampling statistics and fell back to covariance approximations:<br>
+  {{ prov_data.fallback_params|join(', ') }}
+</div>
+{% endif %}
+
+<h2>Explicit Degrees of Freedom (DOF) Reconciliation</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 22%;">Level / Residue</th>
+      <th style="width: 13%; text-align: right;">Data Points (N)</th>
+      <th style="width: 13%; text-align: right;">Local Vars</th>
+      <th style="width: 13%; text-align: right;">Global Vars</th>
+      <th style="width: 11%; text-align: right;">DOF</th>
+      <th style="width: 14%; text-align: right;">χ²</th>
+      <th style="width: 14%; text-align: right;">Reduced χ²</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background-color: #F8FAFC; font-weight: bold;">
+      <td style="color: #0072B2;">Global Model Fit</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.n_data_global }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.n_local_params_total }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.n_global_params }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.dof_global }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(prov.dof_accounting.chi2_global) }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(prov.dof_accounting.chi2_red_global) }}</td>
+    </tr>
+    {% for r in prov_data.residue_dofs %}
+    <tr>
+      <td>Residue {{ r.name }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.n_points }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.n_local }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">0</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.dof }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(r.chi2) }}</td>
+      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(r.chi2_red) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Input Configuration &amp; Method SHA-256 Hashes</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 35%;">Configuration File</th>
+      <th style="width: 65%;">SHA-256 Digest</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in prov.input_files[:6] %}
+    <tr>
+      <td><strong>{{ f.filename }}</strong></td>
+      <td><code>{{ f.sha256 }}</code></td>
+    </tr>
+    {% else %}
+    <tr>
+      <td><strong>parameters.toml</strong></td>
+      <td><code>Unavailable</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

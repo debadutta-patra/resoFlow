@@ -1,0 +1,211 @@
+/* backend/app/services/reporting/static/print.css */
+@page {
+  size: Letter;
+  margin: 18mm 16mm 16mm 16mm;
+  @top-left {
+    content: "resoFlow — " string(analysis-title);
+    font-size: 7.5pt;
+    color: #6B7280;
+    font-family: "DejaVu Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  @top-right {
+    content: string(section-title);
+    font-size: 7.5pt;
+    color: #6B7280;
+    font-family: "DejaVu Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  @bottom-left {
+    content: "generated " string(gen-timestamp);
+    font-size: 7.5pt;
+    color: #6B7280;
+    font-family: "DejaVu Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-size: 7.5pt;
+    color: #6B7280;
+    font-family: "DejaVu Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+}
+
+body {
+  font-family: "DejaVu Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 8.5pt;
+  line-height: 1.35;
+  color: #111827;
+  margin: 0;
+  padding: 0;
+}
+
+.doc-header {
+  margin-bottom: 12pt;
+  padding-bottom: 6pt;
+  border-bottom: 1.5pt solid #E5E7EB;
+}
+
+h1 {
+  bookmark-level: 1;
+  bookmark-label: content(text);
+  font-size: 15pt;
+  font-weight: bold;
+  color: #111827;
+  margin: 0 0 4pt 0;
+  string-set: analysis-title content(text);
+}
+
+.subtitle {
+  font-size: 9pt;
+  color: #4B5563;
+  margin: 0;
+}
+
+h2 {
+  bookmark-level: 2;
+  bookmark-label: content(text);
+  string-set: section-title content(text);
+  font-size: 11pt;
+  font-weight: bold;
+  color: #111827;
+  margin: 12pt 0 6pt 0;
+  break-after: avoid;
+}
+
+h3 {
+  bookmark-level: 3;
+  bookmark-label: content(text);
+  font-size: 9.5pt;
+  font-weight: bold;
+  color: #111827;
+  margin: 8pt 0 4pt 0;
+  break-after: avoid;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10pt;
+  font-size: 8pt;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tr {
+  break-inside: avoid;
+}
+
+th {
+  background-color: #F3F4F6;
+  font-weight: bold;
+  text-align: left;
+  padding: 3.5pt 5pt;
+  border-bottom: 1pt solid #D1D5DB;
+  color: #111827;
+}
+
+td {
+  padding: 3pt 5pt;
+  border-bottom: 0.5pt solid #E5E7EB;
+  vertical-align: middle;
+}
+
+td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding-right: 0;
+  white-space: nowrap;
+}
+
+td.e {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  padding-left: 2pt;
+  color: #4B5563;
+  white-space: nowrap;
+}
+
+td.num-center {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+a.xref {
+  text-decoration: none;
+  color: #1E40AF;
+  font-weight: 500;
+}
+
+a.xref::after {
+  content: leader('.') " p. " target-counter(attr(href), page);
+}
+
+.badge-flag {
+  display: inline-block;
+  background-color: #FEE2E2;
+  color: #991B1B;
+  font-size: 6.5pt;
+  font-weight: bold;
+  padding: 1pt 3pt;
+  border-radius: 2pt;
+  margin-right: 2pt;
+}
+
+.badge-good {
+  display: inline-block;
+  background-color: #ECFDF5;
+  color: #065F46;
+  font-size: 6.5pt;
+  font-weight: bold;
+  padding: 1pt 3pt;
+  border-radius: 2pt;
+}
+
+.badge-status {
+  display: inline-block;
+  font-size: 6.5pt;
+  font-weight: 600;
+  padding: 1pt 3pt;
+  border-radius: 2pt;
+  background-color: #F3F4F6;
+  color: #374151;
+}
+
+.badge-fitted {
+  background-color: #DBEAFE;
+  color: #1E40AF;
+}
+
+.badge-fixed {
+  background-color: #F3F4F6;
+  color: #4B5563;
+}
+
+.table-key {
+  font-size: 7pt;
+  color: #6B7280;
+  margin-top: -4pt;
+  margin-bottom: 8pt;
+}
+
+.warning-callout {
+  background-color: #FEF2F2;
+  border-left: 3pt solid #DC2626;
+  padding: 4pt 8pt;
+  margin: 6pt 0 10pt 0;
+  font-size: 7.5pt;
+  color: #991B1B;
+  break-inside: avoid;
+}
+
+.page-break {
+  page-break-before: always;
+  break-before: page;
+}
+
+.hidden-anchors {
+  height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}

@@ -7,8 +7,11 @@ import math
 import uuid
 from datetime import datetime
 from pathlib import Path
+import logging
 
 from .. import models, schemas, database, security
+
+logger = logging.getLogger(__name__)
 from ..services.fitting.relaxation import get_relaxation_times, extract_peak_intensities_from_results, fit_exponential_decay
 from ..services.fitting.relaxation_tasks import run_relaxation_analysis_task
 from .deps import get_project, get_analysis
@@ -1111,9 +1114,8 @@ def export_cest_report(
             }
         )
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}\n{tb}")
+        logger.exception("Failed to generate CEST report for %s: %s", analysis.analysis_uuid, e)
+        raise HTTPException(status_code=500, detail="Failed to generate report. Please check server logs.")
 
 @router.get("/{analysis_uuid}/cpmg/report")
 @router.get("/{analysis_uuid}/report")
@@ -1148,9 +1150,8 @@ def export_cpmg_report(
             }
         )
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}\n{tb}")
+        logger.exception("Failed to generate CPMG report for %s: %s", analysis.analysis_uuid, e)
+        raise HTTPException(status_code=500, detail="Failed to generate report. Please check server logs.")
 
 
 @router.post("/{analysis_uuid}/export-token")

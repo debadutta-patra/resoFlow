@@ -9,7 +9,7 @@ COPY backend/README.md* /app/
 RUN touch /app/README.md && uv sync --frozen --no-dev
 
 FROM ${PYTHON_IMAGE} AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libpango-1.0-0 libpangoft2-1.0-0 fontconfig fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 RUN useradd -u 1000 -m -s /bin/bash appuser
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
