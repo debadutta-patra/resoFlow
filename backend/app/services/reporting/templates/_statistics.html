@@ -1,0 +1,56 @@
+<!-- backend/app/services/reporting/templates/_statistics.html -->
+{% if statistics_data %}
+  {% for sm in statistics_data.methods %}
+  <div class="statistics-method-block{% if not loop.first %} page-break{% endif %}">
+    {% if statistics_data.is_resampled %}
+    <h2>{{ sm.name }} Parameter Error Distributions</h2>
+    {% else %}
+    <h2>Parameter Error Distributions (Covariance Likelihood)</h2>
+    {% endif %}
+
+    <div class="distribution-grid">
+      {% for dist in sm.distributions %}
+      <div class="distribution-card">
+        {{ dist.svg|safe }}
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if sm.corr_img %}
+    <div class="correlation-section page-break">
+      {% if statistics_data.is_resampled %}
+      <h2>{{ sm.name }} Parameter Correlation Matrix</h2>
+      {% else %}
+      <h2>Parameter Correlation Matrix (Covariance-Derived)</h2>
+      {% endif %}
+
+      <div class="correlation-plot">
+        <img src="{{ sm.corr_img }}" alt="{{ sm.name }} Correlation Matrix">
+      </div>
+
+      <h3>Significant Parameter Couplings &amp; Trade-Offs ({% if statistics_data.is_resampled %}|r| &ge; 0.40{% else %}|r| &ge; 0.25{% endif %})</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 28%;">Parameter Pair</th>
+            <th style="width: 16%; text-align: center;">Correlation (r)</th>
+            <th style="width: 24%;">Coupling Strength</th>
+            <th style="width: 32%;">Physical Interpretation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pair in sm.couplings %}
+          <tr>
+            <td><strong>{{ pair.pair }}</strong></td>
+            <td class="num-center">{{ pair.r_str }}</td>
+            <td>{{ pair.strength }}</td>
+            <td>{{ pair.interp }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}

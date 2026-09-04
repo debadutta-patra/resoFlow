@@ -203,9 +203,126 @@ a.xref::after {
   break-before: page;
 }
 
+/* --- Phase D Figure & Grid Layouts --- */
+
+.profile-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8pt;
+}
+
+.profile-card {
+  width: 48%;
+  break-inside: avoid;
+  margin-bottom: 8pt;
+}
+
+.profile-card svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.residue-detail {
+  break-inside: avoid;
+}
+
+.residue-detail-break {
+  page-break-before: always;
+  break-before: page;
+}
+
+.residue-plot {
+  margin-bottom: 8pt;
+}
+
+.residue-plot svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.distribution-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8pt;
+}
+
+.distribution-card {
+  width: 48%;
+  break-inside: avoid;
+  margin-bottom: 8pt;
+}
+
+.distribution-card svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.correlation-section {
+  break-inside: avoid;
+  margin-top: 10pt;
+}
+
+.correlation-plot {
+  text-align: center;
+  margin-bottom: 8pt;
+}
+
+.correlation-plot img {
+  max-width: 100%;
+  max-height: 4.8in;
+  height: auto;
+  display: inline-block;
+}
+
+.kinetic-section {
+  break-inside: avoid;
+  text-align: center;
+}
+
+.kinetic-plot img {
+  max-width: 100%;
+  max-height: 5.5in;
+  height: auto;
+  display: inline-block;
+}
+
+.grid-1d-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8pt;
+}
+
+.grid-1d-card {
+  width: 48%;
+  break-inside: avoid;
+  margin-bottom: 8pt;
+}
+
+.grid-1d-card svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 .hidden-anchors {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
   height: 0;
   overflow: hidden;
-  margin: 0;
-  padding: 0;
+  font-size: 0;
+  line-height: 0;
+}
+
+.hidden-anchors div {
+  font-size: 0;
+  line-height: 0;
+  height: 0;
 }

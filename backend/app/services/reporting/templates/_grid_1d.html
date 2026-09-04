@@ -1,0 +1,9 @@
+<!-- backend/app/services/reporting/templates/_grid_1d.html -->
+<h2>1D Grid Search Confidence Profiles (Likelihood Scans)</h2>
+<div class="grid-1d-grid">
+  {% for p in grid_1d_plots %}
+  <div class="grid-1d-card">
+    {{ p.svg|safe }}
+  </div>
+  {% endfor %}
+</div>

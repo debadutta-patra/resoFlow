@@ -1,0 +1,34 @@
+<!-- backend/app/services/reporting/templates/report.html -->
+{% extends "base.html" %}
+{% block content %}
+  {% include "_summary.html" %}
+  <div class="page-break"></div>
+  {% include "_index.html" %}
+
+  {% if kinetic_data %}
+  <div class="page-break"></div>
+  {% include "_kinetic.html" %}
+  {% endif %}
+
+  {% if profile_curves %}
+  <div class="page-break"></div>
+  {% include "_profiles.html" %}
+  {% endif %}
+
+  {% if detailed_residues %}
+  {% include "_residuals.html" %}
+  {% endif %}
+
+  {% if statistics_data %}
+  <div class="page-break"></div>
+  {% include "_statistics.html" %}
+  {% endif %}
+
+  {% if grid_1d_plots %}
+  <div class="page-break"></div>
+  {% include "_grid_1d.html" %}
+  {% endif %}
+
+  <div class="page-break"></div>
+  {% include "_provenance.html" %}
+{% endblock %}

@@ -44,9 +44,11 @@
   <sup>*</sup> Defensible Value (No Uncertainty Available)
 </div>
 
-<!-- Hidden anchor targets for cross-reference pagination and structural text extraction -->
+{% if index_data.fallback_anchors %}
+<!-- Hidden anchor targets for standalone index rendering -->
 <div class="hidden-anchors">
   {% for r in index_data.rows %}
     <div id="{{ r.anchor }}" style="counter-reset: page {{ r.target_page }};">{{ r.anchor }}</div>
   {% endfor %}
 </div>
+{% endif %}

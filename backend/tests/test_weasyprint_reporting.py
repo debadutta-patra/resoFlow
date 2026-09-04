@@ -33,6 +33,8 @@ from app.services.reporting.render import (
     build_summary_data,
     create_jinja_env,
     render_weasy_pdf,
+    render_html,
+    render_pdf,
     stitch_pdf_report,
 )
 from app.services.reporting.report_generator import generate_modern_pdf_report
@@ -87,9 +89,19 @@ def test_structural_pdf_assertions_single_step():
     reader = pypdf.PdfReader(pdf_buf)
     assert len(reader.pages) >= 3
 
-    # 1. Structural outline check
+    # 1. Structural outline check (supports hierarchical WeasyPrint bookmark levels)
     assert reader.outline is not None
-    assert len(reader.outline) >= 3
+    def count_outline_nodes(nodes):
+        count = 0
+        for node in nodes:
+            if isinstance(node, list):
+                count += count_outline_nodes(node)
+            else:
+                count += 1
+        return count
+
+    total_outline_items = count_outline_nodes(reader.outline)
+    assert total_outline_items >= 8
 
     # 2. Extract full text from all pages
     all_text = ""
@@ -288,3 +300,50 @@ def test_smoke_zero_residues_and_empty_caches():
 
     assert len(pypdf.PdfReader(io.BytesIO(pdf_front)).pages) >= 1
     assert len(pypdf.PdfReader(io.BytesIO(pdf_back)).pages) >= 1
+
+
+def test_render_html_and_pdf_size_check():
+    """
+    Verify render_html produces valid HTML and render_pdf generates a clean,
+    compact PDF within size budget (e.g. ~100-200 KB for single_step) using
+    300 dpi base64 PNG for dense heatmaps and SVG for vector profiles.
+    """
+    fixture_dir = Path(__file__).parent / "fixtures" / "chemex_trees" / "single_step"
+    model = build_report_model(fixture_dir, "single_step", "CPMG")
+
+    # 1. HTML rendering check
+    html_str = render_html(model, style="screen")
+    assert "<!DOCTYPE html>" in html_str
+    assert "single_step" in html_str
+    assert "<svg" in html_str
+    assert "data:image/png;base64," in html_str
+
+    # 2. PDF rendering check
+    pdf_buf = render_pdf(model, style="publication")
+    pdf_bytes = pdf_buf.getvalue()
+    size_kb = len(pdf_bytes) / 1024
+
+    # Assert PDF validity
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    assert len(reader.pages) >= 5
+
+    # Size check: 7 pages with 8 embedded figures was reference ~91 KB;
+    # Ensure it is well within reasonable bounds (< 300 KB)
+    assert size_kb < 300, f"PDF file size too large: {size_kb:.1f} KB (dense artist might be emitting raw SVG)"
+
+
+def test_retire_matplotlib_assembler():
+    """
+    Verify that report_generator.py has retired matplotlib page assembly,
+    PdfPages, _draw_header_footer, and ax.table, acting as a thin coordinator shim.
+    """
+    import inspect
+    from app.services.reporting import report_generator
+
+    source = inspect.getsource(report_generator)
+    assert "PdfPages" not in source
+    assert "_draw_header_footer" not in source
+    assert "ax.table" not in source
+    assert "page_generators" not in source
+    assert "GridSpec" not in source
+

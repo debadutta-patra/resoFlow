@@ -96,3 +96,44 @@ td.e {
   padding: 2px 6px;
   border-radius: 4px;
 }
+
+.profile-grid, .distribution-grid, .grid-1d-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.profile-card, .distribution-card, .grid-1d-card {
+  width: 48%;
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.profile-card svg, .distribution-card svg, .grid-1d-card svg, .residue-plot svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.residue-detail {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #E5E7EB;
+}
+
+.correlation-plot, .kinetic-plot {
+  text-align: center;
+  margin: 16px 0;
+}
+
+.correlation-plot img, .kinetic-plot img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid #E5E7EB;
+}

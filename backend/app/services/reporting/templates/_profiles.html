@@ -1,0 +1,10 @@
+<!-- backend/app/services/reporting/templates/_profiles.html -->
+<h2>Residue Profiles (Scanning Grid)</h2>
+<div class="profile-grid">
+  {% for curve in profile_curves %}
+  <div id="{{ curve.anchor }}" class="profile-card">
+    <span style="font-size: 1pt; color: #FFFFFF; line-height: 0; display: inline-block;">{{ curve.anchor }}</span>
+    {{ curve.svg|safe }}
+  </div>
+  {% endfor %}
+</div>
