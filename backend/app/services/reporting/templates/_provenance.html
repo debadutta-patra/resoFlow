@@ -1,5 +1,8 @@
-<!-- backend/app/services/reporting/templates/_provenance.html -->
+{% if model.is_multi_step %}
+<h1>Provenance &amp; Acquisition Metadata</h1>
+{% else %}
 <h2>Provenance &amp; Acquisition Metadata</h2>
+{% endif %}
 
 <table>
   <thead>

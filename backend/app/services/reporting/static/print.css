@@ -366,3 +366,39 @@ a.xref::after {
   line-height: 0;
   height: 0;
 }
+
+.step-header {
+  margin-bottom: 12pt;
+  padding-bottom: 6pt;
+  border-bottom: 1.5pt solid #E5E7EB;
+  break-inside: avoid;
+}
+
+.step-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6pt;
+  margin-bottom: 4pt;
+}
+
+.step-badge {
+  display: inline-block;
+  font-size: 7pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1.5pt 5pt;
+  border-radius: 3pt;
+  background-color: #EEF2FF;
+  color: #3730A3;
+  border: 0.5pt solid #C7D2FE;
+}
+
+.pipeline-table code {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 7.5pt;
+  background: #F3F4F6;
+  padding: 1pt 3pt;
+  border-radius: 2pt;
+}
+

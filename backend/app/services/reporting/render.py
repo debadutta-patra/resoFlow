@@ -17,7 +17,7 @@ import numpy as np
 import pypdf
 import weasyprint
 
-from .model import ReportModel, ResidueRecord
+from .model import ReportModel, ResidueRecord, StepReportModel
 from .formatting import format_with_error, SOURCE_SUPERSCRIPTS_HTML, format_subscript_html
 from .uncertainty import ParameterStatus, UncertaintySource, ResolvedParameter
 from .plot_styles import apply_report_style
@@ -142,9 +142,40 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
                     "method": k_obj.propagation_method,
                 })
 
+    # Multi-Step Pipeline Overview
+    multi_step_pipeline = []
+    if model.is_multi_step and model.steps:
+        for step in model.steps:
+            fitted_g = []
+            for name, p in step.global_params:
+                if p.status == ParameterStatus.FITTED:
+                    sym = "k_ex" if name == "kex_ab" else ("p_b" if name == "pb" else name)
+                    fitted_g.append(format_subscript_html(sym))
+            fitted_g_str = ", ".join(fitted_g) if fitted_g else "None (Fixed)"
+
+            if step.has_grid:
+                feature_str = "2D Grid Search"
+            elif step.has_statistics:
+                feature_str = "Resampling Statistics"
+            else:
+                feature_str = "Covariance Fit"
+
+            chi2_str = f"{step.dof_info.chi2_red_global:.2f}" if (step.dof_info and step.dof_info.chi2_red_global) else "—"
+
+            multi_step_pipeline.append({
+                "index": step.step_index,
+                "name": step.step_name,
+                "status": step.status,
+                "n_residues": len(step.residues),
+                "fitted_globals": fitted_g_str,
+                "features": feature_str,
+                "chi2_red": chi2_str,
+            })
+
     return {
         "global_rows": global_rows,
         "derived_rows": derived_rows,
+        "multi_step_pipeline": multi_step_pipeline,
     }
 
 
@@ -227,26 +258,29 @@ def build_provenance_data(model: ReportModel) -> Dict[str, Any]:
     }
 
 
-def build_kinetic_data(model: ReportModel) -> Optional[Dict[str, Any]]:
+def build_kinetic_data(model: Any) -> Optional[Dict[str, Any]]:
     """Render 2D grid likelihood surface or Monte Carlo hexbin correlation as 300 dpi base64 PNG."""
-    grid_dirs = [
-        model.analysis_dir / "STEP1" / "Grid",
-        model.analysis_dir / "Grid",
-        model.analysis_dir / "Output" / "Grid",
-    ]
-    grid_prof_2d = None
-    for gd in grid_dirs:
-        if gd.is_dir():
-            try:
-                from ..fitting.chemex_output.grid_parser import compute_2d_surface, get_grid_data_for_group, compute_grid_minimum
-                pnames, agg_data, _ = get_grid_data_for_group(gd, None)
-                if len(pnames) >= 2:
-                    surf = compute_2d_surface(pnames, agg_data, pnames[0], pnames[1])
-                    min_pt = compute_grid_minimum(pnames, agg_data)
-                    grid_prof_2d = (surf, min_pt)
-                    break
-            except Exception:
-                pass
+    grid_prof_2d = getattr(model, "grid_2d", None)
+    if grid_prof_2d is None:
+        a_dir = getattr(model, "analysis_dir", None)
+        if a_dir:
+            grid_dirs = [
+                a_dir / "STEP1" / "Grid",
+                a_dir / "Grid",
+                a_dir / "Output" / "Grid",
+            ]
+            for gd in grid_dirs:
+                if gd.is_dir():
+                    try:
+                        from ..fitting.chemex_output.grid_parser import compute_2d_surface, get_grid_data_for_group, compute_grid_minimum
+                        pnames, agg_data, _ = get_grid_data_for_group(gd, None)
+                        if len(pnames) >= 2:
+                            surf = compute_2d_surface(pnames, agg_data, pnames[0], pnames[1])
+                            min_pt = compute_grid_minimum(pnames, agg_data)
+                            grid_prof_2d = (surf, min_pt)
+                            break
+                    except Exception:
+                        pass
 
     samples_2d = None
     if model.resampled:
@@ -276,13 +310,23 @@ def build_kinetic_data(model: ReportModel) -> Optional[Dict[str, Any]]:
     return None
 
 
-def build_profile_curves(model: ReportModel) -> List[Dict[str, Any]]:
+def build_profile_curves(
+    model_or_residues: Union[ReportModel, List[ResidueRecord]],
+    analysis_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Render compact dispersion curve SVGs for every residue in scanning grid."""
+    if isinstance(model_or_residues, list):
+        residues = model_or_residues
+        a_type = analysis_type or "CEST"
+    else:
+        residues = model_or_residues.residues
+        a_type = model_or_residues.analysis_type
+
     curves = []
-    for r in model.residues:
+    for r in residues:
         svg = figures.dispersion_curve(
             r,
-            analysis_type=model.analysis_type,
+            analysis_type=a_type,
             compact=True,
             show_anchors=True,
         )
@@ -294,17 +338,27 @@ def build_profile_curves(model: ReportModel) -> List[Dict[str, Any]]:
     return curves
 
 
-def build_detailed_residues(model: ReportModel) -> List[Dict[str, Any]]:
+def build_detailed_residues(
+    model_or_residues: Union[ReportModel, List[ResidueRecord]],
+    analysis_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Render composite SVG (profile + residuals) and parameters table for flagged/detailed residues."""
-    n_res = len(model.residues)
-    if n_res <= 4:
-        detailed_records = model.residues
+    if isinstance(model_or_residues, list):
+        residues = model_or_residues
+        a_type = analysis_type or "CEST"
     else:
-        detailed_records = [r for r in model.residues if r.has_flags]
+        residues = model_or_residues.residues
+        a_type = model_or_residues.analysis_type
+
+    n_res = len(residues)
+    if n_res <= 4:
+        detailed_records = residues
+    else:
+        detailed_records = [r for r in residues if r.has_flags]
 
     detailed_data = []
     for r in detailed_records:
-        svg = figures.detailed_residue_plot(r, analysis_type=model.analysis_type)
+        svg = figures.detailed_residue_plot(r, analysis_type=a_type)
 
         p_items = [
             ("Chemical Shift A", format_subscript_html("CS_A"), r.csa),
@@ -507,10 +561,11 @@ def build_statistics_data(model: ReportModel) -> Optional[Dict[str, Any]]:
     return None
 
 
-def build_grid_1d_data(model: ReportModel) -> Optional[List[Dict[str, Any]]]:
+def build_grid_1d_data(model_or_grid: Any) -> Optional[List[Dict[str, Any]]]:
     """Render 1D grid search likelihood profiles with Delta-chi2 thresholds."""
-    if model.grid_1d:
-        profs = list(model.grid_1d.values())
+    grid_dict = model_or_grid.grid_1d if hasattr(model_or_grid, "grid_1d") else model_or_grid
+    if grid_dict:
+        profs = list(grid_dict.values())
         if profs:
             grid_1d_plots = []
             for prof in profs[:4]:
@@ -518,6 +573,142 @@ def build_grid_1d_data(model: ReportModel) -> Optional[List[Dict[str, Any]]]:
                 grid_1d_plots.append({"svg": p_svg})
             return grid_1d_plots
     return None
+
+
+def build_step_context(
+    step: StepReportModel,
+    model: ReportModel,
+    step_idx: int,
+) -> Dict[str, Any]:
+    """Prepare rendering context for an individual multi-step fit section."""
+    global_rows = []
+
+    # 1. Exchange rate
+    kex_res = next((p for name, p in step.global_params if name == "kex_ab"), None)
+    if kex_res:
+        kex_html = format_with_error(kex_res, style="html")
+        kex_src = kex_res.source.value if kex_res.status == ParameterStatus.FITTED else "—"
+        global_rows.append({
+            "name": "Exchange Rate",
+            "symbol": format_subscript_html("k_ex"),
+            "status": kex_res.status.value,
+            "value_html": kex_html,
+            "source_text": kex_src,
+        })
+
+    # 2. Excited state population
+    pb_res = next((p for name, p in step.global_params if name == "pb"), None)
+    if pb_res:
+        pb_html = format_with_error(pb_res, style="html")
+        pb_src = pb_res.source.value if pb_res.status == ParameterStatus.FITTED else "—"
+        global_rows.append({
+            "name": "Excited Population",
+            "symbol": format_subscript_html("p_b"),
+            "status": pb_res.status.value,
+            "value_html": pb_html,
+            "source_text": pb_src,
+        })
+
+        if pb_res.value is not None:
+            pa_val = 100.0 - pb_res.value
+            pa_html = f'<span class="v">{pa_val:.3f}</span> %'
+        else:
+            pa_html = "—"
+        global_rows.append({
+            "name": "Major State Pop.",
+            "symbol": format_subscript_html("p_a"),
+            "status": "DERIVED",
+            "value_html": pa_html,
+            "source_text": format_subscript_html("Derived (1 − p_b)"),
+        })
+
+    # 3. Correlation time
+    tauc_res = next((p for name, p in step.global_params if name == "tauc_a"), None)
+    if tauc_res and tauc_res.status != ParameterStatus.NOT_IN_MODEL:
+        tauc_html = format_with_error(tauc_res, style="html")
+        global_rows.append({
+            "name": "Correlation Time",
+            "symbol": format_subscript_html("τ_c"),
+            "status": tauc_res.status.value,
+            "value_html": tauc_html,
+            "source_text": tauc_res.source.value,
+        })
+
+    # 4. Goodness of fit statistics for this step
+    if step.dof_info:
+        global_rows.append({
+            "name": "Step Chi-Square",
+            "symbol": "χ²",
+            "status": "STATISTIC",
+            "value_html": f'<span class="v">{step.dof_info.chi2_global:.2f}</span>',
+            "source_text": f"DOF = {step.dof_info.dof_global}",
+        })
+        global_rows.append({
+            "name": "Step Reduced Chi-Square",
+            "symbol": format_subscript_html("χ²_red"),
+            "status": "STATISTIC",
+            "value_html": f'<span class="v">{step.dof_info.chi2_red_global:.2f}</span>',
+            "source_text": "Goodness of fit",
+        })
+
+    # 5. Derived kinetics
+    derived_rows = []
+    if step.derived_kinetics:
+        for k_key in ["kab", "kba", "tau_b", "tau_a"]:
+            k_obj = step.derived_kinetics.get(k_key)
+            if k_obj and k_obj.value is not None:
+                val_html = format_with_error(k_obj.value, k_obj.err_low, k_obj.err_high, unit=k_obj.unit, source=k_obj.source.value, status="FITTED", style="html")
+                derived_rows.append({
+                    "name": k_obj.name.upper(),
+                    "symbol": format_subscript_html(k_obj.symbol),
+                    "expression": format_subscript_html(k_obj.expression),
+                    "value_html": val_html,
+                    "method": k_obj.propagation_method,
+                })
+
+    # 6. Residue index table rows
+    index_rows = []
+    for r in step.residues:
+        dw_html = format_with_error(r.dw, style="html", include_unit=False)
+        r2a_html = format_with_error(r.r2a, style="html", include_unit=False)
+        r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
+        r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
+        index_rows.append({
+            "display_name": r.display_name,
+            "raw_key": r.raw_key,
+            "anchor": r.anchor,
+            "chi2_red": r.chi2_red,
+            "dw_html": dw_html,
+            "r2a_html": r2a_html,
+            "r2b_html": r2b_html,
+            "r1a_html": r1a_html,
+            "flags": r.flags,
+            "has_flags": r.has_flags,
+        })
+
+    kinetic_data = build_kinetic_data(step)
+    profile_curves = build_profile_curves(step.residues, analysis_type=model.analysis_type)
+    detailed_residues = build_detailed_residues(step.residues, analysis_type=model.analysis_type)
+    statistics_data = build_statistics_data(step) if step.has_statistics else None
+    grid_1d_plots = build_grid_1d_data(step.grid_1d) if step.has_grid else None
+
+    return {
+        "name": step.step_name,
+        "index": step.step_index,
+        "status": step.status,
+        "has_grid": step.has_grid,
+        "has_statistics": step.has_statistics,
+        "global_rows": global_rows,
+        "derived_rows": derived_rows,
+        "residues": step.residues,
+        "index_rows": index_rows,
+        "has_flagged_residues": any(r.has_flags for r in step.residues),
+        "kinetic_data": kinetic_data,
+        "profile_curves": profile_curves,
+        "detailed_residues": detailed_residues,
+        "statistics_data": statistics_data,
+        "grid_1d_plots": grid_1d_plots,
+    }
 
 
 def build_report_context(
@@ -531,12 +722,17 @@ def build_report_context(
     """
     s_dir = static_dir or STATIC_DIR
 
+    steps_data = []
     with apply_report_style(style):
         kinetic_data = build_kinetic_data(model)
         profile_curves = build_profile_curves(model)
         detailed_residues = build_detailed_residues(model)
         statistics_data = build_statistics_data(model)
         grid_1d_plots = build_grid_1d_data(model)
+
+        if model.is_multi_step and model.steps:
+            for idx, step in enumerate(model.steps):
+                steps_data.append(build_step_context(step, model, idx + 1))
 
     summary_data = build_summary_data(model)
     index_data = build_index_data(model, fallback_anchors=False)
@@ -557,6 +753,7 @@ def build_report_context(
         "detailed_residues": detailed_residues,
         "statistics_data": statistics_data,
         "grid_1d_plots": grid_1d_plots,
+        "steps_data": steps_data,
         "prov": model.provenance,
         "prov_data": prov_data,
     }

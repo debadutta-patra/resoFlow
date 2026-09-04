@@ -13,6 +13,7 @@ import pytest
 from app.services.reporting.model import (
     ReportModel,
     ResidueRecord,
+    StepReportModel,
     build_report_model,
     natural_sort_key,
 )
@@ -177,3 +178,64 @@ class TestReportModel:
         assert len(builder.residue_records) == len(model.residues)
         pdf_buf = builder.render_pdf()
         assert pdf_buf.getbuffer().nbytes > 1000
+
+    def test_build_model_multi_step_structure(self):
+        """Verify multi-step fit correctly populates StepReportModel hierarchy and step-scoped parameters."""
+        fix_dir = FIXTURES_ROOT / "multi_step"
+        model = build_report_model(
+            analysis_dir=fix_dir,
+            analysis_name="multi_step",
+            analysis_type="CPMG",
+            fixed_timestamp=FIXED_TIMESTAMP,
+        )
+        assert model.is_multi_step is True
+        assert model.step_order == ["STEP1", "STEP2"]
+        assert len(model.steps) == 2
+
+        s1, s2 = model.steps[0], model.steps[1]
+        assert isinstance(s1, StepReportModel)
+        assert isinstance(s2, StepReportModel)
+        assert s1.step_name == "STEP1"
+        assert s1.step_index == 1
+        assert s2.step_name == "STEP2"
+        assert s2.step_index == 2
+
+        # STEP1 fits kex and pb, residue is 15N
+        s1_kex = next(p for n, p in s1.global_params if n == "kex_ab")
+        assert s1_kex.status == ParameterStatus.FITTED
+        assert len(s1.residues) == 1
+        assert s1.residues[0].display_name == "15N"
+        assert s1.residues[0].anchor == "res-STEP1-15N"
+
+        # STEP2 fixes kex and pb, residues are 15N and 31N
+        s2_kex = next(p for n, p in s2.global_params if n == "kex_ab")
+        assert s2_kex.status == ParameterStatus.FIXED
+        assert len(s2.residues) == 2
+        assert s2.residues[0].anchor == "res-STEP2-15N"
+        assert s2.residues[1].anchor == "res-STEP2-31N"
+
+    def test_build_model_cest_step_grid(self):
+        """Verify cest_step_grid multi-step pipeline with 2D grid in STEP1 and MCMC in STEP2."""
+        fix_dir = FIXTURES_ROOT / "cest_step_grid"
+        model = build_report_model(
+            analysis_dir=fix_dir,
+            analysis_name="cest_step_grid",
+            analysis_type="CEST",
+            fixed_timestamp=FIXED_TIMESTAMP,
+        )
+        assert model.is_multi_step is True
+        assert len(model.steps) == 2
+        s1, s2 = model.steps[0], model.steps[1]
+
+        # STEP1 has 2D grid surface and 1D likelihood profiles
+        assert s1.has_grid is True
+        assert s1.has_statistics is False
+        assert s1.grid_2d is not None
+        assert len(s1.grid_1d) > 0
+
+        # STEP2 has MCMC/Bootstrap resampling statistics
+        assert s2.has_grid is False
+        assert s2.has_statistics is True
+        assert len(s2.resampled) > 0
+        assert s2.ledger.get(UncertaintySource.RESAMPLED.value, 0) > 0
+

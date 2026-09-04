@@ -179,6 +179,7 @@ class ResidueRecord:
     csb: ResolvedParameter
     flags: list[str]
     experiments: list[dict]
+    step_name: Optional[str] = None
 
     @property
     def has_flags(self) -> bool:
@@ -186,7 +187,8 @@ class ResidueRecord:
 
     @property
     def anchor(self) -> str:
-        return "res-" + re.sub(r"[^A-Za-z0-9]", "-", self.raw_key)
+        prefix = f"res-{self.step_name}-" if self.step_name else "res-"
+        return prefix + re.sub(r"[^A-Za-z0-9]", "-", self.raw_key)
 
     def __getitem__(self, key: str) -> Any:
         """Allow backward-compatible dictionary-style access."""
@@ -201,7 +203,7 @@ class ResidueRecord:
         return getattr(self, key, default)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "raw_key": self.raw_key,
             "display_name": self.display_name,
             "chi2_red": self.chi2_red,
@@ -215,6 +217,46 @@ class ResidueRecord:
             "has_flags": self.has_flags,
             "anchor": self.anchor,
             "experiments": to_json_serializable(self.experiments),
+        }
+        if self.step_name is not None:
+            d["step_name"] = self.step_name
+        return d
+
+
+@dataclass
+class StepReportModel:
+    """Step-level report model representing an individual fitting step in a multi-step pipeline."""
+    step_name: str
+    step_index: int
+    status: str
+    has_grid: bool
+    has_statistics: bool
+    global_params: list[tuple[str, ResolvedParameter]]
+    derived_kinetics: dict[str, DerivedKineticResult]
+    residues: list[ResidueRecord]
+    dof_info: Optional[DegreeOfFreedomAccounting]
+    resampled: dict[str, dict]
+    grid_1d: dict
+    grid_2d: Optional[Any] = None
+    ledger: dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "step_name": self.step_name,
+            "step_index": self.step_index,
+            "status": self.status,
+            "has_grid": self.has_grid,
+            "has_statistics": self.has_statistics,
+            "global_params": [
+                [name, resolved_param_to_dict(param)]
+                for name, param in self.global_params
+            ],
+            "derived_kinetics": {k: derived_kinetic_to_dict(v) for k, v in self.derived_kinetics.items()},
+            "residues": [r.to_dict() for r in self.residues],
+            "dof_info": dof_accounting_to_dict(self.dof_info) if self.dof_info else None,
+            "resampled": to_json_serializable(self.resampled),
+            "grid_1d": to_json_serializable(self.grid_1d),
+            "ledger": dict(self.ledger),
         }
 
 
@@ -232,10 +274,14 @@ class ReportModel:
     resampled: dict[str, dict]
     grid_1d: dict
     ledger: dict[str, int]
+    is_multi_step: bool = False
+    step_order: list[str] = field(default_factory=list)
+    steps: list[StepReportModel] = field(default_factory=list)
+    grid_2d: Optional[Any] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert model to plain JSON-serializable types for API and golden tests."""
-        return {
+        d = {
             "analysis_name": self.analysis_name,
             "analysis_type": self.analysis_type,
             "analysis_dir": self.analysis_dir.name,
@@ -251,6 +297,11 @@ class ReportModel:
             "grid_1d": to_json_serializable(self.grid_1d),
             "ledger": dict(self.ledger),
         }
+        if self.is_multi_step:
+            d["is_multi_step"] = True
+            d["step_order"] = list(self.step_order)
+            d["steps"] = [s.to_dict() for s in self.steps]
+        return d
 
 
 def build_report_model(
@@ -413,6 +464,149 @@ def build_report_model(
         uncertainty_sources_used.append("COVARIANCE")
     provenance.uncertainty_sources_used = uncertainty_sources_used
 
+    # 9. Multi-step pipeline processing (§3 WeasyPrint design spec)
+    is_multi_step = bool(resolver.run_result and resolver.run_result.is_multi_step)
+    step_order = list(resolver.run_result.step_order) if (resolver.run_result and is_multi_step) else []
+    step_models: list[StepReportModel] = []
+
+    if is_multi_step and step_order:
+        for s_idx, sname in enumerate(step_order):
+            s_res = resolver.run_result.steps.get(sname)
+            s_resolver = UncertaintyResolver(a_dir, step_name=sname)
+
+            # Step global parameters
+            s_kex = s_resolver.resolve("kex_ab", "global")
+            s_pb = s_resolver.resolve("pb", "global")
+            s_tauc = s_resolver.resolve("tauc_a", "global")
+            s_globals: list[tuple[str, ResolvedParameter]] = [
+                ("kex_ab", s_kex),
+                ("pb", s_pb),
+            ]
+            if s_tauc.status != ParameterStatus.NOT_IN_MODEL:
+                s_globals.append(("tauc_a", s_tauc))
+
+            # Step derived kinetics
+            s_kex_samples = None
+            s_pb_samples = None
+            for sm_dict in s_resolver.resampled_cache.values():
+                p_names = [clean_param_name(x).upper() for x in sm_dict.get("parameter_names", [])]
+                reps = sm_dict.get("replicates")
+                if reps is not None and "KEX_AB" in p_names and "PB" in p_names:
+                    s_kex_samples = reps[:, p_names.index("KEX_AB")]
+                    s_pb_samples = reps[:, p_names.index("PB")]
+                    break
+
+            s_derived = propagate_derived_kinetics(
+                kex_val=s_kex.value,
+                pb_val=(s_pb.value / 100.0 if (s_pb.value and s_pb.unit == "%") else s_pb.value),
+                kex_sigma=s_kex.sigma,
+                pb_sigma=((s_pb.sigma / 100.0 if s_pb.sigma else None) if (s_pb.unit == "%") else s_pb.sigma),
+                samples={"kex": s_kex_samples, "pb": s_pb_samples} if (s_kex_samples is not None and s_pb_samples is not None) else None,
+            )
+
+            # Step residues
+            s_raw_residues: dict[str, Any] = {}
+            if s_res and s_res.residues:
+                for r_k, s_rmodel in s_res.residues.items():
+                    s_raw_residues[r_k] = {
+                        "parameters": {
+                            "chi2_red": s_rmodel.chi2_red,
+                        },
+                        "chi2_red": s_rmodel.chi2_red,
+                        "experiments": s_rmodel.experiments,
+                    }
+            elif results_data.get("residues"):
+                s_raw_residues = results_data["residues"]
+
+            s_sorted_keys = sorted(s_raw_residues.keys(), key=natural_sort_key)
+            s_residue_records: list[ResidueRecord] = []
+
+            for raw_key in s_sorted_keys:
+                display_name = residue_mapping.get(raw_key, raw_key)
+                r_data = s_raw_residues[raw_key]
+                params = r_data.get("parameters", {})
+
+                dw_res = s_resolver.resolve("dw_ab", raw_key)
+                r1a_res = s_resolver.resolve("r1_a", raw_key)
+                r2a_res = s_resolver.resolve("r2_a", raw_key)
+                r2b_res = s_resolver.resolve("r2_b", raw_key)
+                csa_res = s_resolver.resolve("cs_a", raw_key)
+                csb_res = s_resolver.resolve("cs_b", raw_key)
+
+                chi2_red = params.get("chi2_red")
+                if chi2_red is None and r_data.get("chi2_red") is not None:
+                    chi2_red = r_data.get("chi2_red")
+
+                flags: list[str] = []
+                if chi2_red is not None and (chi2_red < 0.5 or chi2_red > 2.0):
+                    flags.append(f"χ²ᵣ={chi2_red:.2f}")
+
+                if dw_res.is_near_bound or r2a_res.is_near_bound or r2b_res.is_near_bound:
+                    flags.append("At Bound")
+
+                if dw_res.source == UncertaintySource.NONE and dw_res.status == ParameterStatus.FITTED:
+                    flags.append("No Δω err")
+
+                if dw_res.value and dw_res.sigma and abs(dw_res.value) > 1e-4:
+                    if (dw_res.sigma / abs(dw_res.value)) > 0.5:
+                        flags.append("High Δω err")
+
+                s_rec = ResidueRecord(
+                    raw_key=raw_key,
+                    display_name=display_name,
+                    chi2_red=chi2_red,
+                    dw=dw_res,
+                    r1a=r1a_res,
+                    r2a=r2a_res,
+                    r2b=r2b_res,
+                    csa=csa_res,
+                    csb=csb_res,
+                    flags=flags,
+                    experiments=r_data.get("experiments", []),
+                    step_name=sname,
+                )
+                s_residue_records.append(s_rec)
+
+            # Degree of freedom accounting for step
+            s_dof = None
+            if s_res and getattr(s_res, "dof_info", None):
+                s_dof = s_res.dof_info
+            elif s_res and getattr(s_res, "statistics", None):
+                st = s_res.statistics
+                nd = st.ndata or 0
+                nv = st.nvarys or 0
+                s_dof = DegreeOfFreedomAccounting(
+                    n_data_global=nd,
+                    n_global_params=0,
+                    n_local_params_total=0,
+                    n_varys_global=nv,
+                    dof_global=max(0, nd - nv),
+                    chi2_global=st.chisqr or 0.0,
+                    chi2_red_global=st.redchi or 0.0,
+                    residue_dofs={},
+                    reconciliation_note=f"Step {sname} goodness of fit",
+                )
+
+            s_ledger = s_resolver.get_ledger_summary()
+
+            step_models.append(
+                StepReportModel(
+                    step_name=sname,
+                    step_index=s_idx + 1,
+                    status=s_res.status if s_res else "complete",
+                    has_grid=s_res.has_grid if s_res else False,
+                    has_statistics=s_res.has_statistics if s_res else False,
+                    global_params=s_globals,
+                    derived_kinetics=s_derived,
+                    residues=s_residue_records,
+                    dof_info=s_dof,
+                    resampled=s_resolver.resampled_cache,
+                    grid_1d=s_resolver.grid_1d_cache,
+                    grid_2d=s_resolver.grid_2d_cache,
+                    ledger=s_ledger,
+                )
+            )
+
     return ReportModel(
         analysis_name=analysis_name,
         analysis_type=a_type,
@@ -425,4 +619,8 @@ def build_report_model(
         resampled=resolver.resampled_cache,
         grid_1d=resolver.grid_1d_cache,
         ledger=ledger_summary,
+        is_multi_step=is_multi_step,
+        step_order=step_order,
+        steps=step_models,
+        grid_2d=resolver.grid_2d_cache,
     )

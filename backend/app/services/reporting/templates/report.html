@@ -2,31 +2,39 @@
 {% extends "base.html" %}
 {% block content %}
   {% include "_summary.html" %}
-  <div class="page-break"></div>
-  {% include "_index.html" %}
 
-  {% if kinetic_data %}
-  <div class="page-break"></div>
-  {% include "_kinetic.html" %}
-  {% endif %}
+  {% if model.is_multi_step and steps_data %}
+    {% for step in steps_data %}
+      <div class="page-break"></div>
+      {% include "_step_section.html" %}
+    {% endfor %}
+  {% else %}
+    <div class="page-break"></div>
+    {% include "_index.html" %}
 
-  {% if profile_curves %}
-  <div class="page-break"></div>
-  {% include "_profiles.html" %}
-  {% endif %}
+    {% if kinetic_data %}
+    <div class="page-break"></div>
+    {% include "_kinetic.html" %}
+    {% endif %}
 
-  {% if detailed_residues %}
-  {% include "_residuals.html" %}
-  {% endif %}
+    {% if profile_curves %}
+    <div class="page-break"></div>
+    {% include "_profiles.html" %}
+    {% endif %}
 
-  {% if statistics_data %}
-  <div class="page-break"></div>
-  {% include "_statistics.html" %}
-  {% endif %}
+    {% if detailed_residues %}
+    {% include "_residuals.html" %}
+    {% endif %}
 
-  {% if grid_1d_plots %}
-  <div class="page-break"></div>
-  {% include "_grid_1d.html" %}
+    {% if statistics_data %}
+    <div class="page-break"></div>
+    {% include "_statistics.html" %}
+    {% endif %}
+
+    {% if grid_1d_plots %}
+    <div class="page-break"></div>
+    {% include "_grid_1d.html" %}
+    {% endif %}
   {% endif %}
 
   <div class="page-break"></div>

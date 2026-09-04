@@ -8,6 +8,40 @@
   </div>
 </div>
 
+{% if summary_data.multi_step_pipeline %}
+<h2>Multi-Step Fit Pipeline Overview</h2>
+<table class="pipeline-table">
+  <thead>
+    <tr>
+      <th style="width: 12%;">Step</th>
+      <th style="width: 16%;">Name</th>
+      <th style="width: 14%;">Status</th>
+      <th style="width: 12%; text-align: right;">Residues</th>
+      <th style="width: 12%; text-align: right;">χ²ᵣ</th>
+      <th style="width: 18%;">Fitted Globals</th>
+      <th style="width: 16%;">Features</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for step in summary_data.multi_step_pipeline %}
+    <tr>
+      <td class="num-center"><strong>Step {{ step.index }}</strong></td>
+      <td><code>{{ step.name }}</code></td>
+      <td>
+        <span class="badge-status {% if step.status == 'complete' %}badge-fitted{% else %}badge-fixed{% endif %}">
+          {{ step.status|upper }}
+        </span>
+      </td>
+      <td class="num-right">{{ step.n_residues }}</td>
+      <td class="num-right">{{ step.chi2_red }}</td>
+      <td>{{ step.fitted_globals|safe }}</td>
+      <td>{{ step.features }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
 <h2>Global Relaxation &amp; Exchange Parameters</h2>
 <table>
   <thead>

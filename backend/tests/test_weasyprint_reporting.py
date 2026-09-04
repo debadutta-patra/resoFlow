@@ -606,4 +606,43 @@ def test_asymmetric_error_symmetric_rounding():
     assert 'ppm' not in html_no_unit
 
 
+def test_multi_step_report_rendering():
+    """Verify that multi-step fits render dedicated sections with pipeline overview and step bookmarks."""
+    import io
+    import pypdf
+    from app.services.reporting.model import build_report_model
+    from app.services.reporting.render import build_report_context, render_html, render_pdf
 
+    fix_dir = Path(__file__).parent / "fixtures" / "chemex_trees" / "multi_step"
+    model = build_report_model(
+        analysis_dir=fix_dir,
+        analysis_name="multi_step",
+        analysis_type="CPMG",
+    )
+    assert model.is_multi_step is True
+
+    # 1. Context validation
+    ctx = build_report_context(model)
+    assert "steps_data" in ctx
+    assert len(ctx["steps_data"]) == 2
+    assert "multi_step_pipeline" in ctx["summary_data"]
+    assert len(ctx["summary_data"]["multi_step_pipeline"]) == 2
+
+    # 2. HTML output validation
+    html = render_html(model)
+    assert "Multi-Step Fit Pipeline Overview" in html
+    assert "Step 1: STEP1" in html
+    assert "Step 2: STEP2" in html
+    assert "res-STEP1-15N" in html
+    assert "res-STEP2-15N" in html
+    assert "res-STEP2-31N" in html
+
+    # 3. PDF outline bookmarks validation
+    pdf_bytes = render_pdf(model).getvalue()
+    assert len(pdf_bytes) > 50000
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    outline_titles = [item.title for item in reader.outline if not isinstance(item, list)]
+    assert any("CPMG Relaxation Dispersion Analysis Report" in t for t in outline_titles)
+    assert any("Step 1: STEP1" in t for t in outline_titles)
+    assert any("Step 2: STEP2" in t for t in outline_titles)
+    assert any("Provenance & Acquisition Metadata" in t for t in outline_titles)
