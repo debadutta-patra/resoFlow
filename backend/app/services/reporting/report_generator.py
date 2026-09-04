@@ -36,6 +36,7 @@ from .uncertainty import UncertaintyResolver, UncertaintySource, ParameterStatus
 from .kinetics import propagate_derived_kinetics, DerivedKineticResult
 from .provenance import extract_report_provenance, ReportProvenance
 from .plot_styles import apply_report_style, OKABE_ITO
+from .model import ReportModel, ResidueRecord, build_report_model
 from ..fitting.statistics_engine import clean_param_name
 
 logger = logging.getLogger(__name__)
@@ -90,28 +91,43 @@ class ReportBuilder:
 
     def __init__(
         self,
-        analysis_dir: Union[str, Path],
-        analysis_name: str,
+        analysis_dir: Optional[Union[str, Path]] = None,
+        analysis_name: Optional[str] = None,
         analysis_type: str = "CEST",
         style_name: str = "publication",
         chemex_image_digest: Optional[str] = None,
         fixed_timestamp: Optional[str] = None,
+        model: Optional[ReportModel] = None,
     ):
-        self.analysis_dir = Path(analysis_dir)
-        self.analysis_name = analysis_name
-        self.analysis_type = analysis_type.upper()
-        self.style_name = style_name.lower()
-        self.chemex_image_digest = chemex_image_digest
-        self.fixed_timestamp = fixed_timestamp
+        if model is not None:
+            self.model = model
+            self.analysis_dir = model.analysis_dir
+            self.analysis_name = model.analysis_name
+            self.analysis_type = model.analysis_type
+            self.style_name = style_name.lower()
+            self.chemex_image_digest = model.provenance.chemex_image_digest
+            self.fixed_timestamp = model.provenance.timestamp_iso
+        else:
+            if analysis_dir is None or analysis_name is None:
+                raise ValueError("Must provide either model or analysis_dir and analysis_name")
+            self.model = build_report_model(
+                analysis_dir=analysis_dir,
+                analysis_name=analysis_name,
+                analysis_type=analysis_type,
+                chemex_image_digest=chemex_image_digest,
+                fixed_timestamp=fixed_timestamp,
+            )
+            self.analysis_dir = self.model.analysis_dir
+            self.analysis_name = self.model.analysis_name
+            self.analysis_type = self.model.analysis_type
+            self.style_name = style_name.lower()
+            self.chemex_image_digest = self.model.provenance.chemex_image_digest
+            self.fixed_timestamp = self.model.provenance.timestamp_iso
 
-        # Load results.json
-        self.results: Dict[str, Any] = {}
-        res_file = self.analysis_dir / "results.json"
-        if res_file.is_file():
-            try:
-                self.results = json.loads(res_file.read_text(encoding="utf-8"))
-            except Exception as exc:
-                logger.warning("Could not read results.json: %s", exc)
+        self.results = self.model.results
+        self.provenance = self.model.provenance
+        self.derived_kinetics = self.model.derived_kinetics
+        self.residue_records = self.model.residues
 
         # Load residue mapping if present in config
         self.residue_mapping: Dict[str, str] = {}
@@ -125,105 +141,15 @@ class ReportBuilder:
                 except Exception:
                     pass
 
-        # Initialize Uncertainty Resolver
+        # Uncertainty resolver for page renderers querying caches or bounds
         self.resolver = UncertaintyResolver(
             self.analysis_dir,
             results_data=self.results,
         )
 
-        # Initialize Provenance Record
-        self.provenance: ReportProvenance = extract_report_provenance(
-            self.analysis_dir,
-            analysis_name=self.analysis_name,
-            analysis_type=self.analysis_type,
-            chemex_image_digest=self.chemex_image_digest,
-            results_json=self.results,
-            fixed_timestamp=self.fixed_timestamp,
-            uncertainty_ledger_summary=self.resolver.get_ledger_summary(),
-            has_statistics_runs=(len(self.resolver._resampled_cache) > 0),
-        )
-
-        # Derived Kinetics (Phase 7)
-        kex_res = self.resolver.resolve("kex_ab", "global")
-        pb_res = self.resolver.resolve("pb", "global")
-        # Extract samples if available
-        kex_samples = None
-        pb_samples = None
-        for sm_dict in self.resolver._resampled_cache.values():
-            p_names = [clean_param_name(x).upper() for x in sm_dict.get("parameter_names", [])]
-            reps = sm_dict.get("replicates")
-            if reps is not None and "KEX_AB" in p_names and "PB" in p_names:
-                kex_samples = reps[:, p_names.index("KEX_AB")]
-                pb_samples = reps[:, p_names.index("PB")]
-                break
-
-        self.derived_kinetics = propagate_derived_kinetics(
-            kex_val=kex_res.value,
-            pb_val=(pb_res.value / 100.0 if (pb_res.value and pb_res.unit == "%") else pb_res.value),
-            kex_sigma=kex_res.sigma,
-            pb_sigma=((pb_res.sigma / 100.0 if pb_res.sigma else None) if (pb_res.unit == "%") else pb_res.sigma),
-            samples={"kex": kex_samples, "pb": pb_samples} if (kex_samples is not None and pb_samples is not None) else None,
-        )
-
-        # Index and classify all residues and flags (Phase 5c)
-        self.residue_records = self._index_residues_and_flags()
-
-    def _index_residues_and_flags(self) -> List[Dict[str, Any]]:
-        """Index all residues, evaluate flags, and prepare structured summary."""
-        raw_residues = self.results.get("residues", {})
-        if not raw_residues and self.resolver.primary_step and self.resolver.primary_step.residues:
-            raw_residues = {r_k: {"parameters": {}} for r_k in self.resolver.primary_step.residues.keys()}
-
-        sorted_keys = sorted(raw_residues.keys(), key=natural_sort_key)
-        records = []
-
-        for raw_key in sorted_keys:
-            display_name = self.residue_mapping.get(raw_key, raw_key)
-            r_data = raw_residues[raw_key]
-            params = r_data.get("parameters", {})
-
-            # Resolve parameters with uncertainties
-            dw_res = self.resolver.resolve("dw_ab", raw_key)
-            r1a_res = self.resolver.resolve("r1_a", raw_key)
-            r2a_res = self.resolver.resolve("r2_a", raw_key)
-            r2b_res = self.resolver.resolve("r2_b", raw_key)
-            csa_res = self.resolver.resolve("cs_a", raw_key)
-            csb_res = self.resolver.resolve("cs_b", raw_key)
-
-            chi2_red = params.get("chi2_red")
-            if chi2_red is None and r_data.get("chi2_red") is not None:
-                chi2_red = r_data.get("chi2_red")
-
-            flags = []
-            if chi2_red is not None and (chi2_red < 0.5 or chi2_red > 2.0):
-                flags.append(f"χ²ᵣ={chi2_red:.2f}")
-
-            if dw_res.is_near_bound or r2a_res.is_near_bound or r2b_res.is_near_bound:
-                flags.append("At Bound")
-
-            if dw_res.source == UncertaintySource.NONE and dw_res.status == ParameterStatus.FITTED:
-                flags.append("No Δω err")
-
-            if dw_res.value and dw_res.sigma and abs(dw_res.value) > 1e-4:
-                if (dw_res.sigma / abs(dw_res.value)) > 0.5:
-                    flags.append("High Δω err")
-
-            records.append({
-                "raw_key": raw_key,
-                "display_name": display_name,
-                "chi2_red": chi2_red,
-                "dw": dw_res,
-                "r1a": r1a_res,
-                "r2a": r2a_res,
-                "r2b": r2b_res,
-                "csa": csa_res,
-                "csb": csb_res,
-                "flags": flags,
-                "has_flags": len(flags) > 0,
-                "experiments": r_data.get("experiments", []),
-            })
-
-        return records
+    def _index_residues_and_flags(self) -> List[Any]:
+        """Backward-compatible accessor for residue records."""
+        return self.residue_records
 
     def _draw_header_footer(self, fig: plt.Figure, page_num: int, total_pages: int):
         """Render running header and footer on each page."""
@@ -287,21 +213,6 @@ class ReportBuilder:
         """
         Build and render the entire multi-page PDF document into a BytesIO stream.
         """
-        ledger_summary = self.resolver.get_ledger_summary()
-        if self.provenance.has_statistics_runs and ledger_summary.get(UncertaintySource.RESAMPLED.value, 0) == 0:
-            raise RuntimeError("Resampling statistics artifacts were found on disk, but zero parameters resolved to them. Failing loud to prevent silent degradation.")
-
-        # Update provenance with final ledger (since init had empty ledger)
-        self.provenance.uncertainty_sources_used = []
-        if ledger_summary.get("GRID", 0) > 0:
-            self.provenance.uncertainty_sources_used.append("GRID")
-        if ledger_summary.get("RESAMPLED", 0) > 0:
-            self.provenance.uncertainty_sources_used.append("RESAMPLED")
-        if ledger_summary.get("COVARIANCE", 0) > 0:
-            self.provenance.uncertainty_sources_used.append("COVARIANCE")
-        if not self.provenance.uncertainty_sources_used:
-            self.provenance.uncertainty_sources_used.append("COVARIANCE")
-
         buf = io.BytesIO()
 
         # Temporary collection of page builder functions to calculate total page count dynamically
@@ -335,8 +246,8 @@ class ReportBuilder:
                 page_generators.append(lambda fig, rec=r_rec: self._build_detailed_residue_page(fig, rec))
 
         # 6. Comprehensive Statistics Section (Phase 8: Distributions, Correlation Matrices, 1D Grids)
-        if self.resolver._resampled_cache:
-            for method_name, sm_data in self.resolver._resampled_cache.items():
+        if self.resolver.resampled_cache:
+            for method_name, sm_data in self.resolver.resampled_cache.items():
                 reps = sm_data.get("replicates")
                 p_names = sm_data.get("parameter_names", [])
                 if reps is not None and len(p_names) > 0:
@@ -370,7 +281,7 @@ class ReportBuilder:
                 )
 
         # 1D Grid Profiles (if 1D grid data is available)
-        if self.resolver._1d_grid_cache:
+        if self.resolver.grid_1d_cache:
             page_generators.append(self._build_1d_grid_profiles_page)
 
         # 7. Provenance & DOF Accounting Page (Phase 6)
@@ -557,7 +468,7 @@ class ReportBuilder:
                 except Exception:
                     pass
 
-        for sm_dict in self.resolver._resampled_cache.values():
+        for sm_dict in self.resolver.resampled_cache.values():
             p_names = [clean_param_name(x).upper() for x in sm_dict.get("parameter_names", [])]
             if "KEX_AB" in p_names and "PB" in p_names:
                 return True
@@ -587,7 +498,7 @@ class ReportBuilder:
 
         # Check if MC/Bootstrap samples exist
         samples_2d = None
-        for sm_dict in self.resolver._resampled_cache.values():
+        for sm_dict in self.resolver.resampled_cache.values():
             p_names = [clean_param_name(x).upper() for x in sm_dict.get("parameter_names", [])]
             reps = sm_dict.get("replicates")
             if reps is not None and "KEX_AB" in p_names and "PB" in p_names:
@@ -812,7 +723,7 @@ class ReportBuilder:
         stat_name = "Monte Carlo / Bootstrap"
         samples_found = False
 
-        for sm_name, sm_dict in self.resolver._resampled_cache.items():
+        for sm_name, sm_dict in self.resolver.resampled_cache.items():
             p_names = [clean_param_name(x).upper() for x in sm_dict.get("parameter_names", [])]
             reps = sm_dict.get("replicates")
             if reps is not None and reps.shape[0] > 1:
@@ -1132,7 +1043,7 @@ class ReportBuilder:
 
     def _build_1d_grid_profiles_page(self, fig: plt.Figure):
         """Render 1D Grid Search Chi2 profiles with Delta-chi2 = 1.00 and 3.84 confidence thresholds."""
-        profs = list(self.resolver._1d_grid_cache.values())
+        profs = list(self.resolver.grid_1d_cache.values())
         if not profs:
             return
 
@@ -1266,13 +1177,14 @@ def generate_modern_pdf_report(
 ) -> io.BytesIO:
     """
     Main entry point for generating modern, publication-usable PDF reports.
+    Preserves exact signature for compatibility.
     """
-    builder = ReportBuilder(
+    model = build_report_model(
         analysis_dir=analysis_dir,
         analysis_name=analysis_name,
         analysis_type=analysis_type,
-        style_name=style,
         chemex_image_digest=chemex_image_digest,
         fixed_timestamp=fixed_timestamp,
     )
+    builder = ReportBuilder(model=model, style_name=style)
     return builder.render_pdf()

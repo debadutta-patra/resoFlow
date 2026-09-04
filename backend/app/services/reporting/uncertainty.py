@@ -166,6 +166,16 @@ class UncertaintyResolver:
         
         self._load_grid_and_resampling_data()
 
+    @property
+    def resampled_cache(self) -> Dict[str, Dict[str, Any]]:
+        """Access loaded resampled samples cache."""
+        return self._resampled_cache
+
+    @property
+    def grid_1d_cache(self) -> Dict[Any, Dict[str, Any]]:
+        """Access loaded 1D grid profiles cache."""
+        return self._1d_grid_cache
+
     def get_ledger_summary(self) -> Dict[str, int]:
         """Summarize how many parameters resolved to each UncertaintySource."""
         summary = {source.value: 0 for source in UncertaintySource}
