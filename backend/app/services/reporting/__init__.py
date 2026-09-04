@@ -4,3 +4,4 @@ from .kinetics import propagate_derived_kinetics, DerivedKineticResult
 from .provenance import extract_report_provenance, ReportProvenance
 from .model import ReportModel, ResidueRecord, build_report_model
 from .report_generator import generate_modern_pdf_report, ReportBuilder
+from . import figures
