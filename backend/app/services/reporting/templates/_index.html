@@ -4,25 +4,25 @@
 <table>
   <thead>
     <tr>
-      <th style="width: 14%;">Residue</th>
-      <th style="width: 10%; text-align: right;">Red. χ²</th>
-      <th style="width: 17%; text-align: right;">Δω (ppm)</th>
-      <th style="width: 17%; text-align: right;">R<sub>2A</sub> (s⁻¹)</th>
-      <th style="width: 17%; text-align: right;">R<sub>2B</sub> (s⁻¹)</th>
-      <th style="width: 17%; text-align: right;">R<sub>1A</sub> (s⁻¹)</th>
-      <th style="width: 8%; text-align: center;">Flags</th>
+      <th style="width: 12%;">Residue</th>
+      <th class="num-right" style="width: 9%;">Red. χ²</th>
+      <th class="num-right" style="width: 17%;">Δω (ppm)</th>
+      <th class="num-right" style="width: 17%;">R<sub>2A</sub> (s⁻¹)</th>
+      <th class="num-right" style="width: 17%;">R<sub>2B</sub> (s⁻¹)</th>
+      <th class="num-right" style="width: 17%;">R<sub>1A</sub> (s⁻¹)</th>
+      <th class="num-center" style="width: 11%;">Flags</th>
     </tr>
   </thead>
   <tbody>
     {% for r in index_data.rows %}
     <tr>
       <td><a class="xref" href="#{{ r.anchor }}">{{ r.display_name }}</a></td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.chi2_red_str }}</td>
-      <td style="text-align: right;">{{ r.dw_html|safe }}</td>
-      <td style="text-align: right;">{{ r.r2a_html|safe }}</td>
-      <td style="text-align: right;">{{ r.r2b_html|safe }}</td>
-      <td style="text-align: right;">{{ r.r1a_html|safe }}</td>
-      <td style="text-align: center;">
+      <td class="num-right">{{ r.chi2_red_str }}</td>
+      <td class="num-right">{{ r.dw_html|safe }}</td>
+      <td class="num-right">{{ r.r2a_html|safe }}</td>
+      <td class="num-right">{{ r.r2b_html|safe }}</td>
+      <td class="num-right">{{ r.r1a_html|safe }}</td>
+      <td class="num-center">
         {% if r.flags %}
           {% for f in r.flags %}
             <span class="badge-flag" title="{{ f }}">{{ f }}</span>

@@ -19,9 +19,9 @@
   <thead>
     <tr>
       <th style="width: 26%;">Parameter</th>
-      <th style="width: 12%;">Symbol</th>
+      <th class="num-center" style="width: 12%;">Symbol</th>
       <th style="width: 16%;">Status</th>
-      <th style="width: 26%; text-align: right;">Value</th>
+      <th class="num-right" style="width: 26%;">Value</th>
       <th style="width: 20%;">Uncertainty Source</th>
     </tr>
   </thead>
@@ -35,7 +35,7 @@
           {{ row.status }}
         </span>
       </td>
-      <td style="text-align: right;">{{ row.value_html|safe }}</td>
+      <td class="num-right">{{ row.value_html|safe }}</td>
       <td>{{ row.source_text|safe }}</td>
     </tr>
     {% endfor %}
@@ -48,9 +48,9 @@
   <thead>
     <tr>
       <th style="width: 20%;">Quantity</th>
-      <th style="width: 12%;">Symbol</th>
+      <th class="num-center" style="width: 12%;">Symbol</th>
       <th style="width: 24%;">Expression</th>
-      <th style="width: 24%; text-align: right;">Propagated Value</th>
+      <th class="num-right" style="width: 24%;">Propagated Value</th>
       <th style="width: 20%;">Propagation Method</th>
     </tr>
   </thead>
@@ -60,7 +60,7 @@
       <td><strong>{{ k.name }}</strong></td>
       <td class="num-center">{{ k.symbol|safe }}</td>
       <td><code>{{ k.expression|safe }}</code></td>
-      <td style="text-align: right;">{{ k.value_html|safe }}</td>
+      <td class="num-right">{{ k.value_html|safe }}</td>
       <td>{{ k.method }}</td>
     </tr>
     {% endfor %}
@@ -72,13 +72,13 @@
 <table>
   <thead>
     <tr>
-      <th style="width: 10%;">Residue</th>
-      <th style="width: 8%; text-align: right;">χ²ᵣ</th>
-      <th style="width: 18%; text-align: right;">Δω (ppm)</th>
-      <th style="width: 16%; text-align: right;">R₂A (s⁻¹)</th>
-      <th style="width: 16%; text-align: right;">R₂B (s⁻¹)</th>
-      <th style="width: 14%; text-align: right;">R₁A (s⁻¹)</th>
-      <th style="width: 18%;">Quality Flags</th>
+      <th style="width: 12%;">Residue</th>
+      <th class="num-right" style="width: 9%;">χ²ᵣ</th>
+      <th class="num-right" style="width: 17%;">Δω (ppm)</th>
+      <th class="num-right" style="width: 17%;">R₂A (s⁻¹)</th>
+      <th class="num-right" style="width: 17%;">R₂B (s⁻¹)</th>
+      <th class="num-right" style="width: 17%;">R₁A (s⁻¹)</th>
+      <th class="num-center" style="width: 11%;">Quality Flags</th>
     </tr>
   </thead>
   <tbody>
@@ -89,14 +89,14 @@
       </td>
       <td class="num-right">
         {% if row.chi2_red is not none %}
-          <span class="v">{{ row.chi2_red|round(2) }}</span>
+          <span class="v">{{ "%.2f"|format(row.chi2_red) }}</span>
         {% else %}—{% endif %}
       </td>
       <td class="num-right">{{ row.dw_html|safe }}</td>
       <td class="num-right">{{ row.r2a_html|safe }}</td>
       <td class="num-right">{{ row.r2b_html|safe }}</td>
       <td class="num-right">{{ row.r1a_html|safe }}</td>
-      <td>
+      <td class="num-center">
         {% if row.flags %}
           {% for f in row.flags %}
             <span class="badge-flag">{{ f }}</span>
@@ -147,9 +147,9 @@
     <thead>
       <tr>
         <th style="width: 25%;">Parameter</th>
-        <th style="width: 15%;">Symbol</th>
+        <th class="num-center" style="width: 15%;">Symbol</th>
         <th style="width: 15%;">Status</th>
-        <th style="width: 25%; text-align: right;">Value</th>
+        <th class="num-right" style="width: 25%;">Value</th>
         <th style="width: 20%;">Uncertainty Source</th>
       </tr>
     </thead>
@@ -163,7 +163,7 @@
             {{ p.status }}
           </span>
         </td>
-        <td style="text-align: right;">{{ p.value_html|safe }}</td>
+        <td class="num-right">{{ p.value_html|safe }}</td>
         <td>{{ p.source_text|safe }}</td>
       </tr>
       {% endfor %}
@@ -200,7 +200,7 @@
     <thead>
       <tr>
         <th style="width: 30%;">Parameter Pair</th>
-        <th style="width: 15%; text-align: right;">r</th>
+        <th class="num-right" style="width: 15%;">r</th>
         <th style="width: 25%;">Strength</th>
         <th style="width: 30%;">Interpretation</th>
       </tr>

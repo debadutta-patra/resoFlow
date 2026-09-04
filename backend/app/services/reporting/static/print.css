@@ -99,15 +99,30 @@ th {
   background-color: #F3F4F6;
   font-weight: bold;
   text-align: left;
-  padding: 3.5pt 5pt;
+  padding: 4pt 6pt;
   border-bottom: 1pt solid #D1D5DB;
   color: #111827;
+  vertical-align: middle;
 }
 
 td {
-  padding: 3pt 5pt;
+  padding: 3.5pt 6pt;
   border-bottom: 0.5pt solid #E5E7EB;
   vertical-align: middle;
+}
+
+.num-right, th.num-right, td.num-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.num-center, th.num-center, td.num-center {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.num-left, th.num-left, td.num-left {
+  text-align: left;
 }
 
 td.n {
@@ -133,6 +148,7 @@ td.num-center {
 .val-block {
   display: inline-block;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .pm {
@@ -142,20 +158,21 @@ td.num-center {
 }
 
 .asym-err {
-  display: inline-flex;
-  flex-direction: column;
-  vertical-align: -0.22em;
+  display: inline-block;
+  vertical-align: middle;
   font-size: 0.72em;
-  line-height: 1.05;
-  margin-left: 1.5pt;
-  margin-right: 1pt;
+  line-height: 1.15;
+  margin-left: 2pt;
+  margin-right: 1.5pt;
   text-align: left;
 }
 
 .asym-err sup,
 .asym-err sub {
   display: block;
-  line-height: 1;
+  font-size: 1em;
+  line-height: 1.15;
+  vertical-align: baseline;
 }
 
 sub {
@@ -191,13 +208,14 @@ a.xref::after {
   margin-right: 2pt;
 }
 
-.badge-good {
+.badge-good,
+.status-clean {
   display: inline-block;
   background-color: #ECFDF5;
   color: #065F46;
   font-size: 6.5pt;
   font-weight: bold;
-  padding: 1pt 3pt;
+  padding: 1pt 4pt;
   border-radius: 2pt;
 }
 

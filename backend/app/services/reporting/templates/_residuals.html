@@ -11,9 +11,9 @@
     <thead>
       <tr>
         <th style="width: 24%;">Parameter</th>
-        <th style="width: 14%;">Symbol</th>
+        <th class="num-center" style="width: 14%;">Symbol</th>
         <th style="width: 16%;">Status</th>
-        <th style="width: 26%; text-align: right;">Resolved Value</th>
+        <th class="num-right" style="width: 26%;">Resolved Value</th>
         <th style="width: 20%;">Uncertainty Source</th>
       </tr>
     </thead>
@@ -27,7 +27,7 @@
             {{ p.status }}
           </span>
         </td>
-        <td style="text-align: right;">{{ p.value_html|safe }}</td>
+        <td class="num-right">{{ p.value_html|safe }}</td>
         <td>{{ p.source_text }}</td>
       </tr>
       {% endfor %}

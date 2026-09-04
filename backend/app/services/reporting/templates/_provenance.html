@@ -60,33 +60,33 @@
   <thead>
     <tr>
       <th style="width: 22%;">Level / Residue</th>
-      <th style="width: 13%; text-align: right;">Data Points (N)</th>
-      <th style="width: 13%; text-align: right;">Local Vars</th>
-      <th style="width: 13%; text-align: right;">Global Vars</th>
-      <th style="width: 11%; text-align: right;">DOF</th>
-      <th style="width: 14%; text-align: right;">χ²</th>
-      <th style="width: 14%; text-align: right;">Reduced χ²</th>
+      <th class="num-right" style="width: 13%;">Data Points (N)</th>
+      <th class="num-right" style="width: 13%;">Local Vars</th>
+      <th class="num-right" style="width: 13%;">Global Vars</th>
+      <th class="num-right" style="width: 11%;">DOF</th>
+      <th class="num-right" style="width: 14%;">χ²</th>
+      <th class="num-right" style="width: 14%;">Reduced χ²</th>
     </tr>
   </thead>
   <tbody>
     <tr style="background-color: #F8FAFC; font-weight: bold;">
       <td style="color: #0072B2;">Global Model Fit</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.n_data_global }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.n_local_params_total }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.n_global_params }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ prov.dof_accounting.dof_global }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(prov.dof_accounting.chi2_global) }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(prov.dof_accounting.chi2_red_global) }}</td>
+      <td class="num-right">{{ prov.dof_accounting.n_data_global }}</td>
+      <td class="num-right">{{ prov.dof_accounting.n_local_params_total }}</td>
+      <td class="num-right">{{ prov.dof_accounting.n_global_params }}</td>
+      <td class="num-right">{{ prov.dof_accounting.dof_global }}</td>
+      <td class="num-right">{{ "%.2f"|format(prov.dof_accounting.chi2_global) }}</td>
+      <td class="num-right">{{ "%.2f"|format(prov.dof_accounting.chi2_red_global) }}</td>
     </tr>
     {% for r in prov_data.residue_dofs %}
     <tr>
       <td>Residue {{ r.name }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.n_points }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.n_local }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">0</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ r.dof }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(r.chi2) }}</td>
-      <td style="text-align: right; font-variant-numeric: tabular-nums;">{{ "%.2f"|format(r.chi2_red) }}</td>
+      <td class="num-right">{{ r.n_points }}</td>
+      <td class="num-right">{{ r.n_local }}</td>
+      <td class="num-right">0</td>
+      <td class="num-right">{{ r.dof }}</td>
+      <td class="num-right">{{ "%.2f"|format(r.chi2) }}</td>
+      <td class="num-right">{{ "%.2f"|format(r.chi2_red) }}</td>
     </tr>
     {% endfor %}
   </tbody>
