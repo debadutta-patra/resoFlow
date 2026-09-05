@@ -20,7 +20,7 @@ import weasyprint
 from .model import ReportModel, ResidueRecord, StepReportModel
 from .formatting import format_with_error, SOURCE_SUPERSCRIPTS_HTML, format_subscript_html
 from .uncertainty import ParameterStatus, UncertaintySource, ResolvedParameter
-from .plot_styles import apply_report_style
+from .plot_styles import apply_report_style, PALETTE_METADATA
 from . import figures
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -714,6 +714,7 @@ def build_step_context(
 def build_report_context(
     model: ReportModel,
     style: str = "publication",
+    palette: Optional[str] = None,
     static_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
@@ -723,7 +724,7 @@ def build_report_context(
     s_dir = static_dir or STATIC_DIR
 
     steps_data = []
-    with apply_report_style(style):
+    with apply_report_style(style, palette=palette):
         kinetic_data = build_kinetic_data(model)
         profile_curves = build_profile_curves(model)
         detailed_residues = build_detailed_residues(model)
@@ -744,6 +745,8 @@ def build_report_context(
     return {
         "model": model,
         "style": style,
+        "palette": palette or "okabe_ito",
+        "palette_metadata": PALETTE_METADATA,
         "static_dir": str(s_dir.resolve()),
         "css_content": css_content,
         "summary_data": summary_data,
@@ -791,17 +794,19 @@ def render_weasy_pdf(
 def render_html(
     model: ReportModel,
     style: str = "screen",
+    palette: Optional[str] = None,
     template_dir: Optional[Path] = None,
     static_dir: Optional[Path] = None,
 ) -> str:
     """Render the full report model to an HTML string (e.g. for screen/web viewing)."""
-    context = build_report_context(model, style=style, static_dir=static_dir)
+    context = build_report_context(model, style=style, palette=palette, static_dir=static_dir)
     return render_weasy_html("report.html", context, template_dir=template_dir)
 
 
 def render_pdf(
     model: ReportModel,
     style: str = "publication",
+    palette: Optional[str] = None,
     template_dir: Optional[Path] = None,
     static_dir: Optional[Path] = None,
 ) -> io.BytesIO:
@@ -811,7 +816,7 @@ def render_pdf(
     Returns an io.BytesIO stream containing the complete PDF bytes.
     """
     s_dir = static_dir or STATIC_DIR
-    context = build_report_context(model, style=style, static_dir=s_dir)
+    context = build_report_context(model, style=style, palette=palette, static_dir=s_dir)
     pdf_bytes = render_weasy_pdf("report.html", context, template_dir=template_dir, static_dir=s_dir)
     return io.BytesIO(pdf_bytes)
 

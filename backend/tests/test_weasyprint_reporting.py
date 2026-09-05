@@ -646,3 +646,81 @@ def test_multi_step_report_rendering():
     assert any("Step 1: STEP1" in t for t in outline_titles)
     assert any("Step 2: STEP2" in t for t in outline_titles)
     assert any("Provenance & Acquisition Metadata" in t for t in outline_titles)
+
+
+def test_plot_styles_and_custom_palette():
+    """Verify palette resolution for presets, custom hex, and thread-safe context."""
+    from app.services.reporting.plot_styles import (
+        get_plot_palette,
+        get_current_palette,
+        apply_report_style,
+        PALETTES,
+        PALETTE_METADATA,
+        OKABE_ITO,
+    )
+
+    # 1. Preset resolution
+    assert get_plot_palette("okabe_ito") == OKABE_ITO
+    assert get_plot_palette("emerald_green") == PALETTES["emerald_green"]
+    assert get_plot_palette("EMERALD-GREEN") == PALETTES["emerald_green"]
+    assert get_plot_palette(None) == OKABE_ITO
+
+    # 2. Custom hex resolution
+    custom = get_plot_palette("#10B981")
+    assert custom[0] == "#10B981"
+    assert len(custom) >= 7
+
+    # 3. Context manager behavior
+    with apply_report_style("publication", palette="crimson_rose"):
+        active = get_current_palette()
+        assert active == PALETTES["crimson_rose"]
+
+    # Restores default after context
+    assert get_current_palette() == OKABE_ITO
+
+    # 4. Metadata sanity
+    assert len(PALETTE_METADATA) == 7
+    assert all("id" in p and "primary" in p and "colors" in p for p in PALETTE_METADATA)
+
+
+def test_figures_with_palette_rendering():
+    """Verify figure functions properly inject active palette into rendered SVGs."""
+    from app.services.reporting import figures
+    from app.services.reporting.plot_styles import PALETTES
+
+    # Test parameter distribution with custom hex
+    data = np.array([500.0, 510.0, 495.0, 505.0, 490.0, 520.0])
+    svg_custom = figures.parameter_distribution_plot(data, "kex_ab", palette="#10B981")
+    assert "#10b981" in svg_custom.lower() or "#10B981" in svg_custom
+
+    # Test 1D grid profile with emerald green preset
+    prof = {
+        "parameter": "kex_ab",
+        "x": [400.0, 450.0, 500.0, 550.0, 600.0],
+        "delta_chisqr": [9.0, 2.5, 0.0, 2.8, 10.2],
+    }
+    svg_preset = figures.grid_1d_profile_plot(prof, palette="emerald_green")
+    emerald_primary = PALETTES["emerald_green"][0]
+    assert emerald_primary.lower() in svg_preset.lower()
+
+
+def test_report_render_with_palette():
+    """Verify full HTML and PDF rendering with preset and custom color palettes."""
+    from app.services.reporting.model import build_report_model
+    from app.services.reporting.render import render_html, render_pdf
+
+    fix_dir = Path(__file__).parent / "fixtures" / "chemex_trees" / "single_step"
+    model = build_report_model(
+        analysis_dir=fix_dir,
+        analysis_name="single_step",
+        analysis_type="CEST",
+    )
+
+    # 1. Render HTML with preset
+    html_str = render_html(model, palette="deep_violet")
+    assert "data:image/svg+xml;utf8" in html_str or "<svg" in html_str
+
+    # 2. Render PDF with custom hex
+    pdf_buf = render_pdf(model, palette="#BE123C")
+    assert len(pdf_buf.getvalue()) > 50000
+

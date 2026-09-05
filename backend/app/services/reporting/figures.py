@@ -19,16 +19,16 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import numpy as np
 
-from .plot_styles import OKABE_ITO
+from .plot_styles import OKABE_ITO, get_current_palette, apply_report_style
 from ..fitting.statistics_engine import clean_param_name
 
 # Configure matplotlib to convert text glyphs to vector path outlines in SVG
 plt.rcParams["svg.fonttype"] = "path"
 
 
-def format_param_label(p_raw: str) -> str:
+def format_param_label(p_raw: Any) -> str:
     """Format ChemEx parameter key into clean publication-ready label."""
-    s = p_raw.strip().strip("[]\"'")
+    s = str(p_raw).strip().strip("[]\"'")
     parts = [x.strip() for x in s.split(",")]
     base = parts[0].upper()
     nuc = ""
@@ -94,14 +94,16 @@ def _draw_dispersion_curve(
     analysis_type: str = "CEST",
     show_anchors: bool = True,
     compact: bool = False,
+    palette: Optional[List[str]] = None,
 ):
     """Render CEST or CPMG profile curves with deduplicated legends and non-colliding A/B markers."""
     experiments = rec.get("experiments", [])
+    active_palette = palette or get_current_palette()
     handles = []
     labels = []
 
     for i, exp in enumerate(experiments):
-        color = OKABE_ITO[i % len(OKABE_ITO)]
+        color = active_palette[i % len(active_palette)]
         b1_lbl = exp.get("b1_label", f"Field {i + 1}")
         ep = exp.get("exp_points", {})
         fc = exp.get("fit_curve", {})
@@ -172,13 +174,15 @@ def _draw_residuals_strip(
     ax: plt.Axes,
     rec: Any,
     analysis_type: str = "CEST",
+    palette: Optional[List[str]] = None,
 ):
     """Render normalized residuals (y - fit) / sigma strip."""
     experiments = rec.get("experiments", [])
+    active_palette = palette or get_current_palette()
     has_residuals = False
 
     for exp_i, exp in enumerate(experiments):
-        color = OKABE_ITO[exp_i % len(OKABE_ITO)]
+        color = active_palette[exp_i % len(active_palette)]
         ep = exp.get("exp_points", {})
         fc = exp.get("fit_curve", {})
 
@@ -271,10 +275,12 @@ def _draw_parameter_distribution(
     ax: plt.Axes,
     col_data: np.ndarray,
     p_raw: str,
+    palette: Optional[List[str]] = None,
 ):
     """Render marginal error distribution histogram and credible intervals for a single parameter."""
     valid = col_data[~np.isnan(col_data)]
     label = format_param_label(p_raw)
+    active_palette = palette or get_current_palette()
     is_pb = "PB" in p_raw.upper()
     if is_pb and np.nanmedian(valid) <= 1.0:
         valid = valid * 100.0
@@ -290,15 +296,18 @@ def _draw_parameter_distribution(
 
         n_bins = min(30, max(10, int(np.sqrt(n_samples))))
         counts, bins, _ = ax.hist(
-            valid, bins=n_bins, density=True, color="#0072B2",
+            valid, bins=n_bins, density=True, color=active_palette[0],
             alpha=0.60, edgecolor="white", linewidth=0.6, zorder=2
         )
 
-        ax.axvline(med_val, color="#D55E00", linestyle="-", linewidth=1.8, label=f"Median: {med_val:.3g}", zorder=4)
-        ax.axvline(p16, color="#D55E00", linestyle="--", linewidth=1.1, label=f"68% CI: [{p16:.3g}, {p84:.3g}]", zorder=3)
-        ax.axvline(p84, color="#D55E00", linestyle="--", linewidth=1.1, zorder=3)
-        ax.axvline(p2_5, color="#CC79A7", linestyle=":", linewidth=1.0, label=f"95% CI: [{p2_5:.3g}, {p97_5:.3g}]", zorder=3)
-        ax.axvline(p97_5, color="#CC79A7", linestyle=":", linewidth=1.0, zorder=3)
+        median_color = active_palette[1] if len(active_palette) > 1 else "#D55E00"
+        ci95_color = active_palette[5] if len(active_palette) > 5 else active_palette[-1]
+
+        ax.axvline(med_val, color=median_color, linestyle="-", linewidth=1.8, label=f"Median: {med_val:.3g}", zorder=4)
+        ax.axvline(p16, color=median_color, linestyle="--", linewidth=1.1, label=f"68% CI: [{p16:.3g}, {p84:.3g}]", zorder=3)
+        ax.axvline(p84, color=median_color, linestyle="--", linewidth=1.1, zorder=3)
+        ax.axvline(p2_5, color=ci95_color, linestyle=":", linewidth=1.0, label=f"95% CI: [{p2_5:.3g}, {p97_5:.3g}]", zorder=3)
+        ax.axvline(p97_5, color=ci95_color, linestyle=":", linewidth=1.0, zorder=3)
 
         ax.set_title(label, fontsize=9.5, fontweight="bold")
         ax.set_xlabel(label, fontsize=8.5)
@@ -320,10 +329,12 @@ def _draw_covariance_distribution(
     ax: plt.Axes,
     label: str,
     p_obj: Any,
+    palette: Optional[List[str]] = None,
 ):
     """Render analytical error distribution intervals from covariance uncertainties."""
     mu = float(p_obj.value or 0.0)
     sig = float(p_obj.sigma or (abs(mu) * 0.10 if abs(mu) > 0 else 1.0))
+    active_palette = palette or get_current_palette()
 
     if "p_b" in label and p_obj.unit == "%" and mu <= 1.0:
         mu = mu * 100.0
@@ -333,9 +344,13 @@ def _draw_covariance_distribution(
     sig1_l, sig1_r = max(bound_low, mu - sig), mu + sig
     sig2_l, sig2_r = max(bound_low, mu - 1.96 * sig), mu + 1.96 * sig
 
-    ax.plot([sig2_l, sig2_r], [0, 0], color="#56B4E9", linewidth=3, solid_capstyle="round", label="95% CI (±1.96σ)")
-    ax.plot([sig1_l, sig1_r], [0, 0], color="#0072B2", linewidth=6, solid_capstyle="round", label="68% CI (±1σ)")
-    ax.scatter([mu], [0], color="#D55E00", marker="o", s=80, zorder=10, label=f"Best Fit: {mu:.3g}")
+    ci95_bar = active_palette[4] if len(active_palette) > 4 else active_palette[0]
+    ci68_bar = active_palette[0]
+    fit_color = active_palette[1] if len(active_palette) > 1 else "#D55E00"
+
+    ax.plot([sig2_l, sig2_r], [0, 0], color=ci95_bar, linewidth=3, solid_capstyle="round", label="95% CI (±1.96σ)")
+    ax.plot([sig1_l, sig1_r], [0, 0], color=ci68_bar, linewidth=6, solid_capstyle="round", label="68% CI (±1σ)")
+    ax.scatter([mu], [0], color=fit_color, marker="o", s=80, zorder=10, label=f"Best Fit: {mu:.3g}")
 
     if mu - sig < bound_low:
         ax.text(0.05, 0.90, "⚠ 1σ interval crosses physical bound\n(Parameter poorly constrained)", transform=ax.transAxes, color="#B91C1C", fontsize=9, fontweight="bold", va="top")
@@ -393,16 +408,22 @@ def _draw_correlation_matrix(
 def _draw_1d_grid_profile(
     ax: plt.Axes,
     prof: Dict[str, Any],
+    palette: Optional[List[str]] = None,
 ):
     """Render 1D Grid Search Chi2 profile with 1-sigma and 2-sigma thresholds."""
     x_pts = np.array(prof.get("x", []))
     dchi_pts = np.array(prof.get("delta_chisqr", []))
     p_name = format_param_label(prof.get("parameter", "Param"))
+    active_palette = palette or get_current_palette()
 
     if len(x_pts) > 0 and len(dchi_pts) > 0:
-        ax.plot(x_pts, dchi_pts, "-", color="#0072B2", linewidth=1.8, label=r"$\Delta \chi^2$ Profile")
-        ax.axhline(1.00, color="#D55E00", linestyle="--", linewidth=1.0, label=r"$\Delta\chi^2 = 1.00$ ($1\sigma$)")
-        ax.axhline(3.84, color="#CC79A7", linestyle=":", linewidth=1.0, label=r"$\Delta\chi^2 = 3.84$ ($2\sigma$)")
+        chi_color = active_palette[0]
+        sig1_color = active_palette[1] if len(active_palette) > 1 else "#D55E00"
+        sig2_color = active_palette[5] if len(active_palette) > 5 else active_palette[-1]
+
+        ax.plot(x_pts, dchi_pts, "-", color=chi_color, linewidth=1.8, label=r"$\Delta \chi^2$ Profile")
+        ax.axhline(1.00, color=sig1_color, linestyle="--", linewidth=1.0, label=r"$\Delta\chi^2 = 1.00$ ($1\sigma$)")
+        ax.axhline(3.84, color=sig2_color, linestyle=":", linewidth=1.0, label=r"$\Delta\chi^2 = 3.84$ ($2\sigma$)")
 
         ax.set_title(p_name, fontsize=9.5, fontweight="bold")
         ax.set_xlabel(p_name, fontsize=8.5)
@@ -422,8 +443,14 @@ def dispersion_curve(
     analysis_type: str = "CEST",
     compact: bool = False,
     show_anchors: bool = True,
+    palette: Optional[str] = None,
 ) -> str:
     """Generate standalone SVG for CEST or CPMG dispersion profile."""
+    if palette:
+        with apply_report_style(palette=palette):
+            fig, ax = plt.subplots(figsize=(3.2, 2.2) if compact else (6.4, 3.4))
+            _draw_dispersion_curve(ax, rec, analysis_type=analysis_type, show_anchors=show_anchors, compact=compact)
+            return _svg(fig)
     fig, ax = plt.subplots(figsize=(3.2, 2.2) if compact else (6.4, 3.4))
     _draw_dispersion_curve(ax, rec, analysis_type=analysis_type, show_anchors=show_anchors, compact=compact)
     return _svg(fig)
@@ -432,8 +459,14 @@ def dispersion_curve(
 def residuals_strip(
     rec: Any,
     analysis_type: str = "CEST",
+    palette: Optional[str] = None,
 ) -> str:
     """Generate standalone SVG for normalized residuals strip."""
+    if palette:
+        with apply_report_style(palette=palette):
+            fig, ax = plt.subplots(figsize=(6.4, 1.8))
+            _draw_residuals_strip(ax, rec, analysis_type=analysis_type)
+            return _svg(fig)
     fig, ax = plt.subplots(figsize=(6.4, 1.8))
     _draw_residuals_strip(ax, rec, analysis_type=analysis_type)
     return _svg(fig)
@@ -442,8 +475,20 @@ def residuals_strip(
 def detailed_residue_plot(
     rec: Any,
     analysis_type: str = "CEST",
+    palette: Optional[str] = None,
 ) -> str:
     """Generate composite SVG containing both profile and residuals strip."""
+    if palette:
+        with apply_report_style(palette=palette):
+            fig = plt.figure(figsize=(6.4, 4.4))
+            gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
+            ax_profile = fig.add_subplot(gs[0])
+            ax_residual = fig.add_subplot(gs[1], sharex=ax_profile)
+
+            _draw_dispersion_curve(ax_profile, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
+            ax_profile.set_xlabel("")
+            _draw_residuals_strip(ax_residual, rec, analysis_type=analysis_type)
+            return _svg(fig)
     fig = plt.figure(figsize=(6.4, 4.4))
     gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
     ax_profile = fig.add_subplot(gs[0])
@@ -461,11 +506,22 @@ def kinetic_correlation_plot(
     best_fit: Optional[Tuple[Optional[float], Optional[float]]] = None,
     fmt: str = "png",
     dpi: int = 300,
+    palette: Optional[str] = None,
 ) -> str:
     """
     Generate kinetic correlation / 2D likelihood contour figure.
     Defaults to 300 dpi base64 PNG data URI to avoid SVG bloat from dense contour paths.
     """
+    if palette:
+        with apply_report_style(palette=palette):
+            fig, ax = plt.subplots(figsize=(6.4, 4.8))
+            rendered = _draw_kinetic_correlation(ax, fig=fig, grid_prof_2d=grid_prof_2d, samples_2d=samples_2d, best_fit=best_fit)
+            if not rendered:
+                plt.close(fig)
+                return ""
+            if fmt.lower() == "svg":
+                return _svg(fig)
+            return _png_base64(fig, dpi=dpi)
     fig, ax = plt.subplots(figsize=(6.4, 4.8))
     rendered = _draw_kinetic_correlation(ax, fig=fig, grid_prof_2d=grid_prof_2d, samples_2d=samples_2d, best_fit=best_fit)
     if not rendered:
@@ -479,8 +535,14 @@ def kinetic_correlation_plot(
 def parameter_distribution_plot(
     col_data: np.ndarray,
     p_raw: str,
+    palette: Optional[str] = None,
 ) -> str:
     """Generate standalone SVG for a parameter error distribution histogram."""
+    if palette:
+        with apply_report_style(palette=palette):
+            fig, ax = plt.subplots(figsize=(4.0, 3.0))
+            _draw_parameter_distribution(ax, col_data, p_raw)
+            return _svg(fig)
     fig, ax = plt.subplots(figsize=(4.0, 3.0))
     _draw_parameter_distribution(ax, col_data, p_raw)
     return _svg(fig)
@@ -489,8 +551,14 @@ def parameter_distribution_plot(
 def covariance_distribution_plot(
     label: str,
     p_obj: Any,
+    palette: Optional[str] = None,
 ) -> str:
     """Generate standalone SVG for a covariance-derived confidence interval bar."""
+    if palette:
+        with apply_report_style(palette=palette):
+            fig, ax = plt.subplots(figsize=(4.0, 2.5))
+            _draw_covariance_distribution(ax, label, p_obj)
+            return _svg(fig)
     fig, ax = plt.subplots(figsize=(4.0, 2.5))
     _draw_covariance_distribution(ax, label, p_obj)
     return _svg(fig)
@@ -502,11 +570,19 @@ def correlation_matrix_plot(
     title: str = "Parameter Correlation Matrix",
     fmt: str = "png",
     dpi: int = 300,
+    palette: Optional[str] = None,
 ) -> str:
     """
     Generate correlation matrix heatmap.
     Defaults to 300 dpi base64 PNG data URI to prevent dense artist SVG bloat.
     """
+    if palette:
+        with apply_report_style(palette=palette):
+            fig, ax = plt.subplots(figsize=(6.0, 5.0))
+            _draw_correlation_matrix(ax, fig=fig, corr_mat=corr_mat, labels=labels, title=title)
+            if fmt.lower() == "svg":
+                return _svg(fig)
+            return _png_base64(fig, dpi=dpi)
     fig, ax = plt.subplots(figsize=(6.0, 5.0))
     _draw_correlation_matrix(ax, fig=fig, corr_mat=corr_mat, labels=labels, title=title)
     if fmt.lower() == "svg":
@@ -516,8 +592,14 @@ def correlation_matrix_plot(
 
 def grid_1d_profile_plot(
     prof: Dict[str, Any],
+    palette: Optional[str] = None,
 ) -> str:
     """Generate standalone SVG for a 1D grid search likelihood profile."""
+    if palette:
+        with apply_report_style(palette=palette):
+            fig, ax = plt.subplots(figsize=(4.0, 3.0))
+            _draw_1d_grid_profile(ax, prof)
+            return _svg(fig)
     fig, ax = plt.subplots(figsize=(4.0, 3.0))
     _draw_1d_grid_profile(ax, prof)
     return _svg(fig)

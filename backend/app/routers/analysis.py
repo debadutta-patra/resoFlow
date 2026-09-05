@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple, Dict, Any
 import os
+import re
 import json
 import math
 import uuid
@@ -22,7 +23,9 @@ from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Fil
 from ..services.reporting.model import build_report_model
 from ..services.reporting.render import render_html, render_pdf
 from ..services.reporting.report_generator import generate_modern_pdf_report
-from ..services.reporting.tasks import generate_report_pdf_task
+from ..services.reporting.tasks import generate_report_pdf_task, export_plots_zip_task
+from ..services.reporting.plot_styles import PALETTE_METADATA
+from ..services.export.plot_export import export_all_plots_zip
 from ..services.export.zip_export import generate_export_token, verify_export_token
 
 router = APIRouter(prefix="/api/projects/{project_uuid}/analysis", tags=["analysis"])
@@ -1097,11 +1100,17 @@ def _get_analysis_run_dir(analysis: models.Analysis) -> str:
     is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
     folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
     if analysis.results_path and os.path.exists(analysis.results_path):
+        if os.path.isdir(analysis.results_path):
+            return analysis.results_path
         return os.path.dirname(analysis.results_path)
     return os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
 
 
-def _render_analysis_html(analysis: models.Analysis, style: str = "screen") -> HTMLResponse:
+def _render_analysis_html(
+    analysis: models.Analysis,
+    style: str = "screen",
+    palette: Optional[str] = None,
+) -> HTMLResponse:
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
@@ -1113,7 +1122,7 @@ def _render_analysis_html(analysis: models.Analysis, style: str = "screen") -> H
             analysis_type="CPMG" if is_cpmg else "CEST",
             chemex_image_digest=analysis.chemex_image_digest,
         )
-        html_str = render_html(model, style=style)
+        html_str = render_html(model, style=style, palette=palette)
         return HTMLResponse(content=html_str)
     except Exception as e:
         logger.exception("Failed to render HTML report for %s: %s", analysis.analysis_uuid, e)
@@ -1139,14 +1148,23 @@ def _render_analysis_json(analysis: models.Analysis) -> Response:
         raise HTTPException(status_code=500, detail="Failed to generate report data. Please check server logs.")
 
 
-def _render_or_serve_pdf(analysis: models.Analysis, style: str = "publication"):
+def _render_or_serve_pdf(
+    analysis: models.Analysis,
+    style: str = "publication",
+    palette: Optional[str] = None,
+):
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
     type_name = "cpmg" if is_cpmg else "cest"
 
-    pdf_path = os.path.join(run_dir, "report.pdf")
+    if palette and palette != "okabe_ito":
+        safe_palette = "".join(c for c in palette if c.isalnum() or c in ("_", "-"))
+        pdf_path = os.path.join(run_dir, f"report_{safe_palette}.pdf")
+    else:
+        pdf_path = os.path.join(run_dir, "report.pdf")
+
     if os.path.exists(pdf_path):
         return FileResponse(
             pdf_path,
@@ -1160,8 +1178,16 @@ def _render_or_serve_pdf(analysis: models.Analysis, style: str = "publication"):
             analysis_name=analysis.name,
             analysis_type=type_name.upper(),
             style=style,
+            palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
         )
+        try:
+            with open(pdf_path, "wb") as f:
+                f.write(pdf_buf.getvalue())
+            pdf_buf.seek(0)
+        except Exception:
+            pass
+
         return StreamingResponse(
             pdf_buf,
             media_type="application/pdf",
@@ -1186,20 +1212,30 @@ def _trigger_pdf_async(
             detail=f"Analysis report requires status COMPLETED (current status: {analysis.status})",
         )
 
+    req_options = dict(options or {})
+    palette = req_options.get("palette") or req_options.get("color")
+    if palette:
+        req_options["palette"] = palette
+
     task = generate_report_pdf_task.delay(
         analysis_uuid=analysis.analysis_uuid,
         style=style,
-        options=options,
+        options=req_options,
     )
+    token_opts = {"style": style, "type": "report"}
+    if palette:
+        token_opts["palette"] = palette
+
     token = generate_export_token(
         project_uuid=analysis.project.project_uuid,
         analysis_uuid=analysis.analysis_uuid,
         user_id=current_user.id,
-        options={"style": style, "type": "report"},
+        options=token_opts,
         validity_seconds=600,
     )
+    palette_param = f"&palette={palette}" if palette else ""
     download_url = (
-        f"/api/projects/{analysis.project.project_uuid}/analysis/{analysis.analysis_uuid}/report/download?token={token}"
+        f"/api/projects/{analysis.project.project_uuid}/analysis/{analysis.analysis_uuid}/report/download?token={token}{palette_param}"
     )
     return {
         "task_id": task.id,
@@ -1220,6 +1256,93 @@ def _poll_pdf_status(task_id: str) -> Dict[str, Any]:
             "error": "Report generation failed. Please check server logs.",
         }
     return {"status": res.state, "ready": False}
+
+
+def _trigger_plots_export_async(
+    analysis: models.Analysis,
+    current_user: models.User,
+    palette: Optional[str] = None,
+    style: str = "publication",
+    options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if analysis.status != "COMPLETED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Analysis export requires status COMPLETED (current status: {analysis.status})",
+        )
+
+    req_options = dict(options or {})
+    chosen_palette = palette or req_options.get("palette") or req_options.get("color") or "okabe_ito"
+    req_options["palette"] = chosen_palette
+
+    task = export_plots_zip_task.delay(
+        analysis_uuid=analysis.analysis_uuid,
+        palette=chosen_palette,
+        style=style,
+        options=req_options,
+    )
+    token_opts = {"style": style, "type": "plots", "palette": chosen_palette}
+
+    token = generate_export_token(
+        project_uuid=analysis.project.project_uuid,
+        analysis_uuid=analysis.analysis_uuid,
+        user_id=current_user.id,
+        options=token_opts,
+        validity_seconds=600,
+    )
+    download_url = (
+        f"/api/projects/{analysis.project.project_uuid}/analysis/{analysis.analysis_uuid}/export/plots/download?token={token}&palette={chosen_palette}"
+    )
+    return {
+        "task_id": task.id,
+        "token": token,
+        "download_url": download_url,
+        "expires_in": 600,
+        "palette": chosen_palette,
+    }
+
+
+def _render_or_serve_plots_zip(
+    analysis: models.Analysis,
+    palette: Optional[str] = None,
+    style: str = "publication",
+):
+    run_dir = _get_analysis_run_dir(analysis)
+    if not os.path.exists(run_dir):
+        raise HTTPException(status_code=404, detail="Analysis results directory not found")
+
+    chosen_palette = palette or "okabe_ito"
+    safe_palette = "".join(c for c in chosen_palette if c.isalnum() or c in ("_", "-"))
+    zip_path = os.path.join(run_dir, f"plots_{safe_palette}.zip")
+    clean_name = re.sub(r"[^A-Za-z0-9_-]", "_", analysis.name.strip()).lower()
+    filename = f"{clean_name}_{analysis.analysis_uuid[:8]}_plots_{safe_palette}.zip"
+
+    if os.path.exists(zip_path):
+        return FileResponse(
+            zip_path,
+            media_type="application/zip",
+            filename=filename,
+        )
+
+    try:
+        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        buf = export_all_plots_zip(
+            analysis_dir=run_dir,
+            analysis_name=analysis.name,
+            analysis_type="CPMG" if is_cpmg else "CEST",
+            palette=chosen_palette,
+            style=style,
+            chemex_image_digest=analysis.chemex_image_digest,
+            output_path=zip_path,
+        )
+        return StreamingResponse(
+            buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except Exception as e:
+        logger.exception("Failed to generate plots ZIP export for %s: %s", analysis.analysis_uuid, e)
+        raise HTTPException(status_code=500, detail="Failed to export plots archive. Please check server logs.")
 
 
 def _get_analysis_for_standalone_report(
@@ -1254,13 +1377,20 @@ def _get_analysis_for_standalone_report(
 # Nested Endpoints (/api/projects/{project_uuid}/analysis/{analysis_uuid}/...)
 # ==============================================================================
 
+@router.get("/report/palettes")
+def get_report_palettes():
+    """Return available plot color palettes with preview hex values."""
+    return PALETTE_METADATA
+
+
 @router.get("/{analysis_uuid}/report.html", response_class=HTMLResponse)
 def get_report_html(
     analysis: models.Analysis = Depends(get_analysis),
     style: str = "screen",
+    palette: Optional[str] = None,
 ):
     """Render and return the interactive HTML report using screen.css."""
-    return _render_analysis_html(analysis, style=style)
+    return _render_analysis_html(analysis, style=style, palette=palette)
 
 
 @router.get("/{analysis_uuid}/report.json", response_class=JSONResponse)
@@ -1274,31 +1404,34 @@ def get_report_json(
 @router.get("/{analysis_uuid}/report.pdf")
 def get_report_pdf(
     style: str = "publication",
+    palette: Optional[str] = None,
     analysis: models.Analysis = Depends(get_analysis),
 ):
     """Return the publication-ready PDF report."""
-    return _render_or_serve_pdf(analysis, style=style)
+    return _render_or_serve_pdf(analysis, style=style, palette=palette)
 
 
 @router.get("/{analysis_uuid}/cest/report")
 def export_cest_report(
     style: str = "publication",
+    palette: Optional[str] = None,
     analysis: models.Analysis = Depends(get_analysis),
     db: Session = Depends(database.get_db),
 ):
     """Generate and return a multi-page PDF report for the CEST analysis."""
-    return _render_or_serve_pdf(analysis, style=style)
+    return _render_or_serve_pdf(analysis, style=style, palette=palette)
 
 
 @router.get("/{analysis_uuid}/cpmg/report")
 @router.get("/{analysis_uuid}/report")
 def export_cpmg_report(
     style: str = "publication",
+    palette: Optional[str] = None,
     analysis: models.Analysis = Depends(get_analysis),
     db: Session = Depends(database.get_db),
 ):
     """Generate and return a multi-page PDF report for the CPMG or general analysis."""
-    return _render_or_serve_pdf(analysis, style=style)
+    return _render_or_serve_pdf(analysis, style=style, palette=palette)
 
 
 @router.post("/{analysis_uuid}/report/async")
@@ -1330,6 +1463,7 @@ def download_report_pdf(
     project_uuid: str,
     analysis_uuid: str,
     token: Optional[str] = None,
+    palette: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: Optional[models.User] = Depends(security.get_optional_current_user),
 ):
@@ -1340,24 +1474,90 @@ def download_report_pdf(
         current_user=current_user,
         token=token,
     )
-    return _render_or_serve_pdf(analysis)
+    return _render_or_serve_pdf(analysis, palette=palette)
+
+
+@router.post("/{analysis_uuid}/export/plots/async")
+def trigger_plots_export_async(
+    project_uuid: str,
+    analysis_uuid: str,
+    request: Optional[Dict[str, Any]] = None,
+    analysis: models.Analysis = Depends(get_analysis),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """
+    Dispatch asynchronous plots ZIP archive export to Celery 'stats' queue.
+    Generates all figures in 300 DPI PNG and vector PDF formats using the requested color palette.
+    """
+    req = request or {}
+    style = req.get("style", "publication")
+    palette = req.get("palette") or req.get("color")
+    return _trigger_plots_export_async(analysis, current_user, palette=palette, style=style, options=req)
+
+
+@router.get("/{analysis_uuid}/export/plots/status/{task_id}")
+def check_plots_export_status(
+    task_id: str,
+    analysis: models.Analysis = Depends(get_analysis),
+):
+    """Poll Celery task status for asynchronous plot export."""
+    return _poll_pdf_status(task_id)
+
+
+@router.get("/{analysis_uuid}/export/plots/download")
+def download_plots_export(
+    project_uuid: str,
+    analysis_uuid: str,
+    token: Optional[str] = None,
+    palette: Optional[str] = None,
+    style: str = "publication",
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+):
+    """Download the generated plots ZIP archive via signed token or active session."""
+    analysis = _get_analysis_for_standalone_report(
+        analysis_uuid=analysis_uuid,
+        db=db,
+        current_user=current_user,
+        token=token,
+    )
+    return _render_or_serve_plots_zip(analysis, palette=palette, style=style)
+
+
+@router.get("/{analysis_uuid}/export/plots")
+def export_plots_direct(
+    project_uuid: str,
+    analysis_uuid: str,
+    palette: Optional[str] = None,
+    style: str = "publication",
+    analysis: models.Analysis = Depends(get_analysis),
+):
+    """Direct synchronous/cached download of the plots ZIP archive."""
+    return _render_or_serve_plots_zip(analysis, palette=palette, style=style)
 
 
 # ==============================================================================
 # Top-level Endpoints (/analysis/{analysis_uuid}/...) per WeasyPrint spec §9
 # ==============================================================================
 
+@analysis_report_router.get("/report/palettes")
+def get_standalone_report_palettes():
+    """Return available plot color palettes with preview hex values."""
+    return PALETTE_METADATA
+
+
 @analysis_report_router.get("/{analysis_uuid}/report.html", response_class=HTMLResponse)
 def get_standalone_report_html(
     analysis_uuid: str,
     style: str = "screen",
+    palette: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: Optional[models.User] = Depends(security.get_optional_current_user),
     token: Optional[str] = None,
 ):
     """Standalone GET /analysis/{uuid}/report.html per spec §9."""
     analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
-    return _render_analysis_html(analysis, style=style)
+    return _render_analysis_html(analysis, style=style, palette=palette)
 
 
 @analysis_report_router.get("/{analysis_uuid}/report.json", response_class=JSONResponse)
@@ -1376,13 +1576,14 @@ def get_standalone_report_json(
 def get_standalone_report_pdf(
     analysis_uuid: str,
     style: str = "publication",
+    palette: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: Optional[models.User] = Depends(security.get_optional_current_user),
     token: Optional[str] = None,
 ):
     """Standalone GET /analysis/{uuid}/report.pdf per spec §9."""
     analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
-    return _render_or_serve_pdf(analysis, style=style)
+    return _render_or_serve_pdf(analysis, style=style, palette=palette)
 
 
 @analysis_report_router.post("/{analysis_uuid}/report/async")
@@ -1415,12 +1616,55 @@ def check_standalone_report_status(
 def download_standalone_report(
     analysis_uuid: str,
     token: Optional[str] = None,
+    palette: Optional[str] = None,
     db: Session = Depends(database.get_db),
     current_user: Optional[models.User] = Depends(security.get_optional_current_user),
 ):
     """Standalone GET /analysis/{uuid}/report/download."""
     analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
-    return _render_or_serve_pdf(analysis)
+    return _render_or_serve_pdf(analysis, palette=palette)
+
+
+@analysis_report_router.post("/{analysis_uuid}/export/plots/async")
+def trigger_standalone_plots_export_async(
+    analysis_uuid: str,
+    request: Optional[Dict[str, Any]] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Standalone POST /analysis/{uuid}/export/plots/async."""
+    analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user)
+    req = request or {}
+    style = req.get("style", "publication")
+    palette = req.get("palette") or req.get("color")
+    return _trigger_plots_export_async(analysis, current_user, palette=palette, style=style, options=req)
+
+
+@analysis_report_router.get("/{analysis_uuid}/export/plots/status/{task_id}")
+def check_standalone_plots_export_status(
+    analysis_uuid: str,
+    task_id: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """Standalone GET /analysis/{uuid}/export/plots/status/{task_id}."""
+    _get_analysis_for_standalone_report(analysis_uuid, db, current_user)
+    return _poll_pdf_status(task_id)
+
+
+@analysis_report_router.get("/{analysis_uuid}/export/plots/download")
+@analysis_report_router.get("/{analysis_uuid}/export/plots")
+def download_standalone_plots_export(
+    analysis_uuid: str,
+    token: Optional[str] = None,
+    palette: Optional[str] = None,
+    style: str = "publication",
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(security.get_optional_current_user),
+):
+    """Standalone GET /analysis/{uuid}/export/plots/download."""
+    analysis = _get_analysis_for_standalone_report(analysis_uuid, db, current_user, token)
+    return _render_or_serve_plots_zip(analysis, palette=palette, style=style)
 
 
 @router.post("/{analysis_uuid}/export-token")

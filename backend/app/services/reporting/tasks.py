@@ -52,10 +52,20 @@ def generate_report_pdf_task(
         else:
             run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
 
-        os.makedirs(run_dir, exist_ok=True)
-        pdf_path = os.path.join(run_dir, "report.pdf")
+        palette = (options or {}).get("palette") or (options or {}).get("color")
+        if palette and palette != "okabe_ito":
+            safe_palette = "".join(c for c in palette if c.isalnum() or c in ("_", "-"))
+            pdf_path = os.path.join(run_dir, f"report_{safe_palette}.pdf")
+        else:
+            pdf_path = os.path.join(run_dir, "report.pdf")
 
-        logger.info("Generating PDF report for analysis %s (type: %s) at %s", analysis_uuid, analysis.analysis_type, pdf_path)
+        logger.info(
+            "Generating PDF report for analysis %s (type: %s) at %s (palette: %s)",
+            analysis_uuid,
+            analysis.analysis_type,
+            pdf_path,
+            palette,
+        )
 
         analysis_type = "CPMG" if is_cpmg else "CEST"
         pdf_buf = generate_modern_pdf_report(
@@ -63,6 +73,7 @@ def generate_report_pdf_task(
             analysis_name=analysis.name,
             analysis_type=analysis_type,
             style=style,
+            palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
         )
 
@@ -80,6 +91,87 @@ def generate_report_pdf_task(
         }
     except Exception as exc:
         logger.exception("Error generating PDF report for %s: %s", analysis_uuid, exc)
+        raise
+    finally:
+        if close_db and db is not None:
+            db.close()
+
+
+@celery_app.task(bind=True, name="app.services.reporting.tasks.export_plots_zip_task")
+def export_plots_zip_task(
+    self,
+    analysis_uuid: str,
+    palette: Optional[str] = None,
+    style: str = "publication",
+    options: Optional[Dict[str, Any]] = None,
+    db: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Celery task to generate all publication plots (300 DPI PNG and vector PDF) in a ZIP archive.
+    Runs on the 'stats' queue.
+    Saves the generated ZIP to run_dir / f"plots_{safe_palette}.zip" and returns metadata.
+    """
+    from ..export.plot_export import export_all_plots_zip
+
+    close_db = False
+    if db is None:
+        db = next(database.get_db())
+        close_db = True
+
+    try:
+        analysis = db.query(models.Analysis).filter(
+            models.Analysis.analysis_uuid == analysis_uuid
+        ).first()
+
+        if not analysis:
+            raise ValueError(f"Analysis {analysis_uuid} not found")
+
+        project = analysis.project
+        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
+
+        if analysis.results_path and os.path.exists(analysis.results_path):
+            run_dir = analysis.results_path if os.path.isdir(analysis.results_path) else os.path.dirname(analysis.results_path)
+        else:
+            run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
+
+        os.makedirs(run_dir, exist_ok=True)
+
+        chosen_palette = palette or (options or {}).get("palette") or (options or {}).get("color") or "okabe_ito"
+        safe_palette = "".join(c for c in chosen_palette if c.isalnum() or c in ("_", "-"))
+        zip_path = os.path.join(run_dir, f"plots_{safe_palette}.zip")
+
+        logger.info(
+            "Exporting all publication plots for analysis %s (type: %s) to %s (palette: %s)",
+            analysis_uuid,
+            analysis.analysis_type,
+            zip_path,
+            chosen_palette,
+        )
+
+        analysis_type = "CPMG" if is_cpmg else "CEST"
+        export_all_plots_zip(
+            analysis_dir=run_dir,
+            analysis_name=analysis.name,
+            analysis_type=analysis_type,
+            palette=chosen_palette,
+            style=style,
+            chemex_image_digest=analysis.chemex_image_digest,
+            output_path=zip_path,
+        )
+
+        file_size = os.path.getsize(zip_path)
+        logger.info("Plots ZIP archive exported successfully for %s: %d bytes", analysis_uuid, file_size)
+
+        return {
+            "status": "COMPLETED",
+            "analysis_uuid": analysis_uuid,
+            "zip_path": zip_path,
+            "size_bytes": file_size,
+            "palette": chosen_palette,
+        }
+    except Exception as exc:
+        logger.exception("Error exporting plots ZIP archive for %s: %s", analysis_uuid, exc)
         raise
     finally:
         if close_db and db is not None:

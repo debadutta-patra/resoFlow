@@ -31,6 +31,7 @@ class ReportBuilder:
         analysis_type: str = "CEST",
         style: str = "publication",
         style_name: Optional[str] = None,
+        palette: Optional[str] = None,
         chemex_image_digest: Optional[str] = None,
         fixed_timestamp: Optional[str] = None,
         model: Optional[ReportModel] = None,
@@ -56,6 +57,7 @@ class ReportBuilder:
         self.analysis_name = self.model.analysis_name
         self.analysis_type = self.model.analysis_type
         self.style_name = style_name or style
+        self.palette = palette
 
         # Backward compatibility aliases
         self.residue_records = self.model.residues
@@ -65,11 +67,11 @@ class ReportBuilder:
 
     def render_pdf(self) -> io.BytesIO:
         """Render the complete PDF report in a single pass via WeasyPrint."""
-        return render_pdf(self.model, style=self.style_name)
+        return render_pdf(self.model, style=self.style_name, palette=self.palette)
 
     def render_html(self) -> str:
         """Render the complete HTML report for web/screen display."""
-        return render_html(self.model, style=self.style_name)
+        return render_html(self.model, style=self.style_name, palette=self.palette)
 
 
 def generate_modern_pdf_report(
@@ -77,6 +79,7 @@ def generate_modern_pdf_report(
     analysis_name: str,
     analysis_type: str = "CEST",
     style: str = "publication",
+    palette: Optional[str] = None,
     chemex_image_digest: Optional[str] = None,
     fixed_timestamp: Optional[str] = None,
 ) -> io.BytesIO:
@@ -91,13 +94,14 @@ def generate_modern_pdf_report(
         chemex_image_digest=chemex_image_digest,
         fixed_timestamp=fixed_timestamp,
     )
-    builder = ReportBuilder(model=model, style=style)
+    builder = ReportBuilder(model=model, style=style, palette=palette)
     return builder.render_pdf()
 
 
 def generate_cest_pdf_report(
     analysis_dir: Union[str, Path],
     analysis_name: str,
+    palette: Optional[str] = None,
     **kwargs,
 ) -> io.BytesIO:
     """Convenience wrapper for CEST relaxation dispersion reports."""
@@ -105,6 +109,7 @@ def generate_cest_pdf_report(
         analysis_dir=analysis_dir,
         analysis_name=analysis_name,
         analysis_type="CEST",
+        palette=palette,
         **kwargs,
     )
 
@@ -112,6 +117,7 @@ def generate_cest_pdf_report(
 def generate_cpmg_pdf_report(
     analysis_dir: Union[str, Path],
     analysis_name: str,
+    palette: Optional[str] = None,
     **kwargs,
 ) -> io.BytesIO:
     """Convenience wrapper for CPMG relaxation dispersion reports."""
@@ -119,5 +125,6 @@ def generate_cpmg_pdf_report(
         analysis_dir=analysis_dir,
         analysis_name=analysis_name,
         analysis_type="CPMG",
+        palette=palette,
         **kwargs,
     )
