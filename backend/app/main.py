@@ -36,6 +36,8 @@ app.include_router(admin.router)
 app.include_router(fs.router)
 app.include_router(peak_fitting.router)
 app.include_router(analysis.router)
+app.include_router(analysis.analysis_report_router)
+app.include_router(analysis.analysis_report_router, prefix="/api")
 app.include_router(experiments.router)
 app.include_router(cpmg.router)
 

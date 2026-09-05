@@ -11,6 +11,7 @@ Conforms to Phase 1c rules:
 from __future__ import annotations
 
 import math
+import re
 from typing import Optional, Union, Tuple
 
 
@@ -41,6 +42,23 @@ SOURCE_SUPERSCRIPTS = {
     "COV": "ᶜ",
     "NONE": "*",
     "none": "*",
+}
+
+SOURCE_SUPERSCRIPTS_HTML = {
+    "GRID": "<sup>ᵍ</sup>",
+    "grid": "<sup>ᵍ</sup>",
+    "RESAMPLED": "<sup>ᵐ</sup>",
+    "resampled": "<sup>ᵐ</sup>",
+    "MC": "<sup>ᵐ</sup>",
+    "mc": "<sup>ᵐ</sup>",
+    "BOOTSTRAP": "<sup>ᵇ</sup>",
+    "bootstrap": "<sup>ᵇ</sup>",
+    "BS": "<sup>ᵇ</sup>",
+    "COVARIANCE": "<sup>ᶜ</sup>",
+    "covariance": "<sup>ᶜ</sup>",
+    "COV": "<sup>ᶜ</sup>",
+    "NONE": "<sup>*</sup>",
+    "none": "<sup>*</sup>",
 }
 
 
@@ -144,6 +162,41 @@ def format_defensible_value(val: float, max_sig_figs: int = 3) -> str:
         return f"{val:.{max_sig_figs - 1}e}"
 
 
+def format_subscript_html(text: str) -> str:
+    """
+    Convert scientific parameter names and expressions with subscripts/underscores to HTML subscripts.
+
+    Examples:
+      'k_ex' -> 'k<sub>ex</sub>'
+      'p_b' -> 'p<sub>b</sub>'
+      'p_a' -> 'p<sub>a</sub>'
+      'χ²_red' -> 'χ²<sub>red</sub>'
+      'k_AB' -> 'k<sub>AB</sub>'
+      'k_BA' -> 'k<sub>BA</sub>'
+      'τ_B' -> 'τ<sub>B</sub>'
+      'τ_A' -> 'τ<sub>A</sub>'
+      'τ_c' -> 'τ<sub>c</sub>'
+      'CS_A' -> 'CS<sub>A</sub>'
+      'CS_B' -> 'CS<sub>B</sub>'
+      'Δω_AB' -> 'Δω<sub>AB</sub>'
+      'R₂A' -> 'R<sub>2A</sub>'
+      'R₂B' -> 'R<sub>2B</sub>'
+      'R₁A' -> 'R<sub>1A</sub>'
+      'k_ex · p_b' -> 'k<sub>ex</sub> · p<sub>b</sub>'
+      'k_ex · (1 − p_b)' -> 'k<sub>ex</sub> · (1 − p<sub>b</sub>)'
+      '1 / k_BA' -> '1 / k<sub>BA</sub>'
+      'Derived (1 − p_b)' -> 'Derived (1 − p<sub>b</sub>)'
+    """
+    if not text:
+        return ""
+    # Normalize R2A, R₂A, R1A, R₁A to R<sub>2A</sub>, R<sub>1A</sub>
+    text = re.sub(r"\bR[₂2]([A-Za-z0-9]+)\b", r"R<sub>2\1</sub>", text)
+    text = re.sub(r"\bR[₁1]([A-Za-z0-9]+)\b", r"R<sub>1\1</sub>", text)
+    # Underscores in identifiers: word_subscript -> word<sub>subscript</sub>
+    text = re.sub(r"([A-Za-z\u0370-\u03ff\u1f00-\u1fff²]+)_([A-Za-z0-9]+)", r"\1<sub>\2</sub>", text)
+    return text
+
+
 def format_with_error(
     value: Optional[float],
     err_low: Optional[float] = None,
@@ -151,13 +204,14 @@ def format_with_error(
     unit: Optional[str] = None,
     source: Optional[str] = None,
     status: str = "FITTED",
-    style: str = "unicode",  # "unicode" | "latex" | "ascii"
+    style: str = "unicode",  # "unicode" | "latex" | "ascii" | "html"
+    include_unit: bool = True,
 ) -> str:
     """
     Primary scientific formatting function for resoFlow reports and tables.
 
     Parameters:
-      value: The central measured or calculated parameter value.
+      value: The central measured or calculated parameter value, or a ResolvedParameter.
       err_low: Lower uncertainty bound (positive float or None). If err_high is None,
                err_low is treated as symmetric error sigma.
       err_high: Upper uncertainty bound (positive float or None). If provided and
@@ -165,13 +219,26 @@ def format_with_error(
       unit: Optional unit string (e.g. "s⁻¹", "ppm", "ns", "%", "Hz").
       source: Source tag ('GRID', 'RESAMPLED', 'COVARIANCE', 'NONE').
       status: Parameter status ('FITTED', 'FIXED', 'DERIVED', 'AT_BOUND', 'NOT_IN_MODEL').
-      style: Output format ('unicode', 'latex', 'ascii').
+      style: Output format ('unicode', 'latex', 'ascii', 'html').
+      include_unit: Whether to append the unit to the formatted string.
 
     Returns:
       Formatted scientific string adhering to strict sig-fig and precision rules.
     """
+    if hasattr(value, "value") and hasattr(value, "status"):
+        param = value
+        value = param.value
+        err_low = param.err_low if hasattr(param, "err_low") else getattr(param, "sigma", None)
+        err_high = param.err_high if hasattr(param, "err_high") else None
+        if unit is None and hasattr(param, "unit"):
+            unit = param.unit
+        if source is None and hasattr(param, "source"):
+            source = param.source.value if hasattr(param.source, "value") else str(param.source)
+        if hasattr(param, "status"):
+            status = param.status.value if hasattr(param.status, "value") else str(param.status)
+
     status_upper = status.upper().strip() if status else "FITTED"
-    unit_str = f" {unit}" if unit else ""
+    unit_str = f" {unit}" if (unit and include_unit) else ""
 
     # 1. NOT_IN_MODEL -> omit
     if status_upper == "NOT_IN_MODEL":
@@ -189,8 +256,10 @@ def format_with_error(
     # 4. FIXED status
     if status_upper == "FIXED":
         val_formatted = format_defensible_value(value, max_sig_figs=3)
-        if unit:
-            return f"fixed at {val_formatted} {unit}"
+        if style == "html":
+            return f'<span class="fixed">fixed at {val_formatted}{unit_str}</span>'
+        if unit_str:
+            return f"fixed at {val_formatted}{unit_str}"
         return f"fixed at {val_formatted}"
 
     # 5. Determine uncertainty structure
@@ -225,6 +294,9 @@ def format_with_error(
 
     if not has_valid_error:
         val_str = format_defensible_value(value, max_sig_figs=3)
+        if style == "html":
+            badge = SOURCE_SUPERSCRIPTS_HTML.get(src_upper, "<sup>*</sup>") if (src_badge or src_upper == "NONE") else ""
+            return f'<span class="val-block"><span class="v">{val_str}</span>{badge}{unit_str}</span>'
         # Add footnote badge if source is NONE or unspecified
         badge = src_badge if src_badge else "*"
         return f"{val_str}{badge}{unit_str}"
@@ -235,7 +307,10 @@ def format_with_error(
         val_str = _format_number_to_decimals(value, decimals)
         sig_str = _format_number_to_decimals(rounded_sigma, decimals)
 
-        if style == "latex":
+        if style == "html":
+            badge = SOURCE_SUPERSCRIPTS_HTML.get(src_upper, "") if (src_badge and src_badge != "*") else ""
+            return f'<span class="val-block"><span class="v">{val_str}</span><span class="pm">&plusmn;{sig_str}</span>{badge}{unit_str}</span>'
+        elif style == "latex":
             res = f"{val_str} \\pm {sig_str}"
         else:
             res = f"{val_str} ± {sig_str}"
@@ -256,7 +331,26 @@ def format_with_error(
         err_h_str = _format_number_to_decimals(err_high, decimals)
         err_l_str = _format_number_to_decimals(err_low, decimals)
 
-        if style == "latex":
+        # If rounded bounds are identical, treat as symmetric uncertainty (±)
+        if err_h_str == err_l_str:
+            sig_str = err_h_str
+            if style == "html":
+                badge = SOURCE_SUPERSCRIPTS_HTML.get(src_upper, "") if (src_badge and src_badge != "*") else ""
+                return f'<span class="val-block"><span class="v">{val_str}</span><span class="pm">&plusmn;{sig_str}</span>{badge}{unit_str}</span>'
+            elif style == "latex":
+                res = f"{val_str} \\pm {sig_str}"
+            else:
+                res = f"{val_str} ± {sig_str}"
+
+            if src_badge and src_badge != "*":
+                res = f"{res}{src_badge}"
+
+            return f"{res}{unit_str}"
+
+        if style == "html":
+            badge = SOURCE_SUPERSCRIPTS_HTML.get(src_upper, "") if (src_badge and src_badge != "*") else ""
+            return f'<span class="val-block"><span class="v">{val_str}</span><span class="asym-err"><sup>+{err_h_str}</sup><sub>&minus;{err_l_str}</sub></span>{badge}{unit_str}</span>'
+        elif style == "latex":
             res = f"{val_str}^{{+{err_h_str}}}_{{-{err_l_str}}}"
         elif style == "ascii":
             res = f"{val_str} (+{err_h_str}/-{err_l_str})"

@@ -11,6 +11,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import ProjectDetails from './pages/ProjectDetails';
 import SpectraAnalysis from './pages/SpectraAnalysis';
 import AnalysisDetails from './pages/AnalysisDetails';
+import AnalysisReport from './pages/AnalysisReport';
 import Layout from './components/Layout';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -81,6 +82,11 @@ const AppRoutes = () => {
           <Layout>
             <AnalysisDetails />
           </Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/projects/:projectUuid/analysis/:analysisUuid/report" element={
+        <ProtectedRoute>
+          <AnalysisReport />
         </ProtectedRoute>
       } />
       <Route path="/admin" element={

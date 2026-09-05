@@ -1,0 +1,21 @@
+<!-- backend/app/services/reporting/templates/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ model.analysis_name }} — {{ model.analysis_type }} Report</title>
+  {% if style == "screen" %}
+  <link rel="stylesheet" href="{{ static_dir }}/screen.css">
+  {% else %}
+  <link rel="stylesheet" href="{{ static_dir }}/print.css">
+  {% endif %}
+  {% if css_content is defined and css_content %}
+  <style>
+    {{ css_content | safe }}
+  </style>
+  {% endif %}
+</head>
+<body>
+  {% block content %}{% endblock %}
+</body>
+</html>

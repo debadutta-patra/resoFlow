@@ -1,0 +1,234 @@
+<!-- backend/app/services/reporting/templates/_step_section.html -->
+<div class="step-header">
+  <div class="step-badge-row">
+    <span class="step-badge">STEP {{ step.index }} OF {{ model.steps|length }}</span>
+    <span class="badge-status {% if step.status == 'complete' %}badge-fitted{% else %}badge-fixed{% endif %}">
+      {{ step.status|upper }}
+    </span>
+  </div>
+  <h1>Step {{ step.index }}: {{ step.name }}</h1>
+  <div class="subtitle">
+    Fitted Residues: <strong>{{ step.residues|length }}</strong>
+    {% if step.has_grid %} &nbsp;|&nbsp; <strong>2D Grid Search</strong>{% endif %}
+    {% if step.has_statistics %} &nbsp;|&nbsp; <strong>Resampling Statistics</strong>{% endif %}
+  </div>
+</div>
+
+<h2>Step Parameters &amp; Relaxation Rates</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 26%;">Parameter</th>
+      <th class="num-center" style="width: 12%;">Symbol</th>
+      <th style="width: 16%;">Status</th>
+      <th class="num-right" style="width: 26%;">Value</th>
+      <th style="width: 20%;">Uncertainty Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in step.global_rows %}
+    <tr>
+      <td>{{ row.name }}</td>
+      <td class="num-center">{{ row.symbol|safe }}</td>
+      <td>
+        <span class="badge-status {% if row.status == 'FITTED' %}badge-fitted{% elif row.status == 'FIXED' %}badge-fixed{% endif %}">
+          {{ row.status }}
+        </span>
+      </td>
+      <td class="num-right">{{ row.value_html|safe }}</td>
+      <td>{{ row.source_text|safe }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if step.derived_rows %}
+<h2>Step Derived Kinetic Quantities</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 20%;">Quantity</th>
+      <th class="num-center" style="width: 12%;">Symbol</th>
+      <th style="width: 24%;">Expression</th>
+      <th class="num-right" style="width: 24%;">Propagated Value</th>
+      <th style="width: 20%;">Propagation Method</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for k in step.derived_rows %}
+    <tr>
+      <td><strong>{{ k.name }}</strong></td>
+      <td class="num-center">{{ k.symbol|safe }}</td>
+      <td><code>{{ k.expression|safe }}</code></td>
+      <td class="num-right">{{ k.value_html|safe }}</td>
+      <td>{{ k.method }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Step Residue Results Index</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 12%;">Residue</th>
+      <th class="num-right" style="width: 9%;">χ²ᵣ</th>
+      <th class="num-right" style="width: 17%;">Δω (ppm)</th>
+      <th class="num-right" style="width: 17%;">R₂A (s⁻¹)</th>
+      <th class="num-right" style="width: 17%;">R₂B (s⁻¹)</th>
+      <th class="num-right" style="width: 17%;">R₁A (s⁻¹)</th>
+      <th class="num-center" style="width: 11%;">Quality Flags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in step.index_rows %}
+    <tr>
+      <td>
+        <a href="#{{ row.anchor }}" class="toc-link"><strong>{{ row.display_name }}</strong></a>
+      </td>
+      <td class="num-right">
+        {% if row.chi2_red is not none %}
+          <span class="v">{{ "%.2f"|format(row.chi2_red) }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td class="num-right">{{ row.dw_html|safe }}</td>
+      <td class="num-right">{{ row.r2a_html|safe }}</td>
+      <td class="num-right">{{ row.r2b_html|safe }}</td>
+      <td class="num-right">{{ row.r1a_html|safe }}</td>
+      <td class="num-center">
+        {% if row.flags %}
+          {% for f in row.flags %}
+            <span class="badge-flag">{{ f }}</span>
+          {% endfor %}
+        {% else %}
+          <span class="status-clean">Clean</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if step.kinetic_data %}
+<div class="page-break"></div>
+<h2>Step Kinetic Surface &amp; Likelihood Contours ({{ step.name }})</h2>
+<div class="fig-card">
+  <img src="{{ step.kinetic_data.img_data }}" alt="Kinetic Surface" style="width: 100%; max-height: 480px; object-fit: contain;">
+  <div class="caption">
+    <strong>Kinetic Likelihood Surface ({{ step.name }}).</strong>
+    Confidence contours representing joint probability density / Δχ² thresholds.
+  </div>
+</div>
+{% endif %}
+
+{% if step.profile_curves %}
+<div class="page-break"></div>
+<h2>Step Dispersion Profiles ({{ step.name }})</h2>
+<div class="curve-grid">
+  {% for curve in step.profile_curves %}
+  <div class="curve-card" id="{{ curve.anchor }}">
+    <div class="card-title">{{ curve.display_name }}</div>
+    {{ curve.svg|safe }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if step.detailed_residues %}
+<h2>Detailed Profiles &amp; Residuals ({{ step.name }})</h2>
+{% for res in step.detailed_residues %}
+<div class="residue-section" id="{{ res.anchor }}-detail" style="page-break-inside: avoid; margin-bottom: 20pt;">
+  <h3>Residue {{ res.display_name }} Detailed Fit</h3>
+  <div class="detailed-composite">
+    {{ res.svg|safe }}
+  </div>
+  <table style="margin-top: 8pt; width: 100%;">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Parameter</th>
+        <th class="num-center" style="width: 15%;">Symbol</th>
+        <th style="width: 15%;">Status</th>
+        <th class="num-right" style="width: 25%;">Value</th>
+        <th style="width: 20%;">Uncertainty Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in res.params %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td class="num-center">{{ p.symbol|safe }}</td>
+        <td>
+          <span class="badge-status {% if p.status == 'FITTED' %}badge-fitted{% elif p.status == 'FIXED' %}badge-fixed{% endif %}">
+            {{ p.status }}
+          </span>
+        </td>
+        <td class="num-right">{{ p.value_html|safe }}</td>
+        <td>{{ p.source_text|safe }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if step.statistics_data %}
+<div class="page-break"></div>
+<h2>Step Statistical Uncertainty Analysis ({{ step.name }})</h2>
+{% for m in step.statistics_data.methods %}
+<div class="stat-method-block">
+  <h3>{{ m.name }} Parameter Distributions</h3>
+  <div class="dist-grid" style="display: flex; flex-wrap: wrap; gap: 8pt;">
+    {% for dist in m.distributions %}
+    <div class="dist-card">
+      {{ dist.svg|safe }}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if m.corr_img %}
+  <h3>Parameter Correlation Matrix</h3>
+  <div class="fig-card">
+    <img src="{{ m.corr_img }}" alt="Correlation Matrix" style="width: 100%; max-height: 480px; object-fit: contain;">
+  </div>
+  {% endif %}
+
+  {% if m.couplings %}
+  <h3>Parameter Couplings (|r| &ge; 0.40)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 30%;">Parameter Pair</th>
+        <th class="num-right" style="width: 15%;">r</th>
+        <th style="width: 25%;">Strength</th>
+        <th style="width: 30%;">Interpretation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cp in m.couplings %}
+      <tr>
+        <td><strong>{{ cp.pair }}</strong></td>
+        <td class="num-right"><code>{{ cp.r_str }}</code></td>
+        <td>{{ cp.strength }}</td>
+        <td>{{ cp.interp }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if step.grid_1d_plots %}
+<div class="page-break"></div>
+<h2>1D Likelihood Profiles &amp; Confidence Thresholds ({{ step.name }})</h2>
+<div class="dist-grid" style="display: flex; flex-wrap: wrap; gap: 8pt;">
+  {% for plot in step.grid_1d_plots %}
+  <div class="dist-card">
+    {{ plot.svg|safe }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

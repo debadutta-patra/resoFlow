@@ -1,0 +1,289 @@
+/* backend/app/services/reporting/static/screen.css */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #111827;
+  background-color: #F9FAFB;
+  margin: 0;
+  padding: 24px;
+}
+
+.report-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  background-color: #FFFFFF;
+  padding: 32px 40px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #6B7280;
+  margin-bottom: 24px;
+}
+
+h2 {
+  font-size: 19px;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 28px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #E5E7EB;
+  padding-bottom: 8px;
+}
+
+h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+th {
+  background-color: #F3F4F6;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 2px solid #D1D5DB;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  vertical-align: middle;
+}
+
+td {
+  padding: 8px 14px;
+  border-bottom: 1px solid #E5E7EB;
+  vertical-align: middle;
+}
+
+tr:hover td {
+  background-color: #F9FAFB;
+}
+
+.num-right, th.num-right, td.num-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.num-center, th.num-center, td.num-center {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.num-left, th.num-left, td.num-left {
+  text-align: left;
+}
+
+td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding-right: 0;
+  white-space: nowrap;
+}
+
+td.e {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  padding-left: 4px;
+  color: #4B5563;
+  white-space: nowrap;
+}
+
+.val-block {
+  display: inline-block;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.pm {
+  margin-left: 2px;
+  margin-right: 2px;
+  color: #374151;
+}
+
+.asym-err {
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 0.72em;
+  line-height: 1.15;
+  margin-left: 3px;
+  margin-right: 2px;
+  text-align: left;
+}
+
+.asym-err sup,
+.asym-err sub {
+  display: block;
+  font-size: 1em;
+  line-height: 1.15;
+  vertical-align: baseline;
+}
+
+sub {
+  font-size: 0.75em;
+  line-height: 0;
+  vertical-align: sub;
+}
+
+sup {
+  font-size: 0.75em;
+  line-height: 0;
+  vertical-align: super;
+}
+
+a.xref {
+  color: #2563EB;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+a.xref:hover {
+  color: #1D4ED8;
+  background-color: #EFF6FF;
+  text-decoration: underline;
+}
+
+.table-key {
+  font-size: 12px;
+  color: #4B5563;
+  margin-top: 8px;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.badge-flag {
+  display: inline-block;
+  background-color: #FEE2E2;
+  color: #991B1B;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+.badge-good,
+.status-clean {
+  display: inline-block;
+  background-color: #ECFDF5;
+  color: #065F46;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.page-break {
+  margin: 40px 0;
+  border-top: 1px dashed #E5E7EB;
+}
+
+.profile-grid, .distribution-grid, .grid-1d-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.profile-card, .distribution-card, .grid-1d-card {
+  flex: 1 1 calc(50% - 20px);
+  min-width: 340px;
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+  scroll-margin-top: 60px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.profile-card svg, .distribution-card svg, .grid-1d-card svg, .residue-plot svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.residue-detail {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid #E5E7EB;
+  scroll-margin-top: 60px;
+}
+
+tr[id] {
+  scroll-margin-top: 60px;
+}
+
+.correlation-plot, .kinetic-plot {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.correlation-plot img, .kinetic-plot img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+
+.step-header {
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1.5px solid #E5E7EB;
+}
+
+.step-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.step-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background-color: #EEF2FF;
+  color: #3730A3;
+  border: 1px solid #C7D2FE;
+}
+
+.pipeline-table code {
+  font-family: monospace;
+  font-size: 12px;
+  background: #F3F4F6;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+

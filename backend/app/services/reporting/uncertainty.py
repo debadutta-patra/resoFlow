@@ -161,10 +161,26 @@ class UncertaintyResolver:
 
         # Cache loaded grid profiles and resampled samples
         self._1d_grid_cache: Dict[Any, Dict[str, Any]] = {}
+        self._2d_grid_cache: Optional[Tuple[Dict[str, Any], Optional[Dict[str, Any]]]] = None
         self._resampled_cache: Dict[str, Dict[str, Any]] = {}
         self.resolution_ledger: Dict[str, ResolvedParameter] = {}
         
         self._load_grid_and_resampling_data()
+
+    @property
+    def resampled_cache(self) -> Dict[str, Dict[str, Any]]:
+        """Access loaded resampled samples cache."""
+        return self._resampled_cache
+
+    @property
+    def grid_1d_cache(self) -> Dict[Any, Dict[str, Any]]:
+        """Access loaded 1D grid profiles cache."""
+        return self._1d_grid_cache
+
+    @property
+    def grid_2d_cache(self) -> Optional[Tuple[Dict[str, Any], Optional[Dict[str, Any]]]]:
+        """Access loaded 2D grid likelihood surface cache."""
+        return self._2d_grid_cache
 
     def get_ledger_summary(self) -> Dict[str, int]:
         """Summarize how many parameters resolved to each UncertaintySource."""
@@ -255,7 +271,15 @@ class UncertaintyResolver:
                     # Top-level Groups/ (CPMG 2st_rs layout): descend into each group child
                     _scan_groups_dir(child)
 
-        # 1. Primary step (highest priority)
+        # 1. Primary step or step-scoped discovery
+        if self.step_name:
+            step_name = self.step_name
+            _add_candidate("global", self.output_dir / step_name / "Statistics")
+            _add_candidate("global", self.analysis_dir / step_name / "Statistics")
+            _scan_groups_dir(self.output_dir / step_name / "Groups")
+            _scan_groups_dir(self.analysis_dir / step_name / "Groups")
+            return candidates
+
         if self.primary_step and self.primary_step.name:
             step_name = self.primary_step.name
             _add_candidate("global", self.output_dir / step_name / "Statistics")
@@ -304,24 +328,46 @@ class UncertaintyResolver:
                         if g_c.is_dir():
                             _add_grid(g_c / "Grid")
 
-        if self.primary_step and self.primary_step.name:
-            _add_grid(self.output_dir / self.primary_step.name / "Grid")
-            _add_grid(self.analysis_dir / self.primary_step.name / "Grid")
+        if self.step_name:
+            _add_grid(self.output_dir / self.step_name / "Grid")
+            _add_grid(self.analysis_dir / self.step_name / "Grid")
+            if (self.output_dir / self.step_name / "Groups").is_dir():
+                for g_c in (self.output_dir / self.step_name / "Groups").iterdir():
+                    if g_c.is_dir():
+                        _add_grid(g_c / "Grid")
+            if (self.analysis_dir / self.step_name / "Groups").is_dir():
+                for g_c in (self.analysis_dir / self.step_name / "Groups").iterdir():
+                    if g_c.is_dir():
+                        _add_grid(g_c / "Grid")
+        else:
+            if self.primary_step and self.primary_step.name:
+                _add_grid(self.output_dir / self.primary_step.name / "Grid")
+                _add_grid(self.analysis_dir / self.primary_step.name / "Grid")
 
-        _scan_grid_container(self.output_dir)
-        if self.output_dir != self.analysis_dir:
-            _scan_grid_container(self.analysis_dir)
+            _scan_grid_container(self.output_dir)
+            if self.output_dir != self.analysis_dir:
+                _scan_grid_container(self.analysis_dir)
 
         from ..fitting.param_canonicalizer import canonicalize
+        from ..fitting.chemex_output.grid_parser import (
+            get_grid_data_for_group,
+            compute_1d_profiles,
+            compute_2d_surface,
+            compute_grid_minimum,
+        )
 
         for gd in grid_candidates:
             try:
                 pnames, agg_data, _ = get_grid_data_for_group(gd, None)
-                if pnames and agg_data:
+                if pnames and agg_data is not None:
                     profs = compute_1d_profiles(pnames, agg_data)
                     for prof in profs:
                         c_key = canonicalize(prof["parameter"])
                         self._1d_grid_cache[c_key] = prof
+                    if len(pnames) == 2 and self._2d_grid_cache is None:
+                        surf = compute_2d_surface(pnames, agg_data, pnames[0], pnames[1])
+                        min_pt = compute_grid_minimum(pnames, agg_data)
+                        self._2d_grid_cache = (surf, min_pt)
             except Exception as exc:
                 logger.debug("Grid discovery in %s: %s", gd, exc)
 

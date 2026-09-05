@@ -1,0 +1,37 @@
+<!-- backend/app/services/reporting/templates/_residuals.html -->
+<div class="page-break"></div>
+<h2>Detailed Residue Profiles &amp; Residuals</h2>
+{% for rec in detailed_residues %}
+<div class="residue-detail{% if not loop.first %} residue-detail-break{% endif %}">
+  <h3>Residue {{ rec.display_name }} ({{ rec.dw_status }})</h3>
+  <div class="residue-plot">
+    {{ rec.svg|safe }}
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 24%;">Parameter</th>
+        <th class="num-center" style="width: 14%;">Symbol</th>
+        <th style="width: 16%;">Status</th>
+        <th class="num-right" style="width: 26%;">Resolved Value</th>
+        <th style="width: 20%;">Uncertainty Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in rec.params %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td class="num-center">{{ p.symbol|safe }}</td>
+        <td>
+          <span class="badge-status {% if p.status == 'FITTED' %}badge-fitted{% elif p.status == 'FIXED' %}badge-fixed{% endif %}">
+            {{ p.status }}
+          </span>
+        </td>
+        <td class="num-right">{{ p.value_html|safe }}</td>
+        <td>{{ p.source_text }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
