@@ -30,7 +30,9 @@ import {
   Users,
   CheckCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Copy,
+  Check
 } from 'lucide-react';
 import Plot, { PLOT_COLORS } from './Plot';
 
@@ -40,6 +42,9 @@ interface Spectrum {
   name: string;
   experiment_type?: string;
   is_fitted?: boolean;
+  vdlist_path?: string;
+  vclist_path?: string;
+  delay?: number | null;
 }
 
 interface PeakResult {
@@ -77,6 +82,7 @@ interface Analysis {
   spectra: Spectrum[];
   use_height: boolean;
   has_backup: boolean;
+  error_message?: string;
 }
 
 interface AnalysisManagerProps {
@@ -116,8 +122,32 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
   const [observedColor, setObservedColor] = useState('#6366f1'); // Observed color (indigo-500)
   const [ratesColor, setRatesColor] = useState('#6366f1'); // Rates plot color (indigo-500)
   const [excludedResidues, setExcludedResidues] = useState<string[]>([]);
-  const [logs] = useState<string>('');
+  const [logs, setLogs] = useState<string>('');
+  const [copiedLogs, setCopiedLogs] = useState(false);
   const [showRerunWarning, setShowRerunWarning] = useState(false);
+
+  const fetchLogs = async () => {
+    try {
+      const response = await api.get(`/api/projects/${projectUuid}/analysis/${currentAnalysis.analysis_uuid}/logs`);
+      if (response.data) {
+        if (response.data.logs !== undefined) {
+          setLogs(response.data.logs);
+        }
+        if (response.data.error_message && response.data.error_message !== currentAnalysis.error_message) {
+          setCurrentAnalysis(prev => ({ ...prev, error_message: response.data.error_message }));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch logs", err);
+    }
+  };
+
+  const handleCopyLogs = () => {
+    if (!logs) return;
+    navigator.clipboard.writeText(logs);
+    setCopiedLogs(true);
+    setTimeout(() => setCopiedLogs(false), 2000);
+  };
 
   useEffect(() => {
     const params = JSON.parse(currentAnalysis.parameters || '{}');
@@ -215,6 +245,10 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
     } catch (err) { console.error(err); }
   };
 
+  useEffect(() => {
+    setCurrentAnalysis(analysis);
+  }, [analysis]);
+
   const handleRunAnalysis = async () => {
     try {
       setIsLoading(true);
@@ -224,12 +258,16 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
         spectrum_ids: spectrumIds,
         workers: workers
       });
-      setCurrentAnalysis({ ...currentAnalysis, status: 'RUNNING' });
+      setCurrentAnalysis({ ...currentAnalysis, status: 'RUNNING', error_message: undefined });
       setShowRerunWarning(false);
+      setLogs('');
       if (onStatusChange) onStatusChange('RUNNING');
-    } catch (err) {
-      setError('Failed to start analysis');
-      console.error(err);
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'Failed to start analysis';
+      const formatted = typeof msg === 'string' ? msg : JSON.stringify(msg);
+      setError(formatted);
+      setCurrentAnalysis(prev => ({ ...prev, error_message: formatted }));
+      console.error("Analysis start error:", err);
     } finally {
       setIsLoading(false);
     }
@@ -399,10 +437,12 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
             if (onStatusChange) onStatusChange(updated.status);
             if (updated.status === 'COMPLETED') {
                 fetchResults();
+            } else if (updated.status === 'FAILED') {
+                fetchLogs();
             }
         }
     } catch (err) {
-        console.error("Poling failed", err);
+        console.error("Polling failed", err);
     }
   };
 
@@ -437,13 +477,36 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
     }
   }, [currentAnalysis.status, activeTab]);
 
+  useEffect(() => {
+    if (activeTab === 'log' || currentAnalysis.status === 'RUNNING' || currentAnalysis.status === 'FAILED') {
+      fetchLogs();
+    }
+  }, [activeTab, currentAnalysis.status]);
+
+  useEffect(() => {
+    let logInterval: any;
+    if (currentAnalysis.status === 'RUNNING') {
+      logInterval = setInterval(fetchLogs, 2000);
+    }
+    return () => clearInterval(logInterval);
+  }, [currentAnalysis.status]);
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-12">
       {/* Alert Error */}
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-center text-red-700 dark:text-red-400 text-sm animate-in shake">
-           <AlertCircle className="w-5 h-5 mr-3" />
-           {error}
+        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-start justify-between text-red-700 dark:text-red-400 text-sm animate-in shake shadow-sm">
+          <div className="flex items-start space-x-3 flex-1">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div className="font-medium leading-relaxed">{error}</div>
+          </div>
+          <button
+            onClick={() => setError('')}
+            className="p-1 -mr-1 -mt-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 rounded-lg transition-colors"
+            title="Dismiss error"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -594,6 +657,20 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                 )}
                             </div>
                         </div>
+                        {error && (
+                            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-start justify-between text-red-700 dark:text-red-400 text-sm animate-in shake shadow-sm">
+                                <div className="flex items-start space-x-3 flex-1">
+                                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-500" />
+                                    <div className="font-medium leading-relaxed">{error}</div>
+                                </div>
+                                <button
+                                    onClick={() => setError('')}
+                                    className="p-1 -mr-1 -mt-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 rounded-lg transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {availableSpectra.map(s => {
                                 const isSelected = currentAnalysis.spectra.some(sp => sp.id === s.id);
@@ -608,9 +685,29 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                         </div>
                                         <div className="flex-1">
                                             <p className="text-sm font-bold dark:text-white">{s.name}</p>
-                                            <div className="flex items-center space-x-2">
-                                                <p className="text-[10px] text-blue-500/70 font-black uppercase tracking-tighter mt-0.5">{s.experiment_type || 'Unknown Type'}</p>
-                                                {s.is_fitted && <span className="text-[9px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 px-1 rounded uppercase font-bold">Fitted</span>}
+                                            <div className="flex items-center space-x-2 flex-wrap gap-y-1 mt-0.5">
+                                                <p className="text-[10px] text-blue-500/70 font-black uppercase tracking-tighter">{s.experiment_type || 'Unknown Type'}</p>
+                                                {s.is_fitted ? (
+                                                    <span className="text-[9px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 px-1 rounded uppercase font-bold">Fitted</span>
+                                                ) : (
+                                                    <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-600 px-1 rounded uppercase font-bold">Not Fitted</span>
+                                                )}
+                                                {['T1', 'R1'].includes((s.experiment_type || '').toUpperCase()) && (
+                                                    s.vdlist_path ? (
+                                                        <span className="text-[9px] bg-blue-100 dark:bg-blue-900/40 text-blue-600 px-1 rounded uppercase font-bold">VD List</span>
+                                                    ) : (
+                                                        <span className="text-[9px] bg-rose-100 dark:bg-rose-900/40 text-rose-600 px-1 rounded uppercase font-bold">No VD List</span>
+                                                    )
+                                                )}
+                                                {['T2', 'R2'].includes((s.experiment_type || '').toUpperCase()) && (
+                                                    (s.vclist_path || s.vdlist_path) ? (
+                                                        <span className="text-[9px] bg-blue-100 dark:bg-blue-900/40 text-blue-600 px-1 rounded uppercase font-bold">
+                                                            {s.vclist_path ? (s.delay && Number(s.delay) > 0 ? `VC List (d=${s.delay}s)` : 'VC List (No delay!)') : 'VD List'}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[9px] bg-rose-100 dark:bg-rose-900/40 text-rose-600 px-1 rounded uppercase font-bold">No VC/VD List</span>
+                                                    )
+                                                )}
                                             </div>
                                         </div>
                                         <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-200'}`}>
@@ -677,6 +774,20 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
 
             {activeTab === 'results' && (
                 <div className="space-y-10 animate-in slide-in-from-bottom-2 duration-500">
+                    {error && (
+                        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-start justify-between text-red-700 dark:text-red-400 text-sm animate-in shake shadow-sm">
+                            <div className="flex items-start space-x-3 flex-1">
+                                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-500" />
+                                <div className="font-medium leading-relaxed">{error}</div>
+                            </div>
+                            <button
+                                onClick={() => setError('')}
+                                className="p-1 -mr-1 -mt-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 rounded-lg transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
                     {currentAnalysis.status === 'COMPLETED' && results ? (
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                            {/* Results Table and Map */}
@@ -910,7 +1021,40 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                 </section>
                            </div>
                         </div>
-                    ) : (
+                    ) : currentAnalysis.status === 'FAILED' ? (
+                        <div className="text-center py-16 px-6 bg-rose-50/50 dark:bg-rose-950/20 rounded-[3rem] border-2 border-dashed border-rose-200 dark:border-rose-900/50 max-w-2xl mx-auto shadow-sm animate-in fade-in">
+                            <div className="w-20 h-20 bg-rose-100 dark:bg-rose-900/40 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner text-rose-600 dark:text-rose-400">
+                                <AlertCircle className="w-10 h-10" />
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Analysis Execution Failed</h3>
+                            <p className="text-rose-600 dark:text-rose-400 font-semibold text-sm max-w-lg mx-auto leading-relaxed bg-white dark:bg-slate-900 px-4 py-3 rounded-xl border border-rose-200 dark:border-rose-800 shadow-sm mt-3">
+                                {currentAnalysis.error_message || "The fitting engine encountered an error while processing relaxation data."}
+                            </p>
+
+                            <div className="mt-6 text-left max-w-md mx-auto bg-slate-100/70 dark:bg-slate-800/60 p-4 rounded-xl text-xs text-slate-600 dark:text-slate-300 space-y-1.5 border border-slate-200/60 dark:border-slate-700/60">
+                                <p className="font-bold text-slate-800 dark:text-slate-200 mb-1">Troubleshooting suggestions:</p>
+                                <p>• Ensure the reference spectrum has completed peak-fitting with valid assignments.</p>
+                                <p>• For R1/T1: Ensure a valid VD List (variable delays) is configured in Spectra settings.</p>
+                                <p>• For R2/T2: Ensure VC List (loop counts) and Delay are configured in Spectra settings.</p>
+                                <p>• Verify that delay count matches the number of planes in pseudo-3D spectra.</p>
+                            </div>
+
+                            <div className="mt-8 flex items-center justify-center gap-4">
+                                <button
+                                    onClick={() => setActiveTab('log')}
+                                    className="px-6 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-sm transition-all"
+                                >
+                                    View Analysis Log
+                                </button>
+                                <button
+                                    onClick={() => setShowRerunWarning(true)}
+                                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all active:scale-95"
+                                >
+                                    Rerun Analysis
+                                </button>
+                            </div>
+                        </div>
+                    ) : currentAnalysis.status === 'RUNNING' ? (
                         <div className="text-center py-24 bg-slate-50 dark:bg-slate-900/50 rounded-[4rem] border-4 border-dashed border-slate-200 dark:border-slate-800">
                             <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
                                 <Clock className="w-12 h-12 text-blue-500 animate-pulse" />
@@ -926,6 +1070,23 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
                             </div>
                         </div>
+                    ) : (
+                        <div className="text-center py-24 bg-slate-50 dark:bg-slate-900/50 rounded-[4rem] border-4 border-dashed border-slate-200 dark:border-slate-800">
+                            <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl text-indigo-500">
+                                <ActivityIcon className="w-12 h-12" />
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-3">Analysis Ready</h3>
+                            <p className="text-slate-500 text-sm max-w-sm mx-auto leading-relaxed mb-8">
+                                Spectra are selected. Click "Run Analysis" to start the relaxation fitting job.
+                            </p>
+                            <button
+                                onClick={handleRunAnalysis}
+                                disabled={isLoading || currentAnalysis.spectra.length === 0}
+                                className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-600/20 text-xs font-black uppercase tracking-widest transition-all"
+                            >
+                                Run Analysis
+                            </button>
+                        </div>
                     )}
                 </div>
             )}
@@ -935,24 +1096,46 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                     <div className="bg-slate-900 rounded-[2.5rem] p-10 font-mono text-sm overflow-hidden border border-slate-800 shadow-2xl relative">
                         <div className="flex items-center justify-between mb-8 border-b border-slate-800 pb-6">
                             <div className="flex items-center space-x-4">
-                                <div className="w-3 h-3 bg-rose-500 rounded-full shadow-lg shadow-rose-500/20"></div>
-                                <div className="w-3 h-3 bg-amber-500 rounded-full shadow-lg shadow-amber-500/20"></div>
-                                <div className="w-3 h-3 bg-emerald-500 rounded-full shadow-lg shadow-emerald-500/20"></div>
-                                <span className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] ml-6">Node: worker-01-resoflow</span>
+                                <div className={`w-3 h-3 rounded-full ${currentAnalysis.status === 'RUNNING' ? 'bg-amber-500 animate-pulse' : currentAnalysis.status === 'FAILED' ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>
+                                <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                    {currentAnalysis.analysis_type} Relaxation Log
+                                </span>
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${currentAnalysis.status === 'COMPLETED' ? 'bg-emerald-900/50 text-emerald-400' : currentAnalysis.status === 'FAILED' ? 'bg-rose-900/50 text-rose-400' : 'bg-blue-900/50 text-blue-400'}`}>
+                                    {currentAnalysis.status}
+                                </span>
                             </div>
-                            <span className="text-emerald-500/40 text-[10px] font-black tracking-[0.2em] flex items-center">
-                                <div className="w-1 h-1 bg-emerald-500 rounded-full mr-3 animate-ping"></div>
-                                STREAMING_STDOUT
-                            </span>
+                            <div className="flex items-center space-x-3">
+                                {logs && (
+                                    <button
+                                        onClick={handleCopyLogs}
+                                        className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+                                    >
+                                        {copiedLogs ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                        <span>{copiedLogs ? 'Copied' : 'Copy Log'}</span>
+                                    </button>
+                                )}
+                                <span className="text-emerald-500/40 text-[10px] font-black tracking-[0.2em] flex items-center">
+                                    <div className="w-1 h-1 bg-emerald-500 rounded-full mr-3 animate-ping"></div>
+                                    STREAMING_STDOUT
+                                </span>
+                            </div>
                         </div>
+
+                        {currentAnalysis.error_message && (
+                            <div className="mb-6 p-4 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 text-xs font-mono">
+                                <span className="font-bold text-rose-400">Error: </span>
+                                {currentAnalysis.error_message}
+                            </div>
+                        )}
+
                         <div className="max-h-[500px] overflow-y-auto custom-scrollbar-terminal pr-6">
-                            <pre className="text-emerald-500/80 leading-loose">
-                                {logs || (currentAnalysis.status === 'PENDING' ? "> Machine ready.\n> Waiting for user analysis execution... " : `> Job Initialization: ${currentAnalysis.analysis_uuid}\n> Distributed scaling: configured for ${workers} workers\n> Inheriting peak assignments from reference spectrum...`)}
+                            <pre className="text-emerald-500/80 leading-loose whitespace-pre-wrap">
+                                {logs || (currentAnalysis.status === 'PENDING' ? "> Machine ready.\n> Waiting for user analysis execution... " : `> Job: ${currentAnalysis.analysis_uuid}\n> Waiting for log output...`)}
                             </pre>
                             {currentAnalysis.status === 'RUNNING' && (
-                                <div className="mt-6 flex items-center text-slate-600 font-bold italic">
+                                <div className="mt-6 flex items-center text-slate-500 font-bold italic">
                                     <span className="animate-pulse mr-3 text-emerald-500">_</span>
-                                    <span className="text-xs uppercase tracking-widest">Processing tasks in parallel via Celery cluster...</span>
+                                    <span className="text-xs uppercase tracking-widest">Fitting peaks in parallel via Celery worker...</span>
                                 </div>
                             )}
                         </div>
@@ -964,13 +1147,30 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
 
       {showRerunWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-700 animate-in zoom-in-95 duration-300">
-            <div className="flex items-center space-x-4 mb-6">
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl text-amber-600">
-                <AlertCircle className="w-8 h-8" />
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-700 animate-in zoom-in-95 duration-300 relative">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl text-amber-600">
+                  <AlertCircle className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Rerun Analysis?</h3>
               </div>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">Rerun Analysis?</h3>
+              <button
+                onClick={() => setShowRerunWarning(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-xl transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-xl flex items-start space-x-3 text-red-700 dark:text-red-300 text-sm animate-in shake shadow-sm">
+                <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <div className="flex-1 font-medium leading-relaxed">{error}</div>
+              </div>
+            )}
+
             <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
               This will overwrite your current results with a new run. A backup of the current results will be created, but any older backups will be permanently deleted.
             </p>
@@ -983,9 +1183,11 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
               </button>
               <button
                 onClick={handleRunAnalysis}
-                className="flex-1 px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-600/20 transition-all"
+                disabled={isLoading}
+                className="flex-1 px-6 py-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center space-x-2"
               >
-                Start Rerun
+                {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>}
+                <span>{isLoading ? 'Starting...' : 'Start Rerun'}</span>
               </button>
             </div>
           </div>

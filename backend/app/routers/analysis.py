@@ -13,7 +13,13 @@ import logging
 from .. import models, schemas, database, security
 
 logger = logging.getLogger(__name__)
-from ..services.fitting.relaxation import get_relaxation_times, extract_peak_intensities_from_results, fit_exponential_decay
+from ..services.path_utils import resolve_existing_path
+from ..services.fitting.relaxation import (
+    get_relaxation_times,
+    validate_relaxation_spectrum,
+    extract_peak_intensities_from_results,
+    fit_exponential_decay,
+)
 from ..services.fitting.relaxation_tasks import run_relaxation_analysis_task
 from .deps import get_project, get_analysis
 from ..celery_app import celery_app
@@ -104,13 +110,40 @@ def run_analysis(
 
     # Link spectra to analysis
     analysis.spectra = spectra
-    
+
+    # Pre-run validation for relaxation analyses
+    atype = (analysis.analysis_type or "").upper()
+    if atype in ["R1", "R2", "T1", "T2", "HETNOE"]:
+        first_s = spectra[0]
+        ref_peak_path = resolve_existing_path(first_s.results_json_path)
+        if not ref_peak_path or not os.path.exists(ref_peak_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Spectrum '{first_s.name}' must have completed peak fitting before running relaxation analysis."
+            )
+
+        if atype != "HETNOE":
+            validation_errors = []
+            for s in spectra:
+                err = validate_relaxation_spectrum(s, atype)
+                if err:
+                    validation_errors.append(err)
+            if validation_errors:
+                err_detail = "Cannot start analysis: " + " ".join(validation_errors)
+                analysis.error_message = err_detail
+                db.commit()
+                raise HTTPException(
+                    status_code=400,
+                    detail=err_detail
+                )
+
     # Store workers in parameters
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params['workers'] = request.workers
     analysis.parameters = json.dumps(params)
     
     analysis.status = "RUNNING"
+    analysis.error_message = None
     db.commit()
 
     # Create job directory
@@ -120,6 +153,13 @@ def run_analysis(
     os.makedirs(run_dir, exist_ok=True)
     analysis.log_path = os.path.join(run_dir, "analysis.log")
     
+    # Initialize / clear log
+    try:
+        with open(analysis.log_path, "w") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Analysis queued: {analysis.name} (UUID: {analysis.analysis_uuid})\n")
+    except Exception:
+        pass
+
     # Backup existing results before rerun
     results_path = os.path.join(run_dir, "results.json")
     if os.path.exists(results_path):
@@ -141,6 +181,44 @@ def run_analysis(
     run_relaxation_analysis_task.delay(analysis.analysis_uuid, request.spectrum_ids, request.workers)
     
     return {"message": "Analysis started", "analysis_uuid": analysis.analysis_uuid}
+
+
+@router.get("/{analysis_uuid}/logs")
+def get_analysis_logs(
+    analysis: models.Analysis = Depends(get_analysis),
+):
+    """Return live log content, status, and error message for the analysis."""
+    log_file = resolve_existing_path(analysis.log_path) if analysis.log_path else None
+    if not log_file or not os.path.exists(log_file):
+        return {
+            "logs": "",
+            "status": analysis.status if analysis else "PENDING",
+            "error_message": getattr(analysis, "error_message", None),
+            "progress": None
+        }
+
+    try:
+        file_size = os.path.getsize(log_file)
+        if file_size > 500 * 1024:
+            with open(log_file, "rb") as f:
+                f.seek(-250 * 1024, os.SEEK_END)
+                raw = f.read()
+                first_nl = raw.find(b"\n")
+                if first_nl != -1:
+                    raw = raw[first_nl + 1 :]
+                logs = "[... earlier log lines truncated for performance ...]\n" + raw.decode("utf-8", errors="replace")
+        else:
+            with open(log_file, "r", errors="replace") as f:
+                logs = f.read()
+    except Exception:
+        logs = ""
+
+    return {
+        "logs": logs,
+        "status": analysis.status,
+        "error_message": getattr(analysis, "error_message", None),
+        "progress": None
+    }
 
 def sanitize_floats_for_json(obj: Any) -> Any:
     """Recursively replace inf and nan float values with None for JSON compliance."""

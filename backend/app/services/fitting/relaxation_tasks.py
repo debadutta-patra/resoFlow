@@ -78,6 +78,8 @@ def fit_single_peak(args):
         print(f"Fit failed for peak {assignment}: {str(e)}")
         return None
 
+from ..path_utils import resolve_existing_path
+
 @celery_app.task(bind=True)
 def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, workers: int = 1):
     """
@@ -90,12 +92,30 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
         return
 
     analysis.status = "RUNNING"
+    analysis.error_message = None
     db.commit()
+
+    log_file = resolve_existing_path(analysis.log_path) or analysis.log_path
+    if log_file:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+    def _log(msg: str):
+        logger.info(f"[{analysis_uuid}] {msg}")
+        if log_file:
+            try:
+                with open(log_file, 'a') as lf:
+                    lf.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+            except Exception:
+                pass
+
+    _log(f"Starting {analysis.analysis_type} relaxation analysis (ID: {analysis_uuid})")
+    _log(f"Configured parallel workers: {workers}")
 
     try:
         results = []
         spectra = db.query(models.Spectrum).filter(models.Spectrum.id.in_(spectrum_ids)).all()
-        
+        if not spectra:
+            raise ValueError("No valid spectra found for analysis.")
         
         is_hetnoe = analysis.analysis_type == "hetNOE"
         use_height = getattr(analysis, 'use_height', False)
@@ -110,23 +130,27 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             times = get_relaxation_times(s)
             if times is not None:
                 spectrum_data.append({"spectrum": s, "times": times})
+                _log(f"Spectrum '{s.name}': Loaded {len(times)} relaxation points.")
             elif is_hetnoe:
                 # hetNOE doesn't need relaxation times, it uses planes
                 # We provide dummy times [0, 1] to represent the two planes
                 spectrum_data.append({"spectrum": s, "times": np.array([0, 1])})
+                _log(f"Spectrum '{s.name}': Loaded hetNOE planes.")
             else:
+                _log(f"WARNING: No relaxation times found for spectrum '{s.name}'. Check VD/VC list.")
                 logger.warning(f"No relaxation times found for spectrum {s.name}")
 
         if not spectrum_data:
-            raise ValueError("No valid spectra or relaxation times found.")
+            raise ValueError("No valid spectra or relaxation times found. Please check VD/VC list paths in Spectra settings.")
 
         # Get peak assignments from the first spectrum's fitting results (inheritance)
         # We assume all spectra have the same peaks or we use the union
         first_s = spectra[0]
-        if not first_s.results_json_path or not os.path.exists(first_s.results_json_path):
-            raise ValueError(f"First spectrum {first_s.name} must be peak-fitted to inherit assignments.")
+        first_res_path = resolve_existing_path(first_s.results_json_path)
+        if not first_res_path or not os.path.exists(first_res_path):
+            raise ValueError(f"First spectrum '{first_s.name}' must be peak-fitted to inherit assignments.")
             
-        with open(first_s.results_json_path, 'r') as f:
+        with open(first_res_path, 'r') as f:
             peak_fit_data = json.load(f)
             
         fit_args = []
@@ -149,12 +173,12 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                 times = sd["times"]
                 
                 # Extract intensities from this spectrum for this assignment
-                if s.results_json_path and os.path.exists(s.results_json_path):
-                    # We need to extract errors as well for hetNOE
+                s_res_path = resolve_existing_path(s.results_json_path)
+                if s_res_path and os.path.exists(s_res_path):
                     ints = None
                     ints_err = None
                     
-                    with open(s.results_json_path, 'r') as f:
+                    with open(s_res_path, 'r') as f:
                         data = json.load(f)
                     
                     p_entries = [p for p in data.get('results', []) if p.get('assignment') == assignment]
@@ -175,7 +199,6 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                             if ints_err is not None:
                                 intensities_err_all.extend(ints_err.tolist())
                             else:
-                                # Fallback if error is missing
                                 intensities_err_all.extend([0.0] * len(ints))
                         else:
                             logger.warning(f"Intensity count ({len(ints)}) does not match time count ({len(times)}) for spectrum {s.name} for peak {assignment}")
@@ -193,9 +216,6 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                 res_name = peak.get('RES_NAME')
 
             if is_hetnoe:
-                # Handle hetNOE calculation directly here or prepare for it
-                # We expect 2 planes. hetnoe_mode defines which is which.
-                # Default to [0,1] (unsat, sat) if not specified
                 mode = [0, 1]
                 if spectra[0].hetnoe_mode:
                     try:
@@ -203,47 +223,46 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                     except:
                         logger.warning(f"Invalid hetnoe_mode: {spectra[0].hetnoe_mode}. Using default [0,1].")
                 
-                    unsat_idx = -1
-                    sat_idx = -1
-                    
-                    for i, m in enumerate(mode):
-                        if m == 0:
-                            unsat_idx = i
-                        elif m == 1:
-                            sat_idx = i
-                    
-                    if unsat_idx == -1 or sat_idx == -1:
-                        # Fallback to [0, 1] if mode parsing didn't result in both 0 and 1
-                        unsat_idx, sat_idx = 0, 1
-                        logger.warning(f"Could not identify both sat and unsat from mode {mode}. Defaulting to [0,1].")
+                unsat_idx = -1
+                sat_idx = -1
+                
+                for i, m in enumerate(mode):
+                    if m == 0:
+                        unsat_idx = i
+                    elif m == 1:
+                        sat_idx = i
+                
+                if unsat_idx == -1 or sat_idx == -1:
+                    unsat_idx, sat_idx = 0, 1
+                    logger.warning(f"Could not identify both sat and unsat from mode {mode}. Defaulting to [0,1].")
 
-                    if unsat_idx >= len(intensities_all) or sat_idx >= len(intensities_all):
-                        logger.error(f"Plane indices {unsat_idx}/{sat_idx} out of range for intensity array of size {len(intensities_all)}")
-                        continue
+                if unsat_idx >= len(intensities_all) or sat_idx >= len(intensities_all):
+                    logger.error(f"Plane indices {unsat_idx}/{sat_idx} out of range for intensity array of size {len(intensities_all)}")
+                    continue
 
-                    i_unsat = intensities_all[unsat_idx]
-                    i_sat = intensities_all[sat_idx]
-                    e_unsat = intensities_err_all[unsat_idx]
-                    e_sat = intensities_err_all[sat_idx]
-                    
-                    from .relaxation import calculate_hetnoe_ratio
-                    ratio, ratio_err = calculate_hetnoe_ratio(i_sat, i_unsat, e_sat, e_unsat)
-                    
-                    results.append({
-                        "assignment": assignment,
-                        "res_num": res_num,
-                        "res_name": res_name,
-                        "rate": ratio, # Mapped to rate for frontend compatibility
-                        "rate_err": ratio_err,
-                        "amplitude": i_unsat, # Store unsat as amplitude
-                        "amplitude_err": e_unsat,
-                        "chisqr": 0.0,
-                        "redchi": 0.0,
-                        "times": [0, 1], # Saturated flag/index
-                        "intensities": [i_unsat, i_sat],
-                        "fit_intensities": [0.0, 0.0]
-                    })
-                continue # Skip Pool.map for hetNOE
+                i_unsat = intensities_all[unsat_idx]
+                i_sat = intensities_all[sat_idx]
+                e_unsat = intensities_err_all[unsat_idx]
+                e_sat = intensities_err_all[sat_idx]
+                
+                from .relaxation import calculate_hetnoe_ratio
+                ratio, ratio_err = calculate_hetnoe_ratio(i_sat, i_unsat, e_sat, e_unsat)
+                
+                results.append({
+                    "assignment": assignment,
+                    "res_num": res_num,
+                    "res_name": res_name,
+                    "rate": ratio,
+                    "rate_err": ratio_err,
+                    "amplitude": i_unsat,
+                    "amplitude_err": e_unsat,
+                    "chisqr": 0.0,
+                    "redchi": 0.0,
+                    "times": [0, 1],
+                    "intensities": [i_unsat, i_sat],
+                    "fit_intensities": [0.0, 0.0]
+                })
+                continue
 
             # Prepare arguments for relaxation fitting
             fit_args.append((
@@ -259,6 +278,8 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             if not fit_args:
                 raise ValueError("No peaks were found to fit. Ensure the reference spectrum is peak-fitted.")
 
+            _log(f"Inherited {len(fit_args)} peaks to fit. Running parallel fitting with {workers} worker(s)...")
+
             # Perform parallel fitting
             with Pool(processes=workers) as pool:
                 pool_results = pool.map(fit_single_peak, fit_args)
@@ -268,22 +289,27 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             peak_results = results
 
         # Save results
-        with open(analysis.results_path, 'w') as f:
-            json.dump({
-                "analysis_uuid": analysis_uuid,
-                "timestamp": datetime.now().isoformat(),
-                "peak_results": peak_results
-            }, f, indent=4)
+        res_file = resolve_existing_path(analysis.results_path) or analysis.results_path
+        if res_file:
+            os.makedirs(os.path.dirname(res_file), exist_ok=True)
+            with open(res_file, 'w') as f:
+                json.dump({
+                    "analysis_uuid": analysis_uuid,
+                    "timestamp": datetime.now().isoformat(),
+                    "peak_results": peak_results
+                }, f, indent=4)
 
+        _log(f"Analysis completed successfully. Fitted {len(peak_results)} peaks.")
         analysis.status = "COMPLETED"
         analysis.completed_at = datetime.now()
+        analysis.error_message = None
         db.commit()
 
     except Exception as e:
         logger.exception(f"Analysis {analysis_uuid} failed")
+        _log(f"ERROR: {str(e)}")
         analysis.status = "FAILED"
-        with open(analysis.log_path, 'a') as f:
-            f.write(f"\nError: {str(e)}")
+        analysis.error_message = str(e)
         db.commit()
     finally:
         db.close()
