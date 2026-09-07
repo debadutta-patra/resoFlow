@@ -141,6 +141,11 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
     if log_file:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
+    res_file = resolve_existing_path(analysis.results_path) or analysis.results_path
+    run_dir = os.path.dirname(res_file) if res_file else None
+    if run_dir:
+        os.makedirs(run_dir, exist_ok=True)
+
     def _log(msg: str):
         logger.info(f"[{analysis_uuid}] {msg}")
         if log_file:
@@ -382,9 +387,9 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             with Pool(processes=workers) as pool:
                 for idx, r in enumerate(pool.imap(fit_single_peak, fit_args), 1):
                     pool_results.append(r)
-                    if res_file and (idx % max(1, total_peaks // 20) == 0 or idx == total_peaks):
+                    if run_dir and (idx % max(1, total_peaks // 20) == 0 or idx == total_peaks):
                         try:
-                            with open(os.path.join(os.path.dirname(res_file), "progress.json"), "w", encoding="utf-8") as pf:
+                            with open(os.path.join(run_dir, "progress.json"), "w", encoding="utf-8") as pf:
                                 json.dump({
                                     "kind": "fit",
                                     "stage": "Fitting",
@@ -424,9 +429,7 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
         correlations_by_method: dict[str, Any] = {}
 
         # Save results
-        res_file = resolve_existing_path(analysis.results_path) or analysis.results_path
-        if res_file:
-            run_dir = os.path.dirname(res_file)
+        if res_file and run_dir:
             os.makedirs(run_dir, exist_ok=True)
 
             # Persist Parameters/fitted.toml for ChemEx-style readers
