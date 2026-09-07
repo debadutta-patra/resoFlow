@@ -108,8 +108,18 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-# 6. Create Desktop Shortcut
+# 7. Create Desktop Shortcut
 Write-Host "`n[3/4] Creating Windows Desktop Shortcut..." -ForegroundColor Blue
+
+# Read the port that was actually installed. During an interactive install the
+# user may have chosen a different port at install.sh's prompt, in which case
+# the -Port parameter no longer reflects reality. install.sh records the final
+# value as WEB_PORT in resoflow.env.
+$installedPort = (wsl.exe -e sh -c 'grep -E "^WEB_PORT=" "$HOME/.config/resoflow/resoflow.env" 2>/dev/null | cut -d= -f2') | Select-Object -First 1
+if ($installedPort) {
+    $Port = "$installedPort".Trim()
+}
+
 $targetUrl = "http://127.0.0.1:$Port"
 $desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::DesktopDirectory)
 $shortcutPath = Join-Path $desktopPath "resoFlow.url"

@@ -117,7 +117,15 @@ case "${1:-start}" in
         stop_pod
         ;;
     restart)
+        # Remove the pod so containers are recreated from the current images.
+        # `start_pod` reuses an existing pod as-is, so without this a rebuilt
+        # image (i.e. an update) would never be picked up. Persistent state
+        # lives in the named volumes and the bind-mounted data dir, so removing
+        # the pod is non-destructive.
         stop_pod
+        if podman pod exists resoflow 2>/dev/null; then
+            podman pod rm -f resoflow >/dev/null
+        fi
         sleep 2
         start_pod
         ;;
