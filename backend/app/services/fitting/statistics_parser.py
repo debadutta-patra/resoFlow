@@ -101,6 +101,11 @@ def parse_statistics_directory(base_dir: str) -> Dict[str, Any]:
         if mcmc_path.is_dir():
             scope_methods["mcmc"] = _parse_mcmc_folder(mcmc_path)
 
+        # 5. Covariance
+        cov_path = stat_path / "Covariance"
+        if cov_path.is_dir():
+            scope_methods["covariance"] = _parse_resampling_folder(cov_path, "Covariance")
+
         if scope_name == "global":
             result["methods"].update(scope_methods)
         else:
@@ -114,7 +119,7 @@ def parse_statistics_directory(base_dir: str) -> Dict[str, Any]:
 
 
 def _parse_resampling_folder(folder: Path, method_name: str) -> Dict[str, Any]:
-    """Parse outputs from a Resampling (MC/BS/BSN) directory."""
+    """Parse outputs from a Resampling (MC/BS/BSN/Covariance) directory."""
     diag_file = folder / "diagnostics.toml"
     summary_file = folder / "summary.toml"
     corr_file = folder / "correlations.tsv"
@@ -136,7 +141,10 @@ def _parse_resampling_folder(folder: Path, method_name: str) -> Dict[str, Any]:
     # Status check
     requested = diagnostics.get("requested_samples", 0)
     completed = diagnostics.get("completed_samples", sample_count)
-    is_complete = requested > 0 and completed >= requested
+    if method_name.lower() == "covariance":
+        is_complete = True
+    else:
+        is_complete = requested > 0 and completed >= requested
 
     status = "completed" if is_complete else "partial"
 

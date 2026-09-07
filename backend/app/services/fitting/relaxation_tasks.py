@@ -6,75 +6,105 @@ from datetime import datetime
 from billiard.pool import Pool
 from ...celery_app import celery_app
 from .relaxation import get_relaxation_times, extract_peak_intensities_from_results, fit_exponential_decay
+from .relaxation_noise import resolve_noise_model, apply_residual_scaling
+from .relaxation_uncertainty import (
+    compute_relaxation_covariance,
+    compute_hetnoe_covariance,
+    build_covariance_uncertainty_result,
+    uncertainty_result_to_statistics_payload,
+)
 from ... import models, database
 
 logger = logging.getLogger(__name__)
 
 def fit_single_peak(args):
     """Worker function for multiprocessing."""
-    times_all, intensities_all, intensities_err_all, assignment, res_num, res_name = args
-    try:
-        
-        # Calculate weights = 1/sigma. Use 1.0 (unweighted) if sigma is 0.
-        weights = None
-        if intensities_err_all:
-            errs = np.array(intensities_err_all)
-            weights = np.where(errs > 0, 1.0 / errs, 0.0) # lmfit uses weights as 1/sigma
-            # If all weights are 0, fall back to unweighted
-            if np.all(weights == 0):
-                weights = None
+    if len(args) >= 8:
+        times_all, intensities_all, intensities_err_all, assignment, res_num, res_name, noise_source, spectral_rmsd = args[:8]
+    elif len(args) == 7:
+        times_all, intensities_all, intensities_err_all, assignment, res_num, res_name, noise_source = args
+        spectral_rmsd = None
+    else:
+        times_all, intensities_all, intensities_err_all, assignment, res_num, res_name = args
+        noise_source = "lineshape"
+        spectral_rmsd = None
 
-        fit_result = fit_exponential_decay(np.array(times_all), np.array(intensities_all), weights=weights)
-        
-        # Calculate RMSE
-        residuals = np.array(intensities_all) - fit_result.best_fit
-        rmse = np.sqrt(np.mean(residuals**2))
-        
-        # If no weights were provided, redchi is just chisqr/ndof which can be huge.
-        # Let's provide a 'normalized' redchi assuming a 1% error floor if weights are None
-        # to give the user a more familiar number around 1.0 for a good fit.
-        redchi = float(fit_result.redchi)
-        if weights is None:
-            # Assume 1% error of max intensity or intensities themselves for stats
-            err_stat = np.max(np.abs(intensities_all)) * 0.01
-            if err_stat > 0:
-                redchi = float(np.sum((residuals / err_stat)**2) / fit_result.nfree)
+    try:
+        t_arr = np.asarray(times_all, dtype=np.float64)
+        y_arr = np.asarray(intensities_all, dtype=np.float64)
+        y_err = np.asarray(intensities_err_all, dtype=np.float64) if intensities_err_all else None
+
+        # Resolve point uncertainties via explicit NoiseModel
+        sigmas, noise_meta = resolve_noise_model(
+            t_arr,
+            y_arr,
+            lineshape_errs=y_err,
+            requested_source=noise_source,
+            spectral_rmsd=spectral_rmsd,
+        )
+
+        weights = np.where(sigmas > 0, 1.0 / sigmas, 1.0)
+        fit_result = fit_exponential_decay(t_arr, y_arr, weights=weights)
+
+        amplitude = float(fit_result.params['amplitude'].value)
+        rate = float(fit_result.params['rate'].value)
+        residuals = y_arr - fit_result.best_fit
+
+        # If residual-scaled requested, inflate sigma so reduced chi2 = 1.0
+        if noise_source == "residual_scaled":
+            sigmas, scale_factor = apply_residual_scaling(sigmas, residuals, n_params=2)
+            noise_meta["residual_scale_factor"] = scale_factor
+            weights = np.where(sigmas > 0, 1.0 / sigmas, 1.0)
+            fit_result = fit_exponential_decay(
+                t_arr, y_arr, weights=weights, initial_amplitude=amplitude, initial_rate=rate
+            )
+            amplitude = float(fit_result.params['amplitude'].value)
+            rate = float(fit_result.params['rate'].value)
+            residuals = y_arr - fit_result.best_fit
+
+        # Compute asymptotic covariance matrix errors
+        cov_errs, cov_mat, cov_diag = compute_relaxation_covariance(
+            t_arr, y_arr, sigmas, amplitude, rate
+        )
+
+        rate_err = float(cov_errs["rate_err"])
+        amp_err = float(cov_errs["amplitude_err"])
+        rmse = float(np.sqrt(np.mean(residuals**2)))
 
         # Generate dense fit line for smooth plotting and uncertainty band
-        times_min = np.min(times_all)
-        times_max = np.max(times_all)
-        # Extend slightly for visual padding
+        times_min = float(np.min(t_arr))
+        times_max = float(np.max(t_arr))
         padding = (times_max - times_min) * 0.05
         fit_times_dense = np.linspace(max(0, times_min - padding), times_max + padding, 100)
         fit_intensities_dense = fit_result.eval(time=fit_times_dense)
-        
-        # Calculate 1-sigma prediction interval
+
         try:
             fit_uncertainty_dense = fit_result.eval_uncertainty(time=fit_times_dense, sigma=1)
         except Exception:
-            # Fallback if uncertainty calculation fails (e.g. singular matrix)
             fit_uncertainty_dense = np.zeros_like(fit_intensities_dense)
 
         return {
             "assignment": assignment,
             "res_num": res_num,
             "res_name": res_name,
-            "rate": float(fit_result.params['rate'].value),
-            "rate_err": float(fit_result.params['rate'].stderr) if fit_result.params['rate'].stderr else 0.0,
-            "amplitude": float(fit_result.params['amplitude'].value),
-            "amplitude_err": float(fit_result.params['amplitude'].stderr) if fit_result.params['amplitude'].stderr else 0.0,
-            "chisqr": float(fit_result.chisqr),
-            "redchi": float(redchi),
-            "rmse": float(rmse),
+            "rate": rate,
+            "rate_err": rate_err,
+            "amplitude": amplitude,
+            "amplitude_err": amp_err,
+            "chisqr": float(cov_diag["chisqr"]),
+            "redchi": float(cov_diag["redchi"]),
+            "rmse": rmse,
             "times": times_all,
             "intensities": intensities_all,
-            "intensities_err": intensities_err_all,
+            "intensities_err": sigmas.tolist(),
             "fit_times_dense": fit_times_dense.tolist(),
             "fit_intensities_dense": fit_intensities_dense.tolist(),
-            "fit_uncertainty_dense": fit_uncertainty_dense.tolist()
+            "fit_uncertainty_dense": fit_uncertainty_dense.tolist(),
+            "noise_metadata": noise_meta,
+            "covariance_diagnostics": cov_diag,
+            "cov_matrix": cov_mat.tolist(),
         }
     except Exception as e:
-        # Can't use global logger easily here if it's not thread-safe or initialized same way
         print(f"Fit failed for peak {assignment}: {str(e)}")
         return None
 
@@ -111,6 +141,13 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
     _log(f"Starting {analysis.analysis_type} relaxation analysis (ID: {analysis_uuid})")
     _log(f"Configured parallel workers: {workers}")
 
+    # Parse configured noise model and uncertainty method
+    params = json.loads(analysis.parameters) if analysis.parameters else {}
+    noise_source = params.get("noise_model", "lineshape")
+    uncertainty_method = params.get("uncertainty_method", "covariance")
+    _log(f"Configured noise model: {noise_source}")
+    _log(f"Configured uncertainty method: {uncertainty_method}")
+
     try:
         results = []
         spectra = db.query(models.Spectrum).filter(models.Spectrum.id.in_(spectrum_ids)).all()
@@ -123,6 +160,21 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
         # Field names based on use_height
         val_field = 'height' if use_height else 'amp'
         err_field = 'height_err' if use_height else 'amp_err'
+
+        # Estimate spectral RMSD from reference spectrum if available
+        first_s = spectra[0]
+        spectral_rmsd = None
+        try:
+            first_spec_path = resolve_existing_path(getattr(first_s, 'filepath', None))
+            if first_spec_path and os.path.exists(first_spec_path):
+                import nmrglue as ng
+                dic, sdata = ng.pipe.read(first_spec_path)
+                plane0 = sdata[0] if sdata.ndim >= 3 else sdata
+                from ..spectrum.plotting import estimate_noise_mad
+                spectral_rmsd = float(estimate_noise_mad(plane0))
+                _log(f"Estimated spectral baseline noise: {spectral_rmsd:.2e}")
+        except Exception as e:
+            logger.debug(f"Could not read spectral noise from raw spectrum: {e}")
 
         # Determine relaxation times for each spectrum
         spectrum_data = []
@@ -144,8 +196,6 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             raise ValueError("No valid spectra or relaxation times found. Please check VD/VC list paths in Spectra settings.")
 
         # Get peak assignments from the first spectrum's fitting results (inheritance)
-        # We assume all spectra have the same peaks or we use the union
-        first_s = spectra[0]
         first_res_path = resolve_existing_path(first_s.results_json_path)
         if not first_res_path or not os.path.exists(first_res_path):
             raise ValueError(f"First spectrum '{first_s.name}' must be peak-fitted to inherit assignments.")
@@ -166,7 +216,7 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             # Collect intensities across all selected spectra for this residue
             times_all = []
             intensities_all = []
-            intensities_err_all = [] # New: for error propagation
+            intensities_err_all = []
             
             for sd in spectrum_data:
                 s = sd["spectrum"]
@@ -240,14 +290,24 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                     logger.error(f"Plane indices {unsat_idx}/{sat_idx} out of range for intensity array of size {len(intensities_all)}")
                     continue
 
-                i_unsat = intensities_all[unsat_idx]
-                i_sat = intensities_all[sat_idx]
-                e_unsat = intensities_err_all[unsat_idx]
-                e_sat = intensities_err_all[sat_idx]
-                
-                from .relaxation import calculate_hetnoe_ratio
-                ratio, ratio_err = calculate_hetnoe_ratio(i_sat, i_unsat, e_sat, e_unsat)
-                
+                i_unsat = float(intensities_all[unsat_idx])
+                i_sat = float(intensities_all[sat_idx])
+                e_unsat = float(intensities_err_all[unsat_idx]) if intensities_err_all else 0.0
+                e_sat = float(intensities_err_all[sat_idx]) if intensities_err_all else 0.0
+
+                sigmas_noe, noise_meta = resolve_noise_model(
+                    np.array([0.0, 1.0]),
+                    np.array([i_unsat, i_sat]),
+                    lineshape_errs=np.array([e_unsat, e_sat]),
+                    requested_source=noise_source,
+                    spectral_rmsd=spectral_rmsd,
+                )
+                s_unsat, s_sat = float(sigmas_noe[0]), float(sigmas_noe[1])
+
+                ratio, ratio_err, int_68, int_95, diag = compute_hetnoe_covariance(
+                    i_sat, i_unsat, s_sat, s_unsat
+                )
+
                 results.append({
                     "assignment": assignment,
                     "res_num": res_num,
@@ -255,12 +315,17 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                     "rate": ratio,
                     "rate_err": ratio_err,
                     "amplitude": i_unsat,
-                    "amplitude_err": e_unsat,
+                    "amplitude_err": s_unsat,
                     "chisqr": 0.0,
                     "redchi": 0.0,
                     "times": [0, 1],
                     "intensities": [i_unsat, i_sat],
-                    "fit_intensities": [0.0, 0.0]
+                    "intensities_err": [s_unsat, s_sat],
+                    "fit_intensities": [0.0, 0.0],
+                    "noise_metadata": noise_meta,
+                    "covariance_diagnostics": diag,
+                    "interval_68": list(int_68),
+                    "interval_95": list(int_95),
                 })
                 continue
 
@@ -271,7 +336,9 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                 intensities_err_all,
                 assignment, 
                 res_num, 
-                res_name
+                res_name,
+                noise_source,
+                spectral_rmsd,
             ))
 
         if not is_hetnoe:
@@ -280,24 +347,141 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
 
             _log(f"Inherited {len(fit_args)} peaks to fit. Running parallel fitting with {workers} worker(s)...")
 
-            # Perform parallel fitting
+            pool_results = []
+            total_peaks = len(fit_args)
             with Pool(processes=workers) as pool:
-                pool_results = pool.map(fit_single_peak, fit_args)
+                for idx, r in enumerate(pool.imap(fit_single_peak, fit_args), 1):
+                    pool_results.append(r)
+                    if res_file and (idx % max(1, total_peaks // 20) == 0 or idx == total_peaks):
+                        try:
+                            with open(os.path.join(os.path.dirname(res_file), "progress.json"), "w", encoding="utf-8") as pf:
+                                json.dump({
+                                    "kind": "fit",
+                                    "stage": "Fitting",
+                                    "percent": int((idx / total_peaks) * 85),
+                                    "message": f"Fitted peak {idx}/{total_peaks}...",
+                                    "updated_at": datetime.now().timestamp(),
+                                }, pf)
+                        except Exception:
+                            pass
                 
             peak_results = [r for r in pool_results if r is not None]
         else:
             peak_results = results
 
+        # Build normalized UncertaintyResult for Covariance baseline
+        point_estimates = {}
+        standard_errors = {}
+        atype = (analysis.analysis_type or "").upper()
+        rate_param_name = "HETNOE" if atype == "HETNOE" else atype
+        amp_param_name = "I_REF" if atype == "HETNOE" else "I0"
+
+        for p in peak_results:
+            assign = p["assignment"]
+            point_estimates[f"{rate_param_name}, NUC->{assign}"] = p["rate"]
+            standard_errors[f"{rate_param_name}, NUC->{assign}"] = p["rate_err"]
+            point_estimates[f"{amp_param_name}, NUC->{assign}"] = p["amplitude"]
+            standard_errors[f"{amp_param_name}, NUC->{assign}"] = p["amplitude_err"]
+
+        cov_result = build_covariance_uncertainty_result(
+            point_estimates,
+            standard_errors,
+            noise_source=noise_source,
+            diagnostics={"n_peaks": len(peak_results), "analysis_type": atype},
+        )
+
+        uncertainty_stats = uncertainty_result_to_statistics_payload({
+            "covariance": cov_result,
+        })
+
         # Save results
         res_file = resolve_existing_path(analysis.results_path) or analysis.results_path
         if res_file:
-            os.makedirs(os.path.dirname(res_file), exist_ok=True)
-            with open(res_file, 'w') as f:
-                json.dump({
-                    "analysis_uuid": analysis_uuid,
-                    "timestamp": datetime.now().isoformat(),
-                    "peak_results": peak_results
-                }, f, indent=4)
+            run_dir = os.path.dirname(res_file)
+            os.makedirs(run_dir, exist_ok=True)
+
+            # Persist Parameters/fitted.toml for ChemEx-style readers
+            param_dir = os.path.join(run_dir, "Parameters")
+            os.makedirs(param_dir, exist_ok=True)
+            fitted_toml_path = os.path.join(param_dir, "fitted.toml")
+            try:
+                with open(fitted_toml_path, "w", encoding="utf-8") as pf:
+                    for p_name, pt in point_estimates.items():
+                        parts = p_name.split(", ")
+                        if len(parts) == 2:
+                            sec, k = parts[0], parts[1]
+                            pf.write(f'["{sec}"]\n"{k}" = {pt}\n\n')
+                        else:
+                            pf.write(f'["{p_name}"]\nvalue = {pt}\n\n')
+            except Exception as exc:
+                logger.warning(f"Could not write fitted.toml: {exc}")
+
+            # Persist summary.toml, diagnostics.toml, correlations.tsv in Statistics/Covariance/
+            cov_stat_dir = os.path.join(run_dir, "Statistics", "Covariance")
+            os.makedirs(cov_stat_dir, exist_ok=True)
+            summary_toml_path = os.path.join(cov_stat_dir, "summary.toml")
+            diag_toml_path = os.path.join(cov_stat_dir, "diagnostics.toml")
+            corr_tsv_path = os.path.join(cov_stat_dir, "correlations.tsv")
+            try:
+                with open(summary_toml_path, "w", encoding="utf-8") as sf:
+                    for p_name, pt in point_estimates.items():
+                        se = standard_errors.get(p_name, 0.0)
+                        sf.write(f'["{p_name}"]\n')
+                        sf.write(f'mean = {pt}\n')
+                        sf.write(f'median = {pt}\n')
+                        sf.write(f'standard_deviation = {se}\n')
+                        sf.write(f'percentile_95_lower = {pt - 1.95996 * se}\n')
+                        sf.write(f'percentile_95_upper = {pt + 1.95996 * se}\n')
+                        sf.write(f'stderr = {se}\n')
+                        sf.write(f'sample_count = 1\n\n')
+
+                with open(diag_toml_path, "w", encoding="utf-8") as df:
+                    df.write('method_name = "Covariance"\n')
+                    df.write('requested_samples = 1\n')
+                    df.write('completed_samples = 1\n')
+                    df.write('status = "completed"\n')
+
+                param_keys = list(point_estimates.keys())
+                with open(corr_tsv_path, "w", encoding="utf-8") as cf:
+                    cf.write("\t" + "\t".join(param_keys) + "\n")
+                    for k1 in param_keys:
+                        row = []
+                        for k2 in param_keys:
+                            if k1 == k2:
+                                row.append("1.0")
+                            else:
+                                row.append("0.0")
+                        cf.write(k1 + "\t" + "\t".join(row) + "\n")
+            except Exception as exc:
+                logger.warning(f"Could not write covariance files: {exc}")
+
+            # Emit final completion state to progress.json
+            progress_file = os.path.join(run_dir, "progress.json")
+            try:
+                with open(progress_file, "w", encoding="utf-8") as pf:
+                    json.dump({
+                        "kind": "fit",
+                        "stage": "Completed",
+                        "percent": 100,
+                        "message": f"Fitted {len(peak_results)} peaks.",
+                        "updated_at": datetime.now().timestamp(),
+                    }, pf)
+            except Exception:
+                pass
+
+            results_payload = {
+                "analysis_uuid": analysis_uuid,
+                "timestamp": datetime.now().isoformat(),
+                "noise_model": noise_source,
+                "peak_results": peak_results,
+                "uncertainty_statistics": uncertainty_stats,
+                "uncertainty_results": {
+                    "covariance": cov_result.model_dump(),
+                },
+            }
+
+            with open(res_file, 'w', encoding="utf-8") as f:
+                json.dump(results_payload, f, indent=4)
 
         _log(f"Analysis completed successfully. Fitted {len(peak_results)} peaks.")
         analysis.status = "COMPLETED"

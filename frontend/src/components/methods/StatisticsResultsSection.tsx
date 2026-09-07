@@ -203,6 +203,21 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
         autocorrelation_status: mcmc.diagnostics?.autocorrelation_status,
       };
     }
+    if (uncertaintyStatistics.covariance) {
+      const cov = uncertaintyStatistics.covariance;
+      methods.covariance = {
+        method_name: 'Covariance',
+        status: cov.status || 'complete',
+        summary: cov.summary,
+        correlations: normalizeCorrelations(cov.correlations),
+        diagnostics: cov.diagnostics,
+        plots_pdf: cov.plots_pdf,
+        has_plots_pdf: !!cov.plots_pdf,
+        failures: cov.failures,
+        sample_count: cov.diagnostics?.completed_samples ?? 1,
+        requested_samples: cov.diagnostics?.requested_samples ?? 1,
+      };
+    }
   }
 
   const availableMethods = Object.keys(methods).filter(k => !!methods[k]);
@@ -305,6 +320,8 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
       ? 'SD (BSN)'
       : activeTab === 'mcmc'
       ? 'SD (MCMC)'
+      : activeTab === 'covariance'
+      ? 'SE (Covariance)'
       : 'SD (Replicates)';
 
   return (

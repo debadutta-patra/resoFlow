@@ -380,7 +380,10 @@ class Analysis(AnalysisBase):
 class AnalysisRunRequest(BaseModel):
     spectrum_ids: List[int]
     workers: int = 1
-    # You can add more parameters here as needed
+    noise_model: Optional[str] = "lineshape"
+    uncertainty_method: Optional[str] = "covariance"
+    n_samples: Optional[int] = 500
+    seed: Optional[int] = None
 
 # Method & Statistics Schemas
 class McmcSettingsSchema(BaseModel):

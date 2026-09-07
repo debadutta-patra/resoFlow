@@ -35,6 +35,7 @@ import {
   Check
 } from 'lucide-react';
 import Plot, { PLOT_COLORS } from './Plot';
+import StatisticsResultsSection from './methods/StatisticsResultsSection';
 
 interface Spectrum {
   id: number;
@@ -70,6 +71,9 @@ interface PeakResult {
 interface AnalysisResults {
   analysis_uuid: string;
   peak_results: PeakResult[];
+  noise_model?: string;
+  uncertainty_statistics?: any;
+  uncertainty_results?: any;
 }
 
 interface Analysis {
@@ -118,6 +122,10 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
   const [results, setResults] = useState<AnalysisResults | null>(null);
   const [selectedPeak, setSelectedPeak] = useState<PeakResult | null>(null);
   const [workers, setWorkers] = useState(1);
+  const [noiseModel, setNoiseModel] = useState<string>('lineshape');
+  const [uncertaintyMethod, setUncertaintyMethod] = useState<string>('covariance');
+  const [nSamples, setNSamples] = useState<number>(500);
+  const [seed, setSeed] = useState<number | undefined>(undefined);
   const [plotColor, setPlotColor] = useState('#f43f5e'); // Fit color (rose-500)
   const [observedColor, setObservedColor] = useState('#6366f1'); // Observed color (indigo-500)
   const [ratesColor, setRatesColor] = useState('#6366f1'); // Rates plot color (indigo-500)
@@ -247,6 +255,18 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
 
   useEffect(() => {
     setCurrentAnalysis(analysis);
+    if (analysis.parameters) {
+      try {
+        const parsed = JSON.parse(analysis.parameters);
+        if (parsed.workers) setWorkers(parsed.workers);
+        if (parsed.noise_model) setNoiseModel(parsed.noise_model);
+        if (parsed.uncertainty_method) setUncertaintyMethod(parsed.uncertainty_method);
+        if (parsed.n_samples) setNSamples(parsed.n_samples);
+        if (parsed.seed !== undefined && parsed.seed !== null) setSeed(parsed.seed);
+      } catch (e) {
+        console.error("Failed to parse analysis parameters", e);
+      }
+    }
   }, [analysis]);
 
   const handleRunAnalysis = async () => {
@@ -256,7 +276,11 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
       const spectrumIds = currentAnalysis.spectra.map(s => s.id);
       await api.post(`/api/projects/${projectUuid}/analysis/${currentAnalysis.analysis_uuid}/run`, {
         spectrum_ids: spectrumIds,
-        workers: workers
+        workers: workers,
+        noise_model: noiseModel,
+        uncertainty_method: uncertaintyMethod,
+        n_samples: nSamples,
+        seed: seed !== undefined ? seed : null,
       });
       setCurrentAnalysis({ ...currentAnalysis, status: 'RUNNING', error_message: undefined });
       setShowRerunWarning(false);
@@ -305,9 +329,46 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
 
   const exportToCSV = () => {
     if (!results || !results.peak_results) return;
-    
-    const headers = ['Res #', 'Res Name', 'Assignment', currentAnalysis.analysis_type === 'hetNOE' ? 'Ratio' : 'Rate (s-1)', 'Error', 'Amplitude', 'Amp Err', 'ChiSqr', 'Red ChiSqr'];
-    const rows = results.peak_results.map(p => [
+
+    const uncMethod = results.uncertainty_statistics?.methods?.mcmc
+      ? 'mcmc'
+      : results.uncertainty_statistics?.methods?.monte_carlo
+      ? 'monte_carlo'
+      : results.uncertainty_statistics?.methods?.bootstrap
+      ? 'bootstrap'
+      : 'covariance';
+
+    const errLabel = uncMethod === 'mcmc'
+      ? 'Rate Error (Posterior Median ± HPD)'
+      : uncMethod === 'monte_carlo'
+      ? 'Rate Error (Resampled SD - MC)'
+      : uncMethod === 'bootstrap'
+      ? 'Rate Error (Resampled SD - BS)'
+      : 'Rate Error (LSQ ± Covariance)';
+
+    const ampErrLabel = uncMethod === 'covariance'
+      ? 'Amp Err (LSQ ± Covariance)'
+      : 'Amp Err (Resampled SD)';
+
+    const headers = [
+      'Res #',
+      'Res Name',
+      'Assignment',
+      currentAnalysis.analysis_type === 'hetNOE' ? 'Ratio' : 'Rate (s-1)',
+      errLabel,
+      'Amplitude',
+      ampErrLabel,
+      'ChiSqr',
+      'Red ChiSqr',
+      'Interval 68 Lower',
+      'Interval 68 Upper',
+      'Interval 95 Lower',
+      'Interval 95 Upper',
+      'Noise Model',
+      'Uncertainty Method'
+    ];
+
+    const rows = results.peak_results.map((p: any) => [
       p.res_num || '',
       p.res_name || '',
       p.assignment,
@@ -316,9 +377,15 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
       p.amplitude.toFixed(2),
       p.amplitude_err.toFixed(2),
       p.chisqr.toFixed(4),
-      p.redchi.toFixed(4)
+      p.redchi.toFixed(4),
+      p.interval_68 ? p.interval_68[0].toFixed(4) : (p.rate - p.rate_err).toFixed(4),
+      p.interval_68 ? p.interval_68[1].toFixed(4) : (p.rate + p.rate_err).toFixed(4),
+      p.interval_95 ? p.interval_95[0].toFixed(4) : (p.rate - 1.95996 * p.rate_err).toFixed(4),
+      p.interval_95 ? p.interval_95[1].toFixed(4) : (p.rate + 1.95996 * p.rate_err).toFixed(4),
+      results.noise_model || (p.noise_metadata?.source ?? 'lineshape'),
+      uncMethod
     ]);
-    
+
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -766,6 +833,82 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                         Choose whether to use the peak height or the integrated peak amplitude for the relaxation fitting. Peak height can sometimes be more robust for overlapping peaks.
                                     </p>
                                 </div>
+
+                                <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                                    <div>
+                                        <label htmlFor="noiseModelSelect" className="block text-sm font-bold text-slate-900 dark:text-white mb-2">
+                                            Experimental Noise Model
+                                        </label>
+                                        <select
+                                            id="noiseModelSelect"
+                                            value={noiseModel}
+                                            onChange={(e) => setNoiseModel(e.target.value)}
+                                            className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                                        >
+                                            <option value="lineshape">Lineshape Covariance (from peak fitting, with fallback)</option>
+                                            <option value="duplicate">Duplicate Delay Pooled Variance</option>
+                                            <option value="rmsd">Spectral Baseline RMSD</option>
+                                            <option value="residual_scaled">Residual Variance Scaling (χ²_red = 1)</option>
+                                        </select>
+                                        <p className="text-xs text-slate-400 mt-2 leading-relaxed italic">
+                                            Determines how per-point intensity uncertainties are derived for weighted non-linear regression.
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="uncertaintyMethodSelect" className="block text-sm font-bold text-slate-900 dark:text-white mb-2">
+                                            Uncertainty Estimation Technique
+                                        </label>
+                                        <select
+                                            id="uncertaintyMethodSelect"
+                                            value={uncertaintyMethod}
+                                            onChange={(e) => setUncertaintyMethod(e.target.value)}
+                                            className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                                        >
+                                            <option value="covariance">Asymptotic Covariance Matrix (Fisher Information)</option>
+                                            <option value="monte_carlo">Parametric Monte Carlo (Synthetic Residuals)</option>
+                                            <option value="bootstrap">Residual Bootstrap</option>
+                                            <option value="bootstrap_case">Case Resampling Bootstrap</option>
+                                            <option value="mcmc">Markov Chain Monte Carlo (emcee)</option>
+                                        </select>
+                                        <p className="text-xs text-slate-400 mt-2 leading-relaxed italic">
+                                            Statistical methodology used to compute standard errors, confidence intervals, and parameter distributions.
+                                        </p>
+                                    </div>
+
+                                    {uncertaintyMethod !== 'covariance' && (
+                                        <div className="grid grid-cols-2 gap-4 pt-2">
+                                            <div>
+                                                <label htmlFor="nSamplesInput" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                    {uncertaintyMethod === 'mcmc' ? 'MCMC Steps' : 'Resampling Samples'}
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    id="nSamplesInput"
+                                                    min="50"
+                                                    max="5000"
+                                                    step="50"
+                                                    value={nSamples}
+                                                    onChange={(e) => setNSamples(parseInt(e.target.value) || 500)}
+                                                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-mono text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label htmlFor="seedInput" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                    RNG Seed (Optional)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    id="seedInput"
+                                                    placeholder="e.g. 42"
+                                                    value={seed ?? ''}
+                                                    onChange={(e) => setSeed(e.target.value === '' ? undefined : parseInt(e.target.value))}
+                                                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-mono text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -1020,6 +1163,16 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                     </div>
                                 </section>
                            </div>
+
+                            {results.uncertainty_statistics && (
+                                <div className="lg:col-span-12 mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <StatisticsResultsSection
+                                        projectUuid={projectUuid!}
+                                        analysisUuid={currentAnalysis.analysis_uuid}
+                                        uncertaintyStatistics={results.uncertainty_statistics}
+                                    />
+                                </div>
+                            )}
                         </div>
                     ) : currentAnalysis.status === 'FAILED' ? (
                         <div className="text-center py-16 px-6 bg-rose-50/50 dark:bg-rose-950/20 rounded-[3rem] border-2 border-dashed border-rose-200 dark:border-rose-900/50 max-w-2xl mx-auto shadow-sm animate-in fade-in">
