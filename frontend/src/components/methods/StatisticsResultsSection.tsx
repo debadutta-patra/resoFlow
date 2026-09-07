@@ -203,6 +203,21 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
         autocorrelation_status: mcmc.diagnostics?.autocorrelation_status,
       };
     }
+    if (uncertaintyStatistics.covariance) {
+      const cov = uncertaintyStatistics.covariance;
+      methods.covariance = {
+        method_name: 'Covariance',
+        status: cov.status || 'complete',
+        summary: cov.summary,
+        correlations: normalizeCorrelations(cov.correlations),
+        diagnostics: cov.diagnostics,
+        plots_pdf: cov.plots_pdf,
+        has_plots_pdf: !!cov.plots_pdf,
+        failures: cov.failures,
+        sample_count: cov.diagnostics?.completed_samples ?? 1,
+        requested_samples: cov.diagnostics?.requested_samples ?? 1,
+      };
+    }
   }
 
   const availableMethods = Object.keys(methods).filter(k => !!methods[k]);
@@ -256,6 +271,32 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
     }
   };
 
+  // Check available parameter types in summary
+  const paramTypes = useMemo(() => {
+    if (!activeMethod?.summary) {
+      return { hasRates: false, hasAmps: false, hasChemShift: false, hasGlobals: false, rateName: 'Rates' };
+    }
+    let hasRates = false;
+    let hasAmps = false;
+    let hasChemShift = false;
+    let hasGlobals = false;
+    let rateName = 'Rates';
+
+    for (const key of Object.keys(activeMethod.summary)) {
+      const parsed = parseParameterLabel(key);
+      if (parsed.category === 'global') hasGlobals = true;
+      else if (parsed.category === 'chemical_shift') hasChemShift = true;
+      else if (parsed.displaySymbol.startsWith('I')) hasAmps = true;
+      else if (parsed.category === 'relaxation') {
+        hasRates = true;
+        if (parsed.displaySymbol.startsWith('R1')) rateName = 'Rates (R₁)';
+        else if (parsed.displaySymbol.startsWith('R2')) rateName = 'Rates (R₂)';
+        else if (parsed.displaySymbol.toLowerCase().includes('noe')) rateName = 'NOE Ratios';
+      }
+    }
+    return { hasRates, hasAmps, hasChemShift, hasGlobals, rateName };
+  }, [activeMethod]);
+
   // Filter parameters for the active method table
   const filteredParameters = useMemo(() => {
     if (!activeMethod || !activeMethod.summary) return [];
@@ -272,6 +313,14 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
           if (categoryFilter === 'global' && parsed.category !== 'global') return false;
           if (categoryFilter === 'chemical_shift' && parsed.category !== 'chemical_shift') return false;
           if (categoryFilter === 'relaxation' && parsed.category !== 'relaxation') return false;
+          if (categoryFilter === 'rates') {
+            const isRate = parsed.displaySymbol.startsWith('R') || parsed.displaySymbol.toLowerCase().includes('noe');
+            if (!isRate) return false;
+          }
+          if (categoryFilter === 'amplitudes') {
+            const isAmp = parsed.displaySymbol.startsWith('I');
+            if (!isAmp) return false;
+          }
         }
 
         // Search query filter
@@ -289,6 +338,18 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
       .sort((a, b) => {
         if (a.parsed.category === 'global' && b.parsed.category !== 'global') return -1;
         if (a.parsed.category !== 'global' && b.parsed.category === 'global') return 1;
+
+        // Prioritize rates over amplitudes
+        const isRateA = a.parsed.displaySymbol.startsWith('R') || a.parsed.displaySymbol.toLowerCase().includes('noe');
+        const isRateB = b.parsed.displaySymbol.startsWith('R') || b.parsed.displaySymbol.toLowerCase().includes('noe');
+        if (isRateA && !isRateB) return -1;
+        if (!isRateA && isRateB) return 1;
+
+        // Sort by residue number if available
+        const numA = parseInt(a.parsed.residue.match(/\d+/)?.[0] || '999999', 10);
+        const numB = parseInt(b.parsed.residue.match(/\d+/)?.[0] || '999999', 10);
+        if (numA !== numB) return numA - numB;
+
         return a.paramName.localeCompare(b.paramName);
       });
   }, [activeMethod, categoryFilter, searchQuery]);
@@ -305,6 +366,8 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
       ? 'SD (BSN)'
       : activeTab === 'mcmc'
       ? 'SD (MCMC)'
+      : activeTab === 'covariance'
+      ? 'SE (Covariance)'
       : 'SD (Replicates)';
 
   return (
@@ -487,39 +550,72 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                       >
                         All
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setCategoryFilter('global')}
-                        className={`px-2 py-0.5 rounded-md transition-colors ${
-                          categoryFilter === 'global'
-                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                        }`}
-                      >
-                        Globals
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCategoryFilter('chemical_shift')}
-                        className={`px-2 py-0.5 rounded-md transition-colors ${
-                          categoryFilter === 'chemical_shift'
-                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                        }`}
-                      >
-                        δ / Δω
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCategoryFilter('relaxation')}
-                        className={`px-2 py-0.5 rounded-md transition-colors ${
-                          categoryFilter === 'relaxation'
-                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                        }`}
-                      >
-                        R₁ / R₂
-                      </button>
+                      {paramTypes.hasGlobals && (
+                        <button
+                          type="button"
+                          onClick={() => setCategoryFilter('global')}
+                          className={`px-2 py-0.5 rounded-md transition-colors ${
+                            categoryFilter === 'global'
+                              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
+                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          Globals
+                        </button>
+                      )}
+                      {paramTypes.hasChemShift && (
+                        <button
+                          type="button"
+                          onClick={() => setCategoryFilter('chemical_shift')}
+                          className={`px-2 py-0.5 rounded-md transition-colors ${
+                            categoryFilter === 'chemical_shift'
+                              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
+                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          δ / Δω
+                        </button>
+                      )}
+                      {paramTypes.hasChemShift || paramTypes.hasGlobals ? (
+                        <button
+                          type="button"
+                          onClick={() => setCategoryFilter('relaxation')}
+                          className={`px-2 py-0.5 rounded-md transition-colors ${
+                            categoryFilter === 'relaxation'
+                              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
+                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          R₁ / R₂
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setCategoryFilter(categoryFilter === 'rates' ? 'all' : 'rates')}
+                            className={`px-2 py-0.5 rounded-md transition-colors ${
+                              categoryFilter === 'rates'
+                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
+                                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                            }`}
+                          >
+                            {paramTypes.rateName}
+                          </button>
+                          {paramTypes.hasAmps && (
+                            <button
+                              type="button"
+                              onClick={() => setCategoryFilter(categoryFilter === 'amplitudes' ? 'all' : 'amplitudes')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${
+                                categoryFilter === 'amplitudes'
+                                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
+                                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                              }`}
+                            >
+                              Amplitudes (I₀)
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

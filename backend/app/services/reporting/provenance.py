@@ -227,19 +227,61 @@ def extract_report_provenance(
         sum_res_dof += r_dof
         sum_res_chi2 += r_chi2
 
+    # For native relaxation analyses (R1, R2, hetNOE), populate from peak_results
+    is_relaxation = analysis_type.upper() in ("R1", "R2", "HETNOE")
+    if not r_dict and res_data.get("peak_results"):
+        for p in res_data["peak_results"]:
+            assign = str(p.get("assignment", f"Peak_{p.get('res_num', '?')}"))
+            times = p.get("times", [])
+            p_ndata = len(times) if times else 2
+            p_nvarys = 2 if analysis_type.upper() != "HETNOE" else 1
+            p_chi2 = float(p.get("chisqr", 0.0))
+            p_dof = max(1, p_ndata - p_nvarys)
+            p_redchi = float(p.get("redchi", p_chi2 / p_dof))
+
+            res_dofs[assign] = {
+                "ndata": p_ndata,
+                "nvarys_local": p_nvarys,
+                "dof": p_dof,
+                "chi2": p_chi2,
+                "chi2_red": p_redchi,
+            }
+            sum_res_data += p_ndata
+            sum_res_dof += p_dof
+            sum_res_chi2 += p_chi2
+
     # Reconcile DOF
     if ndata_global == 0 and sum_res_data > 0:
         ndata_global = sum_res_data
     if chi2_global == 0.0 and sum_res_chi2 > 0:
         chi2_global = sum_res_chi2
-    if chi2_red_global == 0.0 and dof_global > 0:
-        chi2_red_global = chi2_global / dof_global
+    if chi2_red_global == 0.0 and sum_res_dof > 0:
+        chi2_red_global = chi2_global / sum_res_dof
+        dof_global = sum_res_dof
 
-    reconciliation = (
-        f"Global DOF = {dof_global} (N_points={ndata_global} − N_local={n_local_params_total} − N_global={n_global_params}). "
-        f"Sum of per-residue DOF = {sum_res_dof}. The difference of {sum_res_dof - dof_global} corresponds to the "
-        f"{n_global_params} globally shared exchange parameters (k_ex, p_b)."
-    )
+    if is_relaxation:
+        model_name = "Intensity ratio" if analysis_type.upper() == "HETNOE" else "Mono-exponential decay"
+        n_fitted = len(res_dofs) * (2 if analysis_type.upper() != "HETNOE" else 1)
+        reconciliation = (
+            f"Total Data Points = {sum_res_data} across {len(res_dofs)} residues. "
+            f"Total Residual DOF = {sum_res_dof} ({sum_res_data} points − {n_fitted} fitted local parameters). "
+            f"Mean reduced χ²ᵣ = {chi2_red_global:.2f}."
+        )
+        minimizer_name = "Analytical Error Propagation" if analysis_type.upper() == "HETNOE" else "Levenberg-Marquardt (scipy)"
+        dw_convention = "N/A (No chemical exchange)"
+        chemex_ver = None
+        chemex_digest = None
+    else:
+        model_name = res_data.get("model", "2st")
+        reconciliation = (
+            f"Global DOF = {dof_global} (N_points={ndata_global} − N_local={n_local_params_total} − N_global={n_global_params}). "
+            f"Sum of per-residue DOF = {sum_res_dof}. The difference of {sum_res_dof - dof_global} corresponds to the "
+            f"{n_global_params} globally shared exchange parameters (k_ex, p_b)."
+        )
+        minimizer_name = "Levenberg-Marquardt (leastsq)"
+        dw_convention = "CS_B = CS_A + DW_AB (positive DW indicates downfield excited-state shift)"
+        chemex_ver = chemex_version or "2026.6.1"
+        chemex_digest = chemex_image_digest or "sha256:unavailable"
 
     dof_acc = DegreeOfFreedomAccounting(
         n_data_global=ndata_global,
@@ -269,13 +311,13 @@ def extract_report_provenance(
         timestamp_iso=now_iso,
         resoflow_version=RESOFLOW_VERSION,
         git_sha=git_sha,
-        chemex_version=chemex_version or "2026.6.1",
-        chemex_image_digest=chemex_image_digest or "sha256:unavailable",
+        chemex_version=chemex_ver,
+        chemex_image_digest=chemex_digest,
         analysis_name=analysis_name,
         analysis_uuid=os.path.basename(str(analysis_dir)),
         analysis_type=analysis_type.upper(),
-        model_name=res_data.get("model", "2st"),
-        minimizer="Levenberg-Marquardt (leastsq)",
+        model_name=model_name,
+        minimizer=minimizer_name,
         convergence_status=convergence_status,
         b0_fields=b0_fields if b0_fields else ["600.3 MHz"],
         temperature_k=temperature_k,
@@ -283,7 +325,7 @@ def extract_report_provenance(
         b1_fields=b1_fields,
         input_files=input_files,
         dof_accounting=dof_acc,
-        delta_omega_convention="CS_B = CS_A + DW_AB (positive DW indicates downfield excited-state shift)",
+        delta_omega_convention=dw_convention,
         uncertainty_sources_used=sources_used,
         has_statistics_runs=has_statistics_runs,
     )

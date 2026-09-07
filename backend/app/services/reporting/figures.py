@@ -53,12 +53,14 @@ def format_param_label(p_raw: Any) -> str:
         return f"CS_B ({nuc})" if nuc else "CS_B (ppm)"
     elif base in ("R1_A", "R1A"):
         return f"R₁A ({nuc})" if nuc else "R₁A (s⁻¹)"
-    elif base in ("R2_A", "R2A"):
-        suffix = [x for x in (nuc, b0) if x]
-        return f"R₂A ({', '.join(suffix)})" if suffix else "R₂A (s⁻¹)"
-    elif base in ("R2_B", "R2B"):
-        suffix = [x for x in (nuc, b0) if x]
-        return f"R₂B ({', '.join(suffix)})" if suffix else "R₂B (s⁻¹)"
+    elif base in ("R2", "RATE") and ("R2" in s.upper() or base == "R2"):
+        return f"R₂ ({nuc})" if nuc else "R₂ (s⁻¹)"
+    elif base in ("R1", "RATE") and ("R1" in s.upper() or base == "R1"):
+        return f"R₁ ({nuc})" if nuc else "R₁ (s⁻¹)"
+    elif base in ("NOE", "RATE") and ("NOE" in s.upper() or base == "NOE"):
+        return f"hetNOE ({nuc})" if nuc else "hetNOE"
+    elif base in ("I0", "AMPLITUDE"):
+        return f"I₀ ({nuc})" if nuc else "I₀ (amplitude)"
     elif base.lower() == "lnprob":
         return "ln(Posterior)"
     return s
@@ -88,6 +90,59 @@ def _png_base64(fig: plt.Figure, dpi: int = 300) -> str:
 # Shared between existing page builders and standalone SVG/PNG figure functions
 # ==============================================================================
 
+def _draw_relaxation_decay_curve(
+    ax: plt.Axes,
+    rec: Any,
+    analysis_type: str = "R2",
+    compact: bool = False,
+    palette: Optional[List[str]] = None,
+):
+    """Render exponential decay curve (times vs intensities) with fit line and uncertainty band."""
+    active_palette = palette or get_current_palette()
+    color = active_palette[0]
+    decay_data = getattr(rec, "decay_curve_data", None) or (rec.get("decay_curve_data", {}) if isinstance(rec, dict) else {})
+
+    times = np.array(decay_data.get("times", []), dtype=float)
+    intensities = np.array(decay_data.get("intensities", []), dtype=float)
+    y_errs = np.array(decay_data.get("intensities_err", []), dtype=float) if decay_data.get("intensities_err") else None
+
+    # Observed data points
+    if len(times) > 0 and len(intensities) > 0:
+        ax.errorbar(
+            times, intensities, yerr=y_errs,
+            fmt="o", color=color, markersize=3.5 if compact else 4.5,
+            alpha=0.85, capsize=2.0, label="Observed", zorder=3
+        )
+
+    # Dense model fit curve
+    fit_t = np.array(decay_data.get("fit_times_dense", []), dtype=float)
+    fit_i = np.array(decay_data.get("fit_intensities_dense", []), dtype=float)
+    if len(fit_t) > 0 and len(fit_i) > 0:
+        ax.plot(fit_t, fit_i, "-", color="#1F2937", linewidth=1.4 if compact else 1.8, label="Fit Curve", zorder=2)
+
+    # 95% Confidence envelope
+    fit_low_95 = decay_data.get("fit_intensities_lower_95")
+    fit_high_95 = decay_data.get("fit_intensities_upper_95")
+    if fit_low_95 and fit_high_95 and len(fit_low_95) == len(fit_t):
+        ax.fill_between(fit_t, fit_low_95, fit_high_95, color=color, alpha=0.15, label="95% CI", zorder=1)
+
+    display_name = getattr(rec, "display_name", None) or (rec.get("display_name", "") if isinstance(rec, dict) else "")
+    rate_obj = getattr(rec, "rate", None) or (rec.get("rate") if isinstance(rec, dict) else None)
+    badge = ""
+    if rate_obj and getattr(rate_obj, "value", None) is not None:
+        val = rate_obj.value
+        sig = getattr(rate_obj, "sigma", None)
+        err_str = f" ± {sig:.2f}" if sig is not None else ""
+        unit_str = f" {rate_obj.unit}" if getattr(rate_obj, "unit", None) else ""
+        sym = "R₂" if analysis_type == "R2" else ("R₁" if analysis_type == "R1" else "NOE")
+        badge = f" ({sym} = {val:.2f}{err_str}{unit_str})"
+
+    ax.set_title(f"Residue: {display_name}{badge}", fontsize=9.0 if compact else 11.0, fontweight="bold")
+    ax.set_xlabel("Delay Time (s)" if analysis_type != "HETNOE" else "Plane", fontsize=8.0 if compact else 9.0)
+    ax.set_ylabel("Intensity", fontsize=8.0 if compact else 9.0)
+    ax.grid(True, linestyle=":", alpha=0.5)
+
+
 def _draw_dispersion_curve(
     ax: plt.Axes,
     rec: Any,
@@ -97,6 +152,10 @@ def _draw_dispersion_curve(
     palette: Optional[List[str]] = None,
 ):
     """Render CEST or CPMG profile curves with deduplicated legends and non-colliding A/B markers."""
+    if (analysis_type or "").upper() in ("R1", "R2", "HETNOE"):
+        _draw_relaxation_decay_curve(ax, rec, analysis_type=(analysis_type or "R2").upper(), compact=compact, palette=palette)
+        return
+
     experiments = rec.get("experiments", [])
     active_palette = palette or get_current_palette()
     handles = []
@@ -170,6 +229,42 @@ def _draw_dispersion_curve(
             )
 
 
+def _draw_relaxation_residuals_strip(
+    ax: plt.Axes,
+    rec: Any,
+    palette: Optional[List[str]] = None,
+):
+    """Render relaxation normalized or absolute residuals strip."""
+    active_palette = palette or get_current_palette()
+    color = active_palette[0]
+    decay_data = getattr(rec, "decay_curve_data", None) or (rec.get("decay_curve_data", {}) if isinstance(rec, dict) else {})
+
+    times = np.array(decay_data.get("times", []), dtype=float)
+    residuals = np.array(decay_data.get("residuals", []), dtype=float)
+    y_errs = np.array(decay_data.get("intensities_err", []), dtype=float) if decay_data.get("intensities_err") else None
+
+    if len(times) > 0 and len(residuals) > 0:
+        if y_errs is not None and len(y_errs) == len(residuals) and np.all(y_errs > 0):
+            norm_res = residuals / y_errs
+            y_label = "Res. (σ)"
+            has_norm = True
+        else:
+            norm_res = residuals
+            y_label = "Residual"
+            has_norm = False
+
+        ax.axhline(0, color="#9CA3AF", linestyle="--", linewidth=1.0, zorder=1)
+        ax.errorbar(
+            times, norm_res, yerr=1.0 if has_norm else None,
+            fmt="o", color=color, markersize=3.5, capsize=2.0, alpha=0.9, zorder=3
+        )
+        max_val = max(3.0, float(np.max(np.abs(norm_res))) * 1.25) if len(norm_res) > 0 else 3.0
+        ax.set_ylim(-max_val, max_val)
+        ax.set_ylabel(y_label, fontsize=8.0)
+        ax.set_xlabel("Delay Time (s)", fontsize=8.0)
+        ax.grid(True, linestyle=":", alpha=0.5)
+
+
 def _draw_residuals_strip(
     ax: plt.Axes,
     rec: Any,
@@ -177,6 +272,10 @@ def _draw_residuals_strip(
     palette: Optional[List[str]] = None,
 ):
     """Render normalized residuals (y - fit) / sigma strip."""
+    if (analysis_type or "").upper() in ("R1", "R2", "HETNOE"):
+        _draw_relaxation_residuals_strip(ax, rec, palette=palette)
+        return
+
     experiments = rec.get("experiments", [])
     active_palette = palette or get_current_palette()
     has_residuals = False
@@ -603,3 +702,68 @@ def grid_1d_profile_plot(
     fig, ax = plt.subplots(figsize=(4.0, 3.0))
     _draw_1d_grid_profile(ax, prof)
     return _svg(fig)
+
+
+def sequence_rate_plot(
+    residues: List[Any],
+    analysis_type: str = "R2",
+    palette: Optional[str] = None,
+) -> str:
+    """Generate standalone publication SVG of fitted relaxation rate vs residue number along the sequence."""
+    def _render():
+        fig, ax = plt.subplots(figsize=(7.2, 3.2))
+        active_palette = get_current_palette()
+        color = active_palette[0]
+
+        res_nums = []
+        rates = []
+        errs = []
+        labels = []
+
+        for r in residues:
+            rate_obj = getattr(r, "rate", None) or (r.get("rate") if isinstance(r, dict) else None)
+            if rate_obj and getattr(rate_obj, "value", None) is not None:
+                r_num = getattr(r, "res_num", None) or (r.get("res_num") if isinstance(r, dict) else None)
+                if r_num is None:
+                    raw_k = getattr(r, "raw_key", "") or (r.get("raw_key", "") if isinstance(r, dict) else "")
+                    digits = re.findall(r"\d+", str(raw_k))
+                    r_num = int(digits[0]) if digits else len(res_nums) + 1
+                res_nums.append(r_num)
+                rates.append(rate_obj.value)
+                sig = getattr(rate_obj, "sigma", None)
+                errs.append(sig if sig is not None else 0.0)
+                labels.append(getattr(r, "display_name", str(r_num)))
+
+        if res_nums and rates:
+            sort_idx = np.argsort(res_nums)
+            res_nums_sorted = np.array(res_nums)[sort_idx]
+            rates_sorted = np.array(rates)[sort_idx]
+            errs_sorted = np.array(errs)[sort_idx]
+
+            ax.errorbar(
+                res_nums_sorted, rates_sorted, yerr=errs_sorted,
+                fmt="o-", color=color, markersize=4.5, linewidth=1.2,
+                capsize=2.0, alpha=0.9, label=f"Fitted {analysis_type} Rate", zorder=3
+            )
+
+            mean_r = float(np.mean(rates_sorted))
+            ax.axhline(
+                mean_r, color="#6B7280", linestyle="--", linewidth=1.2,
+                label=f"Sequence Mean ({mean_r:.2f})", zorder=2
+            )
+
+            sym = "R₂" if analysis_type.upper() == "R2" else ("R₁" if analysis_type.upper() == "R1" else "hetNOE")
+            unit_str = " (s⁻¹)" if analysis_type.upper() != "HETNOE" else ""
+            ax.set_title(f"Sequence Profile: {sym} vs Residue Number", fontsize=11.0, fontweight="bold", pad=10)
+            ax.set_xlabel("Residue Number", fontsize=9.0)
+            ax.set_ylabel(f"{sym}{unit_str}", fontsize=9.0)
+            ax.grid(True, linestyle=":", alpha=0.5)
+            ax.legend(fontsize=8.0, frameon=True, facecolor="white", edgecolor="#E5E7EB", loc="upper right")
+
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style(palette=palette):
+            return _render()
+    return _render()
+

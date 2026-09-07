@@ -1,9 +1,19 @@
 <!-- backend/app/services/reporting/templates/_summary.html -->
 <div class="doc-header">
-  <h1>{{ model.analysis_type }} Relaxation Dispersion Analysis Report</h1>
+  {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+  <h1>{{ model.analysis_type }} Relaxation Analysis Report</h1>
+  {% elif model.analysis_type == 'CPMG' %}
+  <h1>CPMG Relaxation Dispersion Analysis Report</h1>
+  {% else %}
+  <h1>{{ model.analysis_type }} Analysis Report</h1>
+  {% endif %}
   <div class="subtitle">
     Analysis: <strong>{{ model.analysis_name }}</strong> &nbsp;|&nbsp;
+    {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+    Model: <strong>{{ model.provenance.model_name|upper }}</strong> &nbsp;|&nbsp;
+    {% else %}
     Kinetic Model: <strong>{{ model.provenance.model_name|upper }}</strong> &nbsp;|&nbsp;
+    {% endif %}
     Residues: <strong>{{ model.residues|length }}</strong>
   </div>
 </div>
@@ -42,7 +52,11 @@
 </table>
 {% endif %}
 
+{% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+<h2>Sequence Relaxation Rate Summary</h2>
+{% else %}
 <h2>Global Relaxation &amp; Exchange Parameters</h2>
+{% endif %}
 <table>
   <thead>
     <tr>

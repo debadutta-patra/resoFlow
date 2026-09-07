@@ -56,7 +56,9 @@ def canonicalize(raw_name: str) -> CanonicalParamKey:
     """Parse a raw ChemEx parameter key into its canonical form."""
     cleaned = raw_name.strip().strip('"').strip("'").strip("[]").strip()
     
-    parts = [p.strip() for p in cleaned.split(', ')]
+    parts = [p.strip() for p in cleaned.split(',') if p.strip()]
+    if not parts:
+        return CanonicalParamKey(name="", scope="global", field=None)
     name = parts[0].upper()
     
     scope = 'global'

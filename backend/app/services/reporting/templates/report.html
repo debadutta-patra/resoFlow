@@ -17,6 +17,11 @@
     {% include "_kinetic.html" %}
     {% endif %}
 
+    {% if sequence_rate_plot %}
+    <div class="page-break"></div>
+    {% include "_sequence_rates.html" %}
+    {% endif %}
+
     {% if profile_curves %}
     <div class="page-break"></div>
     {% include "_profiles.html" %}

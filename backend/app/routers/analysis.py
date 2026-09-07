@@ -36,6 +36,30 @@ from ..services.export.zip_export import generate_export_token, verify_export_to
 
 router = APIRouter(prefix="/api/projects/{project_uuid}/analysis", tags=["analysis"])
 analysis_report_router = APIRouter(prefix="/analysis", tags=["analysis-report"])
+
+
+def _get_analysis_run_dir(analysis: models.Analysis) -> str:
+    """Resolve the directory containing fitting results for an analysis."""
+    project = analysis.project
+    atype = (analysis.analysis_type or "").upper()
+    if atype == "CPMG":
+        folder_name = "cpmg_fitting"
+    elif atype in ("R1", "R2", "HETNOE"):
+        folder_name = f"{analysis.analysis_type.lower()}_fitting"
+    else:
+        folder_name = "cest_fitting"
+    if analysis.results_path and os.path.exists(analysis.results_path):
+        if os.path.isdir(analysis.results_path):
+            return analysis.results_path
+        return os.path.dirname(analysis.results_path)
+    return os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
+
+
+def _locate_analysis_run_dir(analysis: models.Analysis) -> Path:
+    """Return Path object for the analysis run directory."""
+    return Path(_get_analysis_run_dir(analysis))
+
+
 @router.post("", response_model=schemas.Analysis)
 def create_analysis(
     analysis_data: schemas.AnalysisCreate,
@@ -137,9 +161,17 @@ def run_analysis(
                     detail=err_detail
                 )
 
-    # Store workers in parameters
+    # Store workers and noise/uncertainty parameters
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params['workers'] = request.workers
+    if getattr(request, 'noise_model', None):
+        params['noise_model'] = request.noise_model
+    if getattr(request, 'uncertainty_method', None):
+        params['uncertainty_method'] = request.uncertainty_method
+    if getattr(request, 'n_samples', None):
+        params['n_samples'] = request.n_samples
+    if getattr(request, 'seed', None) is not None:
+        params['seed'] = request.seed
     analysis.parameters = json.dumps(params)
     
     analysis.status = "RUNNING"
@@ -187,14 +219,32 @@ def run_analysis(
 def get_analysis_logs(
     analysis: models.Analysis = Depends(get_analysis),
 ):
-    """Return live log content, status, and error message for the analysis."""
+    """Return live log content, status, error message, and progress state for the analysis."""
     log_file = resolve_existing_path(analysis.log_path) if analysis.log_path else None
+    progress_data = None
+
+    # Check progress.json from log dir or run dir
+    candidate_dirs = []
+    if log_file:
+        candidate_dirs.append(os.path.dirname(log_file))
+    candidate_dirs.append(_get_analysis_run_dir(analysis))
+
+    for c_dir in candidate_dirs:
+        p_file = os.path.join(c_dir, "progress.json")
+        if os.path.exists(p_file):
+            try:
+                with open(p_file, "r", encoding="utf-8") as pf:
+                    progress_data = json.load(pf)
+                break
+            except Exception:
+                pass
+
     if not log_file or not os.path.exists(log_file):
         return {
             "logs": "",
             "status": analysis.status if analysis else "PENDING",
             "error_message": getattr(analysis, "error_message", None),
-            "progress": None
+            "progress": progress_data
         }
 
     try:
@@ -217,7 +267,7 @@ def get_analysis_logs(
         "logs": logs,
         "status": analysis.status,
         "error_message": getattr(analysis, "error_message", None),
-        "progress": None
+        "progress": progress_data
     }
 
 def sanitize_floats_for_json(obj: Any) -> Any:
@@ -266,9 +316,7 @@ def get_analysis_results(
     with open(analysis.results_path, "r") as f:
         results = json.load(f)
         
-    project = analysis.project
-    folder_name = "cpmg_fitting" if analysis.analysis_type.upper() == "CPMG" else "cest_fitting"
-    run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
+    run_dir = _get_analysis_run_dir(analysis)
     config_name = "cpmg_config.json" if analysis.analysis_type.upper() == "CPMG" else "config.json"
     config_path = os.path.join(run_dir, config_name)
     residue_mapping = {}
@@ -1172,32 +1220,27 @@ def restore_cest_analysis(
         raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}")
 
 
-def _get_analysis_run_dir(analysis: models.Analysis) -> str:
-    """Resolve the directory containing ChemEx results for an analysis."""
-    project = analysis.project
-    is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
-    if analysis.results_path and os.path.exists(analysis.results_path):
-        if os.path.isdir(analysis.results_path):
-            return analysis.results_path
-        return os.path.dirname(analysis.results_path)
-    return os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
-
 
 def _render_analysis_html(
     analysis: models.Analysis,
     style: str = "screen",
     palette: Optional[str] = None,
 ) -> HTMLResponse:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
-        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
-            analysis_type="CPMG" if is_cpmg else "CEST",
+            analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
         )
         html_str = render_html(model, style=style, palette=palette)
@@ -1208,15 +1251,21 @@ def _render_analysis_html(
 
 
 def _render_analysis_json(analysis: models.Analysis) -> Response:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
-        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
-            analysis_type="CPMG" if is_cpmg else "CEST",
+            analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
         )
         json_str = json.dumps(model.to_dict())
@@ -1231,11 +1280,17 @@ def _render_or_serve_pdf(
     style: str = "publication",
     palette: Optional[str] = None,
 ):
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
-    is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
-    type_name = "cpmg" if is_cpmg else "cest"
+    report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
+    type_name = report_atype.lower()
 
     if palette and palette != "okabe_ito":
         safe_palette = "".join(c for c in palette if c.isalnum() or c in ("_", "-"))
@@ -1254,7 +1309,7 @@ def _render_or_serve_pdf(
         pdf_buf = generate_modern_pdf_report(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
-            analysis_type=type_name.upper(),
+            analysis_type=report_atype,
             style=style,
             palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
@@ -1284,6 +1339,12 @@ def _trigger_pdf_async(
     style: str = "publication",
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     if analysis.status != "COMPLETED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1343,6 +1404,12 @@ def _trigger_plots_export_async(
     style: str = "publication",
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Plot archive export is available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     if analysis.status != "COMPLETED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1385,6 +1452,12 @@ def _render_or_serve_plots_zip(
     palette: Optional[str] = None,
     style: str = "publication",
 ):
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plot archive export is currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
@@ -1866,17 +1939,19 @@ def download_statistics_plots(
     from pathlib import Path
     from fastapi.responses import FileResponse
 
-    project = analysis.project
-    is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
-    run_dir = Path(project.local_directory_path) / folder_name / analysis.analysis_uuid
+    run_dir = _locate_analysis_run_dir(analysis)
 
     method_dir_map = {
+        "covariance": "Covariance",
+        "cov": "Covariance",
         "mc": "MonteCarlo",
         "monte_carlo": "MonteCarlo",
         "montecarlo": "MonteCarlo",
         "bs": "Bootstrap",
         "bootstrap": "Bootstrap",
+        "bootstrap_case": "Bootstrap",
+        "bs_case": "Bootstrap",
+        "bootstrap_residuals": "Bootstrap",
         "bsn": "BootstrapNS",
         "bootstrap_ns": "BootstrapNS",
         "bootstrapns": "BootstrapNS",
@@ -1922,17 +1997,19 @@ def download_statistics_plots(
 
 def _locate_all_statistics_method_dirs(analysis: models.Analysis, method_name: str, step_name: Optional[str] = None):
     from pathlib import Path
-    project = analysis.project
-    is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
-    run_dir = Path(project.local_directory_path) / folder_name / analysis.analysis_uuid
+    run_dir = _locate_analysis_run_dir(analysis)
 
     method_dir_map = {
+        "covariance": "Covariance",
+        "cov": "Covariance",
         "mc": "MonteCarlo",
         "monte_carlo": "MonteCarlo",
         "montecarlo": "MonteCarlo",
         "bs": "Bootstrap",
         "bootstrap": "Bootstrap",
+        "bootstrap_case": "Bootstrap",
+        "bs_case": "Bootstrap",
+        "bootstrap_residuals": "Bootstrap",
         "bsn": "BootstrapNS",
         "bootstrap_ns": "BootstrapNS",
         "bootstrapns": "BootstrapNS",
@@ -1995,10 +2072,7 @@ def _locate_statistics_method_dir(analysis: models.Analysis, method_name: str, s
 def _get_step_deterministic_values(analysis: models.Analysis, step_name: Optional[str] = None) -> Dict[str, float]:
     from pathlib import Path
     import tomllib
-    project = analysis.project
-    is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
-    run_dir = Path(project.local_directory_path) / folder_name / analysis.analysis_uuid
+    run_dir = _locate_analysis_run_dir(analysis)
 
     fitted_candidates = []
     if step_name:
@@ -2065,6 +2139,29 @@ def _get_step_deterministic_values(analysis: models.Analysis, step_name: Optiona
                                 det_map[section] = float(val)
                     except Exception:
                         pass
+    if det_map:
+        return det_map
+
+    # Fallback to results.json if fitted.toml was not found (e.g. native relaxation analysis)
+    if analysis.results_path and os.path.exists(analysis.results_path):
+        try:
+            with open(analysis.results_path, "r", encoding="utf-8") as f:
+                res_data = json.load(f)
+            atype = (analysis.analysis_type or "").upper()
+            rate_name = "HETNOE" if atype == "HETNOE" else atype
+            amp_name = "I_REF" if atype == "HETNOE" else "I0"
+            for peak in res_data.get("peak_results", []):
+                assign = peak.get("assignment")
+                if assign:
+                    if "rate" in peak:
+                        det_map[f"{rate_name}, NUC->{assign}"] = float(peak["rate"])
+                        det_map[f"{rate_name}, {assign}"] = float(peak["rate"])
+                    if "amplitude" in peak:
+                        det_map[f"{amp_name}, NUC->{assign}"] = float(peak["amplitude"])
+                        det_map[f"{amp_name}, {assign}"] = float(peak["amplitude"])
+        except Exception:
+            pass
+
     return det_map
 
 
@@ -2792,13 +2889,6 @@ path           = "../data/{b1_label}"
         "run_dir": run_dir,
     }
 
-
-def _locate_analysis_run_dir(analysis: models.Analysis) -> Path:
-    from pathlib import Path
-    project = analysis.project
-    is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
-    return Path(project.local_directory_path) / folder_name / analysis.analysis_uuid
 
 
 def _locate_step_grid_dir(run_dir: Path, step_name: str) -> Optional[Path]:

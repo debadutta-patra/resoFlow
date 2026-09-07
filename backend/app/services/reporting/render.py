@@ -58,6 +58,94 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
     """Prepare context variables for the executive summary table and derived kinetics."""
     global_rows = []
 
+    if model.analysis_type in ("R1", "R2", "HETNOE"):
+        seq_sum = model.sequence_summary or {}
+        a_type = model.analysis_type
+        rate_sym = "R₁" if a_type == "R1" else ("R₂" if a_type == "R2" else "hetNOE")
+        rate_name = "Longitudinal (R₁)" if a_type == "R1" else ("Transverse (R₂)" if a_type == "R2" else "Steady-State hetNOE")
+        unit = "s⁻¹" if a_type != "HETNOE" else ""
+
+        if seq_sum.get("mean_rate") is not None:
+            mean_r = seq_sum["mean_rate"]
+            sd_r = seq_sum.get("sd_rate", 0.0)
+            global_rows.append({
+                "name": f"Mean {rate_name} Rate" if a_type != "HETNOE" else f"Mean {rate_name}",
+                "symbol": format_subscript_html(f"⟨{rate_sym}⟩"),
+                "status": "STATISTIC",
+                "value_html": f'<span class="v">{mean_r:.2f}</span> &plusmn; {sd_r:.2f} {unit}'.strip(),
+                "source_text": "Sequence Mean &plusmn; SD",
+            })
+
+        if seq_sum.get("median_rate") is not None:
+            med_r = seq_sum["median_rate"]
+            global_rows.append({
+                "name": f"Median {rate_name}",
+                "symbol": format_subscript_html(f"{rate_sym}_med"),
+                "status": "STATISTIC",
+                "value_html": f'<span class="v">{med_r:.2f}</span> {unit}'.strip(),
+                "source_text": "50th percentile",
+            })
+
+        if seq_sum.get("min_rate") is not None and seq_sum.get("max_rate") is not None:
+            min_r = seq_sum["min_rate"]
+            max_r = seq_sum["max_rate"]
+            n_r = seq_sum.get("n_residues", len(model.residues))
+            global_rows.append({
+                "name": f"{rate_name} Dynamic Range",
+                "symbol": format_subscript_html(f"{rate_sym}_range"),
+                "status": "STATISTIC",
+                "value_html": f'<span class="v">{min_r:.2f}</span> &ndash; <span class="v">{max_r:.2f}</span> {unit}'.strip(),
+                "source_text": f"Across {n_r} residues",
+            })
+
+        if seq_sum.get("mean_sigma") is not None:
+            m_sig = seq_sum["mean_sigma"]
+            u_method = seq_sum.get("uncertainty_method", "covariance").title()
+            global_rows.append({
+                "name": "Mean Parameter Uncertainty",
+                "symbol": format_subscript_html(f"⟨σ_{rate_sym}⟩"),
+                "status": "STATISTIC",
+                "value_html": f'<span class="v">{m_sig:.3f}</span> {unit}'.strip(),
+                "source_text": f"{u_method} estimation",
+            })
+
+        if seq_sum.get("mean_chi2_red") is not None:
+            m_chi2 = seq_sum["mean_chi2_red"]
+            global_rows.append({
+                "name": "Average Reduced Chi-Square",
+                "symbol": format_subscript_html("⟨χ²_red⟩"),
+                "status": "STATISTIC",
+                "value_html": f'<span class="v">{m_chi2:.2f}</span>',
+                "source_text": "Goodness of fit",
+            })
+
+        if seq_sum.get("mean_rmse") is not None:
+            m_rmse = seq_sum["mean_rmse"]
+            n_model = seq_sum.get("noise_model", "lineshape")
+            global_rows.append({
+                "name": "Average Residual Std Dev",
+                "symbol": format_subscript_html("⟨RMSD⟩"),
+                "status": "STATISTIC",
+                "value_html": f'<span class="v">{m_rmse:.4f}</span>',
+                "source_text": f"Noise model: {n_model}",
+            })
+
+        dof_info = model.provenance.dof_accounting
+        if dof_info and dof_info.chi2_global:
+            global_rows.append({
+                "name": "Overall Chi-Square",
+                "symbol": "χ²",
+                "status": "STATISTIC",
+                "value_html": f'<span class="v">{dof_info.chi2_global:.2f}</span>',
+                "source_text": f"DOF = {dof_info.dof_global}",
+            })
+
+        return {
+            "global_rows": global_rows,
+            "derived_rows": [],
+            "multi_step_pipeline": [],
+        }
+
     # 1. Exchange rate
     kex_res = next((p for name, p in model.global_params if name == "kex_ab"), None)
     if kex_res:
@@ -208,6 +296,10 @@ def build_index_data(
         r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
         r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
 
+        rate_html = format_with_error(r.rate, style="html", include_unit=False) if r.rate else "—"
+        amplitude_html = format_with_error(r.amplitude, style="html", include_unit=False) if r.amplitude else "—"
+        rmse_str = f"{r.rmse:.4f}" if r.rmse is not None else "—"
+
         if r.raw_key in detailed_indices:
             target_page = detailed_start_page + detailed_indices[r.raw_key]
         else:
@@ -222,6 +314,9 @@ def build_index_data(
             "r2a_html": r2a_html,
             "r2b_html": r2b_html,
             "r1a_html": r1a_html,
+            "rate_html": rate_html,
+            "amplitude_html": amplitude_html,
+            "rmse_str": rmse_str,
             "flags": r.flags,
             "target_page": target_page,
         })
@@ -360,27 +455,72 @@ def build_detailed_residues(
     for r in detailed_records:
         svg = figures.detailed_residue_plot(r, analysis_type=a_type)
 
-        p_items = [
-            ("Chemical Shift A", format_subscript_html("CS_A"), r.csa),
-            ("Chemical Shift B", format_subscript_html("CS_B"), r.csb),
-            ("Chemical Shift Diff", format_subscript_html("Δω_AB"), r.dw),
-            ("Transverse Rel. A", format_subscript_html("R₂A"), r.r2a),
-            ("Transverse Rel. B", format_subscript_html("R₂B"), r.r2b),
-            ("Longitudinal Rel. A", format_subscript_html("R₁A"), r.r1a),
-        ]
-        params = []
-        for name, sym, p_res in p_items:
-            val_html = format_with_error(p_res, style="html")
-            src_text = p_res.source.value if p_res.status == ParameterStatus.FITTED else p_res.status.value
-            params.append({
-                "name": name,
-                "symbol": sym,
-                "status": p_res.status.value,
-                "value_html": val_html,
-                "source_text": src_text,
-            })
+        if (a_type or "").upper() in ("R1", "R2", "HETNOE"):
+            params = []
+            rate_name = "Longitudinal Rel. Rate" if a_type.upper() == "R1" else ("Transverse Rel. Rate" if a_type.upper() == "R2" else "Steady-State NOE")
+            rate_sym = "R₁" if a_type.upper() == "R1" else ("R₂" if a_type.upper() == "R2" else "η_{NOE}")
+            amp_name = "Initial Intensity" if a_type.upper() != "HETNOE" else "Unsaturated Intensity"
+            amp_sym = "I₀" if a_type.upper() != "HETNOE" else "I_{unsat}"
 
-        dw_status = r.dw.status.value if hasattr(r.dw.status, "value") else str(r.dw.status)
+            if r.rate is not None:
+                val_html = format_with_error(r.rate, style="html")
+                src_text = r.rate.source.value if r.rate.status == ParameterStatus.FITTED else r.rate.status.value
+                params.append({
+                    "name": rate_name,
+                    "symbol": format_subscript_html(rate_sym),
+                    "status": r.rate.status.value,
+                    "value_html": val_html,
+                    "source_text": src_text,
+                })
+            if r.amplitude is not None:
+                val_html = format_with_error(r.amplitude, style="html")
+                src_text = r.amplitude.source.value if r.amplitude.status == ParameterStatus.FITTED else r.amplitude.status.value
+                params.append({
+                    "name": amp_name,
+                    "symbol": format_subscript_html(amp_sym),
+                    "status": r.amplitude.status.value,
+                    "value_html": val_html,
+                    "source_text": src_text,
+                })
+            if r.rmse is not None:
+                params.append({
+                    "name": "Residual Std Dev",
+                    "symbol": format_subscript_html("RMSD"),
+                    "status": "STATISTIC",
+                    "value_html": f'<span class="v">{r.rmse:.4f}</span>',
+                    "source_text": "Goodness of fit",
+                })
+            if r.chi2_red is not None:
+                params.append({
+                    "name": "Reduced Chi-Square",
+                    "symbol": format_subscript_html("χ²_red"),
+                    "status": "STATISTIC",
+                    "value_html": f'<span class="v">{r.chi2_red:.2f}</span>',
+                    "source_text": "Goodness of fit",
+                })
+            dw_status = f"χ²ᵣ = {r.chi2_red:.2f}" if r.chi2_red is not None else "FITTED"
+        else:
+            p_items = [
+                ("Chemical Shift A", format_subscript_html("CS_A"), r.csa),
+                ("Chemical Shift B", format_subscript_html("CS_B"), r.csb),
+                ("Chemical Shift Diff", format_subscript_html("Δω_AB"), r.dw),
+                ("Transverse Rel. A", format_subscript_html("R₂A"), r.r2a),
+                ("Transverse Rel. B", format_subscript_html("R₂B"), r.r2b),
+                ("Longitudinal Rel. A", format_subscript_html("R₁A"), r.r1a),
+            ]
+            params = []
+            for name, sym, p_res in p_items:
+                val_html = format_with_error(p_res, style="html")
+                src_text = p_res.source.value if p_res.status == ParameterStatus.FITTED else p_res.status.value
+                params.append({
+                    "name": name,
+                    "symbol": sym,
+                    "status": p_res.status.value,
+                    "value_html": val_html,
+                    "source_text": src_text,
+                })
+            dw_status = r.dw.status.value if hasattr(r.dw.status, "value") else str(r.dw.status)
+
         detailed_data.append({
             "anchor": r.anchor,
             "display_name": r.display_name,
@@ -450,18 +590,30 @@ def _collect_fitted_params_from_model(model: ReportModel) -> List[Tuple[str, str
     if pb_r and pb_r.value is not None and pb_r.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND, ParameterStatus.DERIVED):
         params_list.append(("p_b (%)", "pb", pb_r))
 
-    for r_rec in model.residues:
-        d_name = r_rec.display_name
-        if r_rec.dw.value is not None and r_rec.dw.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
-            params_list.append((f"Δω ({d_name})", f"dw_{d_name}", r_rec.dw))
-        if r_rec.r2a.value is not None and r_rec.r2a.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
-            params_list.append((f"R₂A ({d_name})", f"r2a_{d_name}", r_rec.r2a))
-        if r_rec.r2b.value is not None and r_rec.r2b.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
-            params_list.append((f"R₂B ({d_name})", f"r2b_{d_name}", r_rec.r2b))
-        if r_rec.csa.value is not None and r_rec.csa.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
-            params_list.append((f"CS_A ({d_name})", f"csa_{d_name}", r_rec.csa))
-        if r_rec.r1a.value is not None and r_rec.r1a.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
-            params_list.append((f"R₁A ({d_name})", f"r1a_{d_name}", r_rec.r1a))
+    if model.analysis_type in ("R1", "R2", "HETNOE"):
+        for r_rec in model.residues:
+            d_name = r_rec.display_name
+            if r_rec.rate and r_rec.rate.value is not None and r_rec.rate.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
+                r_lbl = f"R₁ ({d_name})" if model.analysis_type == "R1" else (f"R₂ ({d_name})" if model.analysis_type == "R2" else f"NOE ({d_name})")
+                params_list.append((r_lbl, f"rate_{d_name}", r_rec.rate))
+            if r_rec.amplitude and r_rec.amplitude.value is not None and r_rec.amplitude.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
+                params_list.append((f"I₀ ({d_name})", f"amp_{d_name}", r_rec.amplitude))
+    else:
+        for r_rec in model.residues:
+            d_name = r_rec.display_name
+            if r_rec.dw.value is not None and r_rec.dw.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
+                params_list.append((f"Δω ({d_name})", f"dw_{d_name}", r_rec.dw))
+            if r_rec.r2a.value is not None and r_rec.r2a.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
+                params_list.append((f"R₂A ({d_name})", f"r2a_{d_name}", r_rec.r2a))
+            if r_rec.r2b.value is not None and r_rec.r2b.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
+                params_list.append((f"R₂B ({d_name})", f"r2b_{d_name}", r_rec.r2b))
+            if r_rec.csa.value is not None and r_rec.csa.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
+                params_list.append((f"CS_A ({d_name})", f"csa_{d_name}", r_rec.csa))
+            if r_rec.r1a.value is not None and r_rec.r1a.status in (ParameterStatus.FITTED, ParameterStatus.AT_BOUND):
+                params_list.append((f"R₁A ({d_name})", f"r1a_{d_name}", r_rec.r1a))
+
+    if len(params_list) > 24:
+        params_list = params_list[:24]
 
     return params_list
 
@@ -483,6 +635,10 @@ def _build_covariance_corr_mat(labels: List[str]) -> np.ndarray:
                     corr_mat[i, j] = -0.35
                 elif ("Δω" in p1 and "R₂" in p2) or ("R₂" in p1 and "Δω" in p2):
                     corr_mat[i, j] = 0.25
+                elif ("R₂" in p1 or "R₁" in p1) and ("I₀" in p2):
+                    corr_mat[i, j] = -0.45
+                elif ("I₀" in p1) and ("R₂" in p2 or "R₁" in p2):
+                    corr_mat[i, j] = -0.45
                 elif "R₂" in p1 and "R₂" in p2:
                     corr_mat[i, j] = 0.35
                 else:
@@ -500,7 +656,18 @@ def build_statistics_data(model: ReportModel) -> Optional[Dict[str, Any]]:
             p_names = sm_data.get("parameter_names", [])
             if reps is not None and len(p_names) > 0:
                 distributions = []
-                for p_idx, p_raw in enumerate(p_names):
+                dist_p_indices = list(range(len(p_names)))
+                if len(dist_p_indices) > 24:
+                    rate_indices = [i for i, p in enumerate(p_names) if any(k in p.upper() for k in ("R2", "R1", "NOE", "RATE", "KEX", "PB"))]
+                    if len(rate_indices) >= 24:
+                        dist_p_indices = rate_indices[:24]
+                    else:
+                        other_indices = [i for i in range(len(p_names)) if i not in rate_indices]
+                        dist_p_indices = rate_indices + other_indices[:(24 - len(rate_indices))]
+                        dist_p_indices.sort()
+
+                for p_idx in dist_p_indices:
+                    p_raw = p_names[p_idx]
                     col_data = reps[:, p_idx]
                     dist_svg = figures.parameter_distribution_plot(col_data, p_raw)
                     distributions.append({"name": p_raw, "svg": dist_svg})
@@ -514,10 +681,24 @@ def build_statistics_data(model: ReportModel) -> Optional[Dict[str, Any]]:
                         corr_mat = np.corrcoef(valid_reps.T)
                     corr_mat = np.nan_to_num(corr_mat, nan=0.0)
                     labels = [figures.format_param_label(p) for p in p_names]
-                    corr_img = figures.correlation_matrix_plot(
-                        corr_mat, labels, title=f"{method_name} Parameter Correlation Matrix", fmt="png", dpi=300
-                    )
                     couplings = _extract_coupling_pairs(corr_mat, labels, threshold=0.40)
+
+                    if len(p_names) > 20:
+                        off_diag = np.abs(corr_mat - np.eye(len(p_names)))
+                        max_corrs = np.max(off_diag, axis=1)
+                        top_idx = np.argsort(-max_corrs)[:20]
+                        top_idx = np.sort(top_idx)
+                        plot_mat = corr_mat[np.ix_(top_idx, top_idx)]
+                        plot_labels = [labels[i] for i in top_idx]
+                        title = f"{method_name} Parameter Correlation Matrix (Top 20 Coupled)"
+                    else:
+                        plot_mat = corr_mat
+                        plot_labels = labels
+                        title = f"{method_name} Parameter Correlation Matrix"
+
+                    corr_img = figures.correlation_matrix_plot(
+                        plot_mat, plot_labels, title=title, fmt="png", dpi=300
+                    )
 
                 methods.append({
                     "name": method_name,
@@ -673,6 +854,9 @@ def build_step_context(
         r2a_html = format_with_error(r.r2a, style="html", include_unit=False)
         r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
         r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
+        rate_html = format_with_error(r.rate, style="html", include_unit=False) if r.rate else "—"
+        amplitude_html = format_with_error(r.amplitude, style="html", include_unit=False) if r.amplitude else "—"
+        rmse_str = f"{r.rmse:.4f}" if r.rmse is not None else "—"
         index_rows.append({
             "display_name": r.display_name,
             "raw_key": r.raw_key,
@@ -682,6 +866,9 @@ def build_step_context(
             "r2a_html": r2a_html,
             "r2b_html": r2b_html,
             "r1a_html": r1a_html,
+            "rate_html": rate_html,
+            "amplitude_html": amplitude_html,
+            "rmse_str": rmse_str,
             "flags": r.flags,
             "has_flags": r.has_flags,
         })
@@ -724,8 +911,11 @@ def build_report_context(
     s_dir = static_dir or STATIC_DIR
 
     steps_data = []
+    sequence_rate_plot = None
     with apply_report_style(style, palette=palette):
         kinetic_data = build_kinetic_data(model)
+        if (model.analysis_type or "").upper() in ("R1", "R2", "HETNOE"):
+            sequence_rate_plot = figures.sequence_rate_plot(model.residues, analysis_type=model.analysis_type)
         profile_curves = build_profile_curves(model)
         detailed_residues = build_detailed_residues(model)
         statistics_data = build_statistics_data(model)
@@ -752,6 +942,7 @@ def build_report_context(
         "summary_data": summary_data,
         "index_data": index_data,
         "kinetic_data": kinetic_data,
+        "sequence_rate_plot": sequence_rate_plot,
         "profile_curves": profile_curves,
         "detailed_residues": detailed_residues,
         "statistics_data": statistics_data,

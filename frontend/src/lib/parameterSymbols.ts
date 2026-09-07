@@ -160,6 +160,33 @@ export function parseParameterLabel(rawName: string): ParsedParameterLabel {
       category = 'chemical_shift';
       unit = 'ppm';
       break;
+    case 'R1':
+      symbol = 'R₁';
+      displaySymbol = 'R₁';
+      category = 'relaxation';
+      unit = 's⁻¹';
+      break;
+    case 'R2':
+      symbol = 'R₂';
+      displaySymbol = 'R₂';
+      category = 'relaxation';
+      unit = 's⁻¹';
+      break;
+    case 'I0':
+    case 'I_REF':
+    case 'I_UNSAT':
+      symbol = 'I₀';
+      displaySymbol = 'I₀';
+      category = 'relaxation';
+      unit = 'a.u.';
+      break;
+    case 'HETNOE':
+    case 'NOE':
+      symbol = 'hetNOE';
+      displaySymbol = 'hetNOE';
+      category = 'relaxation';
+      unit = 'ratio';
+      break;
     case 'R1_A':
       symbol = 'R₁_A';
       displaySymbol = 'R₁⁰(A)';
