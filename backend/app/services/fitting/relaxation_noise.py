@@ -113,6 +113,39 @@ def compute_pooled_duplicate_sigma(
     return float(np.sqrt(sum_sq / dof))
 
 
+def compute_dataset_pooled_duplicate_sigma(
+    peak_data: List[Tuple[np.ndarray, np.ndarray]],
+    tolerance: float = 1e-5,
+) -> Optional[float]:
+    """
+    Compute globally pooled duplicate measurement standard deviation across multiple peaks.
+    Standard NMR protocol (Farrow et al. 1994, Kay et al. 1992): pools variance across all
+    peaks that share duplicate delay points:
+      sum_sq_total = sum_{p} sum_{j} sum_{i=1}^{m_{p,j}} (y_{p,i,j} - mean(y_{p,j}))^2
+      dof_total = sum_{p} sum_{j} (m_{p,j} - 1)
+      pooled_sigma = sqrt(sum_sq_total / dof_total)
+    """
+    sum_sq_total = 0.0
+    dof_total = 0
+
+    for times, intensities in peak_data:
+        t_arr = np.asarray(times, dtype=np.float64)
+        y_arr = np.asarray(intensities, dtype=np.float64)
+        dup_map = detect_duplicate_delays(t_arr, tolerance=tolerance)
+        for _delay, indices in dup_map.items():
+            y_vals = y_arr[indices]
+            m = len(y_vals)
+            if m >= 2:
+                y_mean = np.mean(y_vals)
+                sum_sq_total += float(np.sum((y_vals - y_mean) ** 2))
+                dof_total += (m - 1)
+
+    if dof_total < 1:
+        return None
+
+    return float(np.sqrt(sum_sq_total / dof_total))
+
+
 def compute_spectral_rmsd_noise(
     intensities: np.ndarray,
     spectral_rmsd: Optional[float] = None,
@@ -142,6 +175,7 @@ def resolve_noise_model(
     lineshape_errs: Optional[np.ndarray] = None,
     requested_source: Union[str, NoiseSource] = NoiseSource.LINESHAPE,
     spectral_rmsd: Optional[float] = None,
+    global_duplicate_sigma: Optional[float] = None,
     tolerance: float = 1e-5,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
@@ -169,6 +203,12 @@ def resolve_noise_model(
         req_source = requested_source
 
     dup_sigma = compute_pooled_duplicate_sigma(times, intensities, tolerance=tolerance)
+    if (dup_sigma is None or dup_sigma <= 1e-12) and global_duplicate_sigma is not None and global_duplicate_sigma > 1e-12:
+        dup_sigma = float(global_duplicate_sigma)
+        is_global_dup = True
+    else:
+        is_global_dup = False
+
     has_duplicates = dup_sigma is not None and dup_sigma > 1e-12
     dup_details = detect_duplicate_delays(times, tolerance=tolerance)
     n_dup_pairs = sum(len(idxs) - 1 for idxs in dup_details.values()) if dup_details else 0
@@ -197,6 +237,7 @@ def resolve_noise_model(
         "duplicate_dof": n_dup_pairs,
         "has_lineshape_covariance": has_lineshape,
         "spectral_rmsd": spectral_rmsd,
+        "is_globally_pooled": is_global_dup,
     }
 
     # 1. Lineshape Covariance

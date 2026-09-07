@@ -14,10 +14,15 @@ from app.services.fitting.relaxation_sampling import (
     run_single_peak_monte_carlo,
     run_single_peak_bootstrap,
     run_single_peak_mcmc,
+    run_hetnoe_sampling,
     run_relaxation_resampling_analysis,
     save_relaxation_statistics_files,
 )
-from app.services.fitting.relaxation_uncertainty import compute_relaxation_covariance
+from app.services.fitting.relaxation_noise import compute_dataset_pooled_duplicate_sigma
+from app.services.fitting.relaxation_uncertainty import (
+    compute_relaxation_covariance,
+    compute_hetnoe_covariance,
+)
 from app.services.fitting.statistics_engine import load_replicates_or_fallback
 from app.services.fitting.statistics_parser import parse_statistics_directory
 
@@ -418,5 +423,121 @@ def test_run_relaxation_resampling_analysis_mcmc(tmp_path: Path):
     assert "mcmc" in parsed["methods"]
     assert parsed["methods"]["mcmc"]["status"] in ("completed", "converged")
     assert "R2, NUC->15N-D15" in parsed["methods"]["mcmc"]["summary"]
+
+
+def test_hetnoe_parametric_resampling_error_propagation():
+    """Verify hetNOE resampling distribution matches first-order analytical error propagation."""
+    i_sat = 800.0
+    i_unsat = 1000.0
+    s_sat = 15.0
+    s_unsat = 12.0
+
+    ratio, analytical_err, int_68, int_95, _ = compute_hetnoe_covariance(
+        i_sat, i_unsat, s_sat, s_unsat
+    )
+
+    ratios, replicates, diag = run_hetnoe_sampling(
+        i_sat=i_sat,
+        i_unsat=i_unsat,
+        sigma_sat=s_sat,
+        sigma_unsat=s_unsat,
+        n_samples=1000,
+        seed=42,
+    )
+
+    assert ratios.shape == (1000,)
+    assert replicates.shape == (1000, 2)  # [I_REF, HETNOE]
+
+    resamp_mean = float(np.mean(ratios))
+    resamp_std = float(np.std(ratios, ddof=1))
+
+    # Resampled mean should be within 1% of the deterministic ratio
+    assert abs(resamp_mean - ratio) / ratio < 0.01
+
+    # Resampled standard deviation should match analytical propagation within 5%
+    rel_diff = abs(resamp_std - analytical_err) / analytical_err
+    assert rel_diff < 0.05, f"Resampled SD ({resamp_std}) differs from analytical error ({analytical_err}) by {rel_diff:.1%}"
+
+
+def test_hetnoe_full_orchestration_and_persistence(tmp_path: Path):
+    """Verify hetNOE multi-peak analysis and persistence in Statistics/MonteCarlo."""
+    peaks = [
+        {
+            "assignment": "15N-T45",
+            "rate": 0.82,
+            "amplitude": 1250.0,
+            "times": [0, 1],
+            "intensities": [1250.0, 1025.0],
+            "intensities_err": [12.0, 15.0],
+        },
+        {
+            "assignment": "15N-S46",
+            "rate": 0.76,
+            "amplitude": 980.0,
+            "times": [0, 1],
+            "intensities": [980.0, 744.8],
+            "intensities_err": [10.0, 11.0],
+        }
+    ]
+
+    u_res, rep_mat, p_names, chi_arr, diag = run_relaxation_resampling_analysis(
+        peak_results=peaks,
+        analysis_type="HETNOE",
+        method="monte_carlo",
+        n_samples=250,
+        seed=111,
+    )
+
+    assert u_res.method == "monte_carlo"
+    assert rep_mat.shape == (250, 4)
+    assert p_names == [
+        "HETNOE, NUC->15N-T45",
+        "I_REF, NUC->15N-T45",
+        "HETNOE, NUC->15N-S46",
+        "I_REF, NUC->15N-S46",
+    ]
+
+    # Deterministic point estimates are preserved
+    assert u_res.point_estimate["HETNOE, NUC->15N-T45"] == 0.82
+    assert u_res.point_estimate["I_REF, NUC->15N-T45"] == 1250.0
+    assert u_res.point_estimate["HETNOE, NUC->15N-S46"] == 0.76
+    assert u_res.point_estimate["I_REF, NUC->15N-S46"] == 980.0
+
+    stat_dir = tmp_path / "Statistics" / "MonteCarlo"
+    save_relaxation_statistics_files(
+        stat_dir,
+        "Monte Carlo",
+        u_res,
+        rep_mat,
+        p_names,
+        chisqr_array=chi_arr,
+        diagnostics=diag,
+    )
+
+    parsed = parse_statistics_directory(str(tmp_path))
+    assert "monte_carlo" in parsed["methods"]
+    assert "HETNOE, NUC->15N-T45" in parsed["methods"]["monte_carlo"]["summary"]
+    assert "HETNOE, NUC->15N-S46" in parsed["methods"]["monte_carlo"]["summary"]
+
+
+def test_dataset_pooled_duplicate_variance():
+    """Verify dataset-wide pooled duplicate variance calculation across multiple peaks."""
+    times_with_dups = np.array([0.02, 0.05, 0.05, 0.1, 0.2, 0.4, 0.4, 0.8])
+    injected_sigma = 8.5
+    rng = np.random.default_rng(789)
+
+    peak_data = []
+    for _ in range(5):
+        y_true = 1000.0 * np.exp(-1.5 * times_with_dups)
+        noise = rng.normal(0.0, injected_sigma, size=len(times_with_dups))
+        peak_data.append((times_with_dups, y_true + noise))
+
+    pooled_sigma = compute_dataset_pooled_duplicate_sigma(peak_data)
+    assert pooled_sigma is not None
+
+    # Pooled standard deviation across 5 peaks * 2 duplicate delays (dof = 10)
+    # should be close to injected sigma within 20%
+    assert abs(pooled_sigma - injected_sigma) / injected_sigma < 0.20
+
 
 

@@ -6,7 +6,11 @@ from datetime import datetime
 from billiard.pool import Pool
 from ...celery_app import celery_app
 from .relaxation import get_relaxation_times, extract_peak_intensities_from_results, fit_exponential_decay
-from .relaxation_noise import resolve_noise_model, apply_residual_scaling
+from .relaxation_noise import (
+    resolve_noise_model,
+    apply_residual_scaling,
+    compute_dataset_pooled_duplicate_sigma,
+)
 from .relaxation_uncertainty import (
     compute_relaxation_covariance,
     compute_hetnoe_covariance,
@@ -23,7 +27,10 @@ logger = logging.getLogger(__name__)
 
 def fit_single_peak(args):
     """Worker function for multiprocessing."""
-    if len(args) >= 8:
+    global_duplicate_sigma = None
+    if len(args) >= 9:
+        times_all, intensities_all, intensities_err_all, assignment, res_num, res_name, noise_source, spectral_rmsd, global_duplicate_sigma = args[:9]
+    elif len(args) == 8:
         times_all, intensities_all, intensities_err_all, assignment, res_num, res_name, noise_source, spectral_rmsd = args[:8]
     elif len(args) == 7:
         times_all, intensities_all, intensities_err_all, assignment, res_num, res_name, noise_source = args
@@ -45,6 +52,7 @@ def fit_single_peak(args):
             lineshape_errs=y_err,
             requested_source=noise_source,
             spectral_rmsd=spectral_rmsd,
+            global_duplicate_sigma=global_duplicate_sigma,
         )
 
         weights = np.where(sigmas > 0, 1.0 / sigmas, 1.0)
@@ -357,6 +365,15 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
         if not is_hetnoe:
             if not fit_args:
                 raise ValueError("No peaks were found to fit. Ensure the reference spectrum is peak-fitted.")
+
+            # Compute dataset-wide pooled duplicate noise if duplicate delay points exist
+            peak_t_y = [(a[0], a[1]) for a in fit_args]
+            global_dup_sigma = compute_dataset_pooled_duplicate_sigma(peak_t_y)
+            if global_dup_sigma is not None:
+                _log(f"Dataset-wide pooled duplicate delay noise: {global_dup_sigma:.2e}")
+                fit_args = [(*a, global_dup_sigma) for a in fit_args]
+            else:
+                fit_args = [(*a, None) for a in fit_args]
 
             _log(f"Inherited {len(fit_args)} peaks to fit. Running parallel fitting with {workers} worker(s)...")
 
