@@ -153,6 +153,15 @@ const AnalysisReport: React.FC = () => {
       }
       setAnalysis(a);
 
+      const isDispersion = ['15N-CEST', 'CEST', 'CPMG'].includes((a.analysis_type || '').toUpperCase());
+      if (!isDispersion) {
+        setError(
+          `Interactive reports are currently available for CPMG and CEST chemical exchange analyses. For ${a.analysis_type} analyses, please view relaxation rates, fit profiles, and export results directly as CSV or PDF from the Analysis view.`
+        );
+        setIsLoading(false);
+        return;
+      }
+
       // 2. Fetch HTML report content with default palette
       const htmlRes = await api.get(
         `/api/projects/${projectUuid}/analysis/${analysisUuid}/report.html?style=screen&palette=${encodeURIComponent(selectedPalette)}`,
@@ -436,20 +445,40 @@ const AnalysisReport: React.FC = () => {
   }
 
   if (error) {
+    const isRelaxation = analysis && !['15N-CEST', 'CEST', 'CPMG'].includes((analysis.analysis_type || '').toUpperCase());
     return (
-      <div className="max-w-4xl mx-auto p-6 space-y-4">
+      <div className="max-w-4xl mx-auto p-8 space-y-6 animate-in fade-in duration-200">
         <button
           onClick={() => navigate(`/projects/${projectUuid}/analysis/${analysisUuid}`)}
-          className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Analysis
         </button>
-        <div className="p-5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-700 dark:text-rose-400 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
-          <div>
-            <h3 className="font-semibold text-sm">Report Unavailable</h3>
-            <p className="text-sm mt-1">{error}</p>
+        <div className={`p-6 rounded-2xl border flex items-start gap-4 shadow-sm ${
+          isRelaxation 
+            ? 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200'
+            : 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
+        }`}>
+          <AlertCircle className={`w-5 h-5 mt-0.5 flex-shrink-0 ${isRelaxation ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-500'}`} />
+          <div className="space-y-2">
+            <h3 className="font-bold text-base">
+              {isRelaxation ? `Report Format for ${analysis?.analysis_type || 'Relaxation'}` : 'Report Unavailable'}
+            </h3>
+            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+              {error}
+            </p>
+            {isRelaxation && (
+              <div className="pt-2">
+                <button
+                  onClick={() => navigate(`/projects/${projectUuid}/analysis/${analysisUuid}`)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-sm active:scale-[0.98]"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  Return to {analysis?.analysis_type} Analysis View
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

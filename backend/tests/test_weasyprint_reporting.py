@@ -558,6 +558,58 @@ class TestPhaseEReportEndpoints:
         )
         assert res_forbidden.status_code in (403, 404)
 
+    def test_report_endpoints_reject_non_dispersion_analysis(self):
+        """Verify report endpoints return 400 for native relaxation analyses (R1, R2, hetNOE)."""
+        from app import models
+
+        r2_analysis = models.Analysis(
+            analysis_uuid="analysis-r2-test",
+            name="R2 Test Analysis",
+            analysis_type="R2",
+            project_id=self.project.id,
+            status="COMPLETED",
+        )
+        self.db.add(r2_analysis)
+        self.db.commit()
+        self.db.refresh(r2_analysis)
+
+        # 1. report.html returns 400 Bad Request
+        res_html = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report.html",
+            headers=self.headers,
+        )
+        assert res_html.status_code == 400
+        assert "Interactive reports are currently available for CPMG and CEST dispersion analyses" in res_html.json()["detail"]
+
+        # 2. Standalone report.html returns 400
+        res_standalone_html = self.client.get(
+            f"/analysis/{r2_analysis.analysis_uuid}/report.html",
+            headers=self.headers,
+        )
+        assert res_standalone_html.status_code == 400
+
+        # 3. report.json returns 400
+        res_json = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report.json",
+            headers=self.headers,
+        )
+        assert res_json.status_code == 400
+
+        # 4. report.pdf returns 400
+        res_pdf = self.client.get(
+            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report.pdf",
+            headers=self.headers,
+        )
+        assert res_pdf.status_code == 400
+
+        # 5. Async report trigger returns 400
+        res_async = self.client.post(
+            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report/async",
+            json={"style": "publication"},
+            headers=self.headers,
+        )
+        assert res_async.status_code == 400
+
 
 def test_format_subscript_html():
     from app.services.reporting.formatting import format_subscript_html

@@ -1226,11 +1226,17 @@ def _render_analysis_html(
     style: str = "screen",
     palette: Optional[str] = None,
 ) -> HTMLResponse:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interactive reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
-        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        is_cpmg = atype == "CPMG"
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
@@ -1245,11 +1251,17 @@ def _render_analysis_html(
 
 
 def _render_analysis_json(analysis: models.Analysis) -> Response:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interactive reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
-        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        is_cpmg = atype == "CPMG"
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
@@ -1268,10 +1280,16 @@ def _render_or_serve_pdf(
     style: str = "publication",
     palette: Optional[str] = None,
 ):
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Publication reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
-    is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+    is_cpmg = atype == "CPMG"
     type_name = "cpmg" if is_cpmg else "cest"
 
     if palette and palette != "okabe_ito":
@@ -1321,6 +1339,12 @@ def _trigger_pdf_async(
     style: str = "publication",
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Publication reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     if analysis.status != "COMPLETED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1380,6 +1404,12 @@ def _trigger_plots_export_async(
     style: str = "publication",
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Plot archive export is currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     if analysis.status != "COMPLETED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1422,6 +1452,12 @@ def _render_or_serve_plots_zip(
     palette: Optional[str] = None,
     style: str = "publication",
 ):
+    atype = (analysis.analysis_type or "").upper()
+    if atype not in ("CPMG", "CEST", "15N-CEST"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plot archive export is currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+        )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
