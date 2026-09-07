@@ -2,8 +2,10 @@
 <div class="doc-header">
   {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
   <h1>{{ model.analysis_type }} Relaxation Analysis Report</h1>
+  {% elif model.analysis_type == 'CPMG' %}
+  <h1>CPMG Relaxation Dispersion Analysis Report</h1>
   {% else %}
-  <h1>{{ model.analysis_type }} Relaxation Dispersion Analysis Report</h1>
+  <h1>{{ model.analysis_type }} Analysis Report</h1>
   {% endif %}
   <div class="subtitle">
     Analysis: <strong>{{ model.analysis_name }}</strong> &nbsp;|&nbsp;
