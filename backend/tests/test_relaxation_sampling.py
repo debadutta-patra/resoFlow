@@ -12,6 +12,7 @@ import pytest
 
 from app.services.fitting.relaxation_sampling import (
     run_single_peak_monte_carlo,
+    run_single_peak_bootstrap,
     run_relaxation_resampling_analysis,
     save_relaxation_statistics_files,
 )
@@ -174,3 +175,124 @@ def test_save_relaxation_statistics_files_monte_carlo(tmp_path: Path):
     assert mc_stat["status"] == "completed"
     assert mc_stat["sample_count"] == 150
     assert "R2, NUC->15N-A10" in mc_stat["summary"]
+
+
+def test_bootstrap_residual_centering_and_spread():
+    """Verify centered residual bootstrap produces sound distribution centered on fit optimum."""
+    times = np.array([0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.2], dtype=np.float64)
+    true_amp = 1000.0
+    true_rate = 2.0
+    noise_sigma = 10.0
+    rng_synth = np.random.default_rng(101)
+    y_synth = true_amp * np.exp(-true_rate * times) + rng_synth.normal(0, noise_sigma, size=len(times))
+    sigmas = np.full_like(times, noise_sigma)
+
+    cov_errs, _, _ = compute_relaxation_covariance(times, y_synth, sigmas, true_amp, true_rate)
+    cov_rate_err = cov_errs["rate_err"]
+
+    rng = np.random.default_rng(42)
+    n_samples = 500
+    reps, chisqr, diag = run_single_peak_bootstrap(
+        times, y_synth, sigmas, true_amp, true_rate, n_samples=n_samples, case_resampling=False, rng=rng
+    )
+
+    assert diag["bootstrap_mode"] == "residual"
+    assert reps.shape == (n_samples, 2)
+    assert diag["failures"] == 0
+
+    bs_rate_mean = float(np.mean(reps[:, 1]))
+    bs_rate_sd = float(np.std(reps[:, 1], ddof=1))
+
+    # Mean of replicates should be close to true rate (within 5%)
+    assert abs(bs_rate_mean - true_rate) / true_rate < 0.05
+    # SD should be consistent with covariance error (within 25% due to residual sample variance)
+    assert abs(bs_rate_sd - cov_rate_err) / cov_rate_err < 0.25
+
+
+def test_bootstrap_case_resampling():
+    """Verify case resampling produces non-degenerate replicates with valid parameter estimates."""
+    times = np.array([0.01, 0.04, 0.1, 0.2, 0.4, 0.8, 1.2], dtype=np.float64)
+    true_amp = 800.0
+    true_rate = 1.8
+    noise_sigma = 8.0
+    rng_synth = np.random.default_rng(202)
+    y_synth = true_amp * np.exp(-true_rate * times) + rng_synth.normal(0, noise_sigma, size=len(times))
+    sigmas = np.full_like(times, noise_sigma)
+
+    rng = np.random.default_rng(42)
+    n_samples = 400
+    reps, chisqr, diag = run_single_peak_bootstrap(
+        times, y_synth, sigmas, true_amp, true_rate, n_samples=n_samples, case_resampling=True, rng=rng
+    )
+
+    assert diag["bootstrap_mode"] == "case"
+    assert reps.shape == (n_samples, 2)
+    assert diag["failures"] == 0
+
+    # All rates and amplitudes must be strictly positive
+    assert np.all(reps[:, 0] > 0)
+    assert np.all(reps[:, 1] > 0)
+
+    # Median rate should reasonably bracket true rate
+    med_rate = float(np.median(reps[:, 1]))
+    assert abs(med_rate - true_rate) / true_rate < 0.10
+
+
+def test_run_relaxation_resampling_analysis_bootstrap_modes(tmp_path: Path):
+    """Verify both residual and case bootstrap through high-level orchestration."""
+    times = [0.02, 0.08, 0.2, 0.5, 1.0]
+    peaks = [
+        {
+            "assignment": "15N-V12",
+            "rate": 1.75,
+            "amplitude": 1100.0,
+            "times": times,
+            "intensities": [1100.0 * np.exp(-1.75 * t) for t in times],
+            "intensities_err": [10.0] * len(times),
+        }
+    ]
+
+    # 1. Residual bootstrap
+    u_res_res, rep_mat_res, p_names_res, chi_res, diag_res = run_relaxation_resampling_analysis(
+        peak_results=peaks,
+        analysis_type="R1",
+        method="bootstrap",
+        n_samples=150,
+        seed=123,
+    )
+    assert u_res_res.method == "bootstrap"
+    assert u_res_res.point_estimate["R1, NUC->15N-V12"] == 1.75
+
+    # 2. Case bootstrap
+    u_res_case, rep_mat_case, p_names_case, chi_case, diag_case = run_relaxation_resampling_analysis(
+        peak_results=peaks,
+        analysis_type="R1",
+        method="bootstrap_case",
+        n_samples=150,
+        seed=456,
+    )
+    assert u_res_case.method == "bootstrap_case"
+    assert u_res_case.point_estimate["R1, NUC->15N-V12"] == 1.75
+
+    # 3. Test persistence to Statistics/Bootstrap/
+    stat_dir = tmp_path / "Statistics" / "Bootstrap"
+    save_relaxation_statistics_files(
+        stat_dir,
+        "Bootstrap",
+        u_res_res,
+        rep_mat_res,
+        p_names_res,
+        chisqr_array=chi_res,
+        diagnostics=diag_res,
+    )
+    assert (stat_dir / "replicates.npz").is_file()
+    assert (stat_dir / "samples.tsv").is_file()
+    assert (stat_dir / "summary.toml").is_file()
+    assert (stat_dir / "diagnostics.toml").is_file()
+    assert (stat_dir / "correlations.tsv").is_file()
+
+    parsed = parse_statistics_directory(str(tmp_path))
+    assert "bootstrap" in parsed["methods"]
+    assert parsed["methods"]["bootstrap"]["status"] == "completed"
+    assert parsed["methods"]["bootstrap"]["sample_count"] == 150
+

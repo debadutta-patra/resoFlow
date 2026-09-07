@@ -567,7 +567,8 @@ def run_relaxation_resampling_analysis(
 
     # Compute correlation matrix across all parameters
     try:
-        corr_matrix = np.corrcoef(replicate_matrix, rowvar=False)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            corr_matrix = np.corrcoef(replicate_matrix, rowvar=False)
         if np.any(np.isnan(corr_matrix)):
             corr_matrix = np.nan_to_num(corr_matrix, nan=0.0)
             np.fill_diagonal(corr_matrix, 1.0)
