@@ -625,13 +625,22 @@ def run_relaxation_resampling_analysis(
         package_versions=get_environment_package_versions(),
     )
 
+    clean_diagnostics = {
+        k: (bool(v) if isinstance(v, (np.bool_, np.bool))
+            else int(v) if isinstance(v, np.integer)
+            else float(v) if isinstance(v, np.floating)
+            else v)
+        for k, v in all_diagnostics.items()
+        if not isinstance(v, np.ndarray) and k != "chains_3d"
+    }
+
     unc_result = UncertaintyResult(
         method=method,
         point_estimate=point_estimates,
         sd=standard_errors,
         intervals=intervals,
         samples_ref=None,
-        diagnostics=all_diagnostics,
+        diagnostics=clean_diagnostics,
         provenance=provenance,
     )
 
@@ -663,7 +672,11 @@ def save_relaxation_statistics_files(
     is_mcmc = method_name.lower() in ("mcmc", "mcmc posterior sampling")
 
     clean_meta = {
-        k: v for k, v in diag.items()
+        k: (bool(v) if isinstance(v, (np.bool_, np.bool))
+            else int(v) if isinstance(v, np.integer)
+            else float(v) if isinstance(v, np.floating)
+            else v)
+        for k, v in diag.items()
         if not isinstance(v, np.ndarray) and k != "chains_3d"
     }
 

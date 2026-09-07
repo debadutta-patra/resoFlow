@@ -209,14 +209,14 @@ def resolve_noise_model(
     else:
         is_global_dup = False
 
-    has_duplicates = dup_sigma is not None and dup_sigma > 1e-12
+    has_duplicates = bool(dup_sigma is not None and dup_sigma > 1e-12)
     dup_details = detect_duplicate_delays(times, tolerance=tolerance)
-    n_dup_pairs = sum(len(idxs) - 1 for idxs in dup_details.values()) if dup_details else 0
+    n_dup_pairs = int(sum(len(idxs) - 1 for idxs in dup_details.values()) if dup_details else 0)
 
-    has_lineshape = (
+    has_lineshape = bool(
         lineshape_errs is not None
         and len(lineshape_errs) == n_points
-        and np.any(np.asarray(lineshape_errs) > 1e-12)
+        and bool(np.any(np.asarray(lineshape_errs) > 1e-12))
     )
 
     clean_lineshape = np.asarray(lineshape_errs, dtype=np.float64) if has_lineshape else np.zeros(n_points)
@@ -227,17 +227,17 @@ def resolve_noise_model(
         clean_lineshape = np.where(clean_lineshape > 1e-12, clean_lineshape, fill_val)
 
     metadata: Dict[str, Any] = {
-        "source": req_source.value,
-        "requested_source": req_source.value,
-        "effective_source": req_source.value,
+        "source": str(req_source.value),
+        "requested_source": str(req_source.value),
+        "effective_source": str(req_source.value),
         "fallback_applied": False,
         "fallback_reason": None,
-        "duplicate_sigma": dup_sigma,
-        "duplicate_delays_detected": list(dup_details.keys()),
-        "duplicate_dof": n_dup_pairs,
-        "has_lineshape_covariance": has_lineshape,
-        "spectral_rmsd": spectral_rmsd,
-        "is_globally_pooled": is_global_dup,
+        "duplicate_sigma": float(dup_sigma) if dup_sigma is not None else None,
+        "duplicate_delays_detected": [float(k) for k in dup_details.keys()],
+        "duplicate_dof": int(n_dup_pairs),
+        "has_lineshape_covariance": bool(has_lineshape),
+        "spectral_rmsd": float(spectral_rmsd) if spectral_rmsd is not None else None,
+        "is_globally_pooled": bool(is_global_dup),
     }
 
     # 1. Lineshape Covariance

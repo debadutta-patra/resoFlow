@@ -25,6 +25,17 @@ from ... import models, database
 
 logger = logging.getLogger(__name__)
 
+def _json_serializable(obj):
+    if isinstance(obj, (np.bool_, np.bool)):
+        return bool(obj)
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
 def fit_single_peak(args):
     """Worker function for multiprocessing."""
     global_duplicate_sigma = None
@@ -396,7 +407,7 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                                     "percent": int((idx / total_peaks) * 85),
                                     "message": f"Fitted peak {idx}/{total_peaks}...",
                                     "updated_at": datetime.now().timestamp(),
-                                }, pf)
+                                }, pf, default=_json_serializable)
                         except Exception:
                             pass
                 
@@ -522,7 +533,7 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                                 "percent": pct,
                                 "message": msg,
                                 "updated_at": datetime.now().timestamp(),
-                            }, pf)
+                            }, pf, default=_json_serializable)
                     except Exception:
                         pass
 
@@ -587,7 +598,7 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                         "percent": 100,
                         "message": f"Fitted {len(peak_results)} peaks.",
                         "updated_at": datetime.now().timestamp(),
-                    }, pf)
+                    }, pf, default=_json_serializable)
             except Exception:
                 pass
 
@@ -602,7 +613,7 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             }
 
             with open(res_file, 'w', encoding="utf-8") as f:
-                json.dump(results_payload, f, indent=4)
+                json.dump(results_payload, f, indent=4, default=_json_serializable)
 
         _log(f"Analysis completed successfully. Fitted {len(peak_results)} peaks.")
         analysis.status = "COMPLETED"
