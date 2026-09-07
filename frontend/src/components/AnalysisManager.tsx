@@ -54,8 +54,14 @@ interface PeakResult {
   res_name?: string;
   rate: number;
   rate_err: number;
+  rate_err_cov?: number;
+  rate_err_resampled?: number;
+  interval_68?: [number, number];
+  interval_95?: [number, number];
   amplitude: number;
   amplitude_err: number;
+  amplitude_err_cov?: number;
+  amplitude_err_resampled?: number;
   chisqr: number;
   redchi: number;
   rmse?: number;
@@ -88,6 +94,8 @@ interface Analysis {
   has_backup: boolean;
   error_message?: string;
 }
+
+export type RatePlotErrorType = 'resampled' | 'covariance' | 'interval_95' | 'interval_68' | 'none';
 
 interface AnalysisManagerProps {
   analysis: Analysis;
@@ -129,6 +137,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
   const [plotColor, setPlotColor] = useState('#f43f5e'); // Fit color (rose-500)
   const [observedColor, setObservedColor] = useState('#6366f1'); // Observed color (indigo-500)
   const [ratesColor, setRatesColor] = useState('#6366f1'); // Rates plot color (indigo-500)
+  const [ratePlotErrorType, setRatePlotErrorType] = useState<RatePlotErrorType>('resampled');
   const [excludedResidues, setExcludedResidues] = useState<string[]>([]);
   const [logs, setLogs] = useState<string>('');
   const [copiedLogs, setCopiedLogs] = useState(false);
@@ -164,6 +173,9 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
     setObservedColor(params.observedColor || '#6366f1');
     setRatesColor(params.ratesColor || '#6366f1');
     setExcludedResidues(params.excludedResidues || []);
+    if (params.ratePlotErrorType) {
+      setRatePlotErrorType(params.ratePlotErrorType);
+    }
   }, [currentAnalysis.parameters]);
 
   const handleToggleSpectrum = async (spectrumId: number) => {
@@ -234,6 +246,20 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
         setRatesColor(color);
         setCurrentAnalysis({ ...currentAnalysis, parameters: paramsStr });
     } catch (err) { console.error(err); }
+  };
+
+  const handleUpdateRatePlotErrorType = async (type: RatePlotErrorType) => {
+    try {
+        const params = JSON.parse(currentAnalysis.parameters || '{}');
+        params.ratePlotErrorType = type;
+        const paramsStr = JSON.stringify(params);
+        await api.put(`/api/projects/${projectUuid}/analysis/${currentAnalysis.analysis_uuid}`, { parameters: paramsStr });
+        setRatePlotErrorType(type);
+        setCurrentAnalysis({ ...currentAnalysis, parameters: paramsStr });
+    } catch (err) { 
+        console.error(err);
+        setRatePlotErrorType(type);
+    }
   };
 
   const handleToggleResidueExclusion = async (assignment: string) => {
@@ -320,6 +346,11 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
             // Sort by residue number if available
             const sorted = [...response.data.results.peak_results].sort((a, b) => (a.res_num || 0) - (b.res_num || 0));
             setSelectedPeak(sorted[0]);
+        }
+        const savedErrorType = JSON.parse(currentAnalysis.parameters || '{}').ratePlotErrorType;
+        if (!savedErrorType) {
+          const hasResampled = response.data.results.peak_results?.some((p: any) => p.rate_err_resampled !== undefined);
+          setRatePlotErrorType(hasResampled ? 'resampled' : 'covariance');
         }
       }
     } catch (err) {
@@ -945,7 +976,9 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                                         <th className="px-6 py-4 font-black uppercase tracking-tighter text-[10px] text-slate-400">Res #</th>
                                                         <th className="px-6 py-4 font-black uppercase tracking-tighter text-[10px] text-slate-400">Assignment</th>
                                                         <th className="px-6 py-4 font-black uppercase tracking-tighter text-[10px] text-slate-400">{currentAnalysis.analysis_type === 'hetNOE' ? 'Ratio' : 'Rate (s⁻¹)'}</th>
-                                                        <th className="px-6 py-4 font-black uppercase tracking-tighter text-[10px] text-slate-400 text-right">Error</th>
+                                                        <th className="px-6 py-4 font-black uppercase tracking-tighter text-[10px] text-slate-400 text-right">
+                                                            Error {ratePlotErrorType === 'covariance' ? '(Cov)' : ratePlotErrorType === 'interval_95' ? '(95% CI)' : ratePlotErrorType === 'interval_68' ? '(68% CI)' : ratePlotErrorType === 'none' ? '' : '(SD)'}
+                                                        </th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -963,7 +996,25 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                                             <td className="px-6 py-4 font-bold text-slate-500 dark:text-slate-400" onClick={() => setSelectedPeak(peak)}>{peak.res_num ?? '—'}</td>
                                                             <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-200" onClick={() => setSelectedPeak(peak)}>{peak.assignment}</td>
                                                             <td className="px-6 py-4 font-mono text-emerald-600 dark:text-emerald-400 font-bold" onClick={() => setSelectedPeak(peak)}>{peak.rate.toFixed(3)}</td>
-                                                            <td className="px-6 py-4 font-mono text-slate-400 text-right text-xs" onClick={() => setSelectedPeak(peak)}>±{peak.rate_err.toFixed(4)}</td>
+                                                            <td className="px-6 py-4 font-mono text-slate-400 text-right text-xs" onClick={() => setSelectedPeak(peak)}>
+                                                                {ratePlotErrorType === 'covariance' ? (
+                                                                    `±${(peak.rate_err_cov ?? peak.rate_err).toFixed(4)}`
+                                                                ) : ratePlotErrorType === 'interval_95' ? (
+                                                                    peak.interval_95 && peak.interval_95.length === 2 ? (
+                                                                        `[${peak.interval_95[0].toFixed(3)}, ${peak.interval_95[1].toFixed(3)}]`
+                                                                    ) : (
+                                                                        `±${(1.95996 * peak.rate_err).toFixed(4)}`
+                                                                    )
+                                                                ) : ratePlotErrorType === 'interval_68' ? (
+                                                                    peak.interval_68 && peak.interval_68.length === 2 ? (
+                                                                        `[${peak.interval_68[0].toFixed(3)}, ${peak.interval_68[1].toFixed(3)}]`
+                                                                    ) : (
+                                                                        `±${peak.rate_err.toFixed(4)}`
+                                                                    )
+                                                                ) : (
+                                                                    `±${(peak.rate_err_resampled ?? peak.rate_err).toFixed(4)}`
+                                                                )}
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -1121,46 +1172,152 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                         )}
                                     </div>
                                 )}
+                                    {(() => {
+                                        const filteredRatePeaks = results.peak_results.filter(p => p.res_num != null && !excludedResidues.includes(p.assignment));
+                                        const isHetNOE = currentAnalysis.analysis_type === 'hetNOE';
+                                        const rateUnit = isHetNOE ? '' : ' s⁻¹';
+                                        const rateLabel = isHetNOE ? 'Ratio' : 'Rate';
+                                        const hasResampledData = results.peak_results.some(p => p.rate_err_resampled !== undefined || (p.interval_95 && p.interval_95.length === 2));
 
-                                    {/* New Rate vs Residue Plot below Profile */}
-                                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-8 shadow-sm relative overflow-hidden">
-                                         <div className="flex items-center space-x-2 mb-6">
-                                            <BarChart2 className="w-5 h-5 text-indigo-500" />
-                                            <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{currentAnalysis.analysis_type === 'hetNOE' ? 'hetNOE Ratio' : currentAnalysis.analysis_type + ' Rates'} vs. Residue sequence</h4>
-                                        </div>
-                                        <Plot
-                                            data={[{
-                                                x: results.peak_results.filter(p => p.res_num != null && !excludedResidues.includes(p.assignment)).map(p => p.res_num as number),
-                                                y: results.peak_results.filter(p => p.res_num != null && !excludedResidues.includes(p.assignment)).map(p => p.rate),
-                                                error_y: {
-                                                    type: 'data' as 'data',
-                                                    array: results.peak_results.filter(p => p.res_num != null && !excludedResidues.includes(p.assignment)).map(p => p.rate_err),
+                                        const getRateErrorConfig = () => {
+                                            if (ratePlotErrorType === 'none') {
+                                                return { visible: false };
+                                            }
+                                            if (ratePlotErrorType === 'covariance') {
+                                                return {
+                                                    type: 'data' as const,
+                                                    array: filteredRatePeaks.map(p => p.rate_err_cov ?? p.rate_err),
                                                     visible: true,
-                                                    color: ratesColor
-                                                },
-                                                type: 'scatter' as 'scatter',
-                                                mode: 'markers' as 'markers',
-                                                text: results.peak_results.filter(p => p.res_num != null && !excludedResidues.includes(p.assignment)).map(p => p.assignment),
-                                                marker: { 
-                                                    color: ratesColor, 
-                                                    size: 10, 
-                                                    line: { color: 'white', width: 2 } 
-                                                },
-                                            }] as any[]}
-                                            layout={{
-                                                margin: { l: 60, r: 20, b: 60, t: 20 },
-                                                xaxis: { 
-                                                    title: { text: 'Residue Number', font: { size: 10, weight: 800 } }, 
-                                                    tickfont: { size: 9 }
-                                                },
-                                                yaxis: {                                                     title: { text: currentAnalysis.analysis_type === 'hetNOE' ? 'Ratio' : `Rate (s⁻¹)`, font: { size: 10, weight: 800 } }, 
-                                                    tickfont: { size: 9 }
-                                                },
-                                                hovermode: 'closest'
-                                            }}
-                                            style={{ width: "100%", height: "350px" }}
-                                        />
-                                    </div>
+                                                    color: ratesColor,
+                                                    thickness: 1.5,
+                                                    width: 3
+                                                };
+                                            }
+                                            if (ratePlotErrorType === 'interval_95') {
+                                                return {
+                                                    type: 'data' as const,
+                                                    symmetric: false,
+                                                    array: filteredRatePeaks.map(p => p.interval_95 && p.interval_95.length === 2 ? Math.max(0, p.interval_95[1] - p.rate) : 1.95996 * (p.rate_err_resampled ?? p.rate_err)),
+                                                    arrayminus: filteredRatePeaks.map(p => p.interval_95 && p.interval_95.length === 2 ? Math.max(0, p.rate - p.interval_95[0]) : 1.95996 * (p.rate_err_resampled ?? p.rate_err)),
+                                                    visible: true,
+                                                    color: ratesColor,
+                                                    thickness: 1.5,
+                                                    width: 3
+                                                };
+                                            }
+                                            if (ratePlotErrorType === 'interval_68') {
+                                                return {
+                                                    type: 'data' as const,
+                                                    symmetric: false,
+                                                    array: filteredRatePeaks.map(p => p.interval_68 && p.interval_68.length === 2 ? Math.max(0, p.interval_68[1] - p.rate) : (p.rate_err_resampled ?? p.rate_err)),
+                                                    arrayminus: filteredRatePeaks.map(p => p.interval_68 && p.interval_68.length === 2 ? Math.max(0, p.rate - p.interval_68[0]) : (p.rate_err_resampled ?? p.rate_err)),
+                                                    visible: true,
+                                                    color: ratesColor,
+                                                    thickness: 1.5,
+                                                    width: 3
+                                                };
+                                            }
+                                            return {
+                                                type: 'data' as const,
+                                                array: filteredRatePeaks.map(p => p.rate_err_resampled ?? p.rate_err),
+                                                visible: true,
+                                                color: ratesColor,
+                                                thickness: 1.5,
+                                                width: 3
+                                            };
+                                        };
+
+                                        const rateHoverTexts = filteredRatePeaks.map(p => {
+                                            let errInfo = '';
+                                            if (ratePlotErrorType === 'resampled') {
+                                                const val = p.rate_err_resampled ?? p.rate_err;
+                                                errInfo = `<br>Uncertainty (SD): ±${val.toFixed(4)}${rateUnit}`;
+                                            } else if (ratePlotErrorType === 'covariance') {
+                                                const val = p.rate_err_cov ?? p.rate_err;
+                                                errInfo = `<br>Uncertainty (Cov): ±${val.toFixed(4)}${rateUnit}`;
+                                            } else if (ratePlotErrorType === 'interval_95') {
+                                                if (p.interval_95 && p.interval_95.length === 2) {
+                                                    errInfo = `<br>95% CI: [${p.interval_95[0].toFixed(4)}, ${p.interval_95[1].toFixed(4)}]${rateUnit}`;
+                                                } else {
+                                                    errInfo = `<br>95% CI: ±${(1.95996 * p.rate_err).toFixed(4)}${rateUnit}`;
+                                                }
+                                            } else if (ratePlotErrorType === 'interval_68') {
+                                                if (p.interval_68 && p.interval_68.length === 2) {
+                                                    errInfo = `<br>68% CI: [${p.interval_68[0].toFixed(4)}, ${p.interval_68[1].toFixed(4)}]${rateUnit}`;
+                                                } else {
+                                                    errInfo = `<br>68% CI: ±${p.rate_err.toFixed(4)}${rateUnit}`;
+                                                }
+                                            }
+                                            return `<b>${p.assignment}</b>${p.res_num ? ` (Res ${p.res_num})` : ''}<br>${rateLabel}: ${p.rate.toFixed(4)}${rateUnit}${errInfo}`;
+                                        });
+
+                                        return (
+                                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-8 shadow-sm relative overflow-hidden">
+                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                                                    <div className="flex items-center space-x-2">
+                                                        <BarChart2 className="w-5 h-5 text-indigo-500" />
+                                                        <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
+                                                            {isHetNOE ? 'hetNOE Ratio' : currentAnalysis.analysis_type + ' Rates'} vs. Residue sequence
+                                                        </h4>
+                                                    </div>
+                                                    <div className="flex items-center space-x-3">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                            Error Bar:
+                                                        </label>
+                                                        <select
+                                                            value={ratePlotErrorType}
+                                                            onChange={(e) => handleUpdateRatePlotErrorType(e.target.value as RatePlotErrorType)}
+                                                            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all cursor-pointer shadow-xs"
+                                                        >
+                                                            <option value="resampled">
+                                                                Resampled SD {hasResampledData ? '(Bootstrap/MC)' : '(SD)'}
+                                                            </option>
+                                                            <option value="covariance">Covariance (LSQ)</option>
+                                                            <option value="interval_95">95% Confidence Interval</option>
+                                                            <option value="interval_68">68% Confidence Interval</option>
+                                                            <option value="none">None (Points only)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <Plot
+                                                    data={[{
+                                                        x: filteredRatePeaks.map(p => p.res_num as number),
+                                                        y: filteredRatePeaks.map(p => p.rate),
+                                                        error_y: getRateErrorConfig(),
+                                                        type: 'scatter' as 'scatter',
+                                                        mode: 'markers' as 'markers',
+                                                        text: rateHoverTexts,
+                                                        hoverinfo: 'text',
+                                                        marker: { 
+                                                            color: ratesColor, 
+                                                            size: 10, 
+                                                            line: { color: 'white', width: 2 } 
+                                                        },
+                                                    }] as any[]}
+                                                    layout={{
+                                                        margin: { l: 60, r: 20, b: 60, t: 20 },
+                                                        xaxis: { 
+                                                            title: { text: 'Residue Number', font: { size: 10, weight: 800 } }, 
+                                                            tickfont: { size: 9 }
+                                                        },
+                                                        yaxis: { 
+                                                            title: { text: isHetNOE ? 'Ratio' : `Rate (s⁻¹)`, font: { size: 10, weight: 800 } }, 
+                                                            tickfont: { size: 9 }
+                                                        },
+                                                        hovermode: 'closest'
+                                                    }}
+                                                    onClick={(data: any) => {
+                                                        if (data?.points?.[0]) {
+                                                            const idx = data.points[0].pointIndex;
+                                                            const clicked = filteredRatePeaks[idx];
+                                                            if (clicked) setSelectedPeak(clicked);
+                                                        }
+                                                    }}
+                                                    style={{ width: "100%", height: "350px" }}
+                                                />
+                                            </div>
+                                        );
+                                    })()}
                                 </section>
                            </div>
 
