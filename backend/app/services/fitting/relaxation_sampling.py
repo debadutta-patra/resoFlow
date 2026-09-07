@@ -662,6 +662,11 @@ def save_relaxation_statistics_files(
 
     is_mcmc = method_name.lower() in ("mcmc", "mcmc posterior sampling")
 
+    clean_meta = {
+        k: v for k, v in diag.items()
+        if not isinstance(v, np.ndarray) and k != "chains_3d"
+    }
+
     # 1. replicates.npz
     try:
         save_replicates_npz(
@@ -669,7 +674,7 @@ def save_relaxation_statistics_files(
             replicate_matrix,
             parameter_names,
             chisqr=chisqr_array,
-            metadata=diag,
+            metadata=clean_meta,
         )
     except Exception as exc:
         logger.warning(f"Could not write replicates.npz: {exc}")
@@ -683,7 +688,7 @@ def save_relaxation_statistics_files(
                 parameter_names,
                 discarded_steps=diag.get("burn_in", 100),
                 thin=1,
-                metadata=diag,
+                metadata=clean_meta,
             )
         except Exception as exc:
             logger.warning(f"Could not write mcmc_chains.npz: {exc}")

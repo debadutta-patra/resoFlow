@@ -13,6 +13,7 @@ import pytest
 from app.services.fitting.relaxation_sampling import (
     run_single_peak_monte_carlo,
     run_single_peak_bootstrap,
+    run_single_peak_mcmc,
     run_relaxation_resampling_analysis,
     save_relaxation_statistics_files,
 )
@@ -295,4 +296,127 @@ def test_run_relaxation_resampling_analysis_bootstrap_modes(tmp_path: Path):
     assert "bootstrap" in parsed["methods"]
     assert parsed["methods"]["bootstrap"]["status"] == "completed"
     assert parsed["methods"]["bootstrap"]["sample_count"] == 150
+
+
+def test_mcmc_single_peak_sampling():
+    """Verify MCMC posterior sampling via emcee captures true parameters and healthy diagnostics."""
+    times = np.array([0.01, 0.04, 0.1, 0.2, 0.4, 0.8, 1.2], dtype=np.float64)
+    true_amp = 900.0
+    true_rate = 1.5
+    noise_sigma = 8.0
+    rng = np.random.default_rng(303)
+    y_data = true_amp * np.exp(-true_rate * times) + rng.normal(0, noise_sigma, size=len(times))
+    sigmas = np.full_like(times, noise_sigma)
+
+    reps, chains_3d, diag = run_single_peak_mcmc(
+        times, y_data, sigmas, true_amp, true_rate, n_samples=300, seed=42
+    )
+
+    assert reps.shape == (300, 2)
+    assert chains_3d.ndim == 3  # (n_walkers, total_steps, 2)
+    assert chains_3d.shape[0] == 16  # 16 walkers
+    assert chains_3d.shape[2] == 2   # [amp, rate]
+
+    # Acceptance fraction should be in reasonable range for ensemble sampler
+    assert 0.15 <= diag["acceptance_fraction_mean"] <= 0.85
+
+    # Posterior median should be close to true value
+    post_rate_median = float(np.median(reps[:, 1]))
+    post_amp_median = float(np.median(reps[:, 0]))
+    assert abs(post_rate_median - true_rate) / true_rate < 0.10
+    assert abs(post_amp_median - true_amp) / true_amp < 0.10
+
+    # 95% posterior interval must capture the true rate
+    p2_5 = float(np.percentile(reps[:, 1], 2.5))
+    p97_5 = float(np.percentile(reps[:, 1], 97.5))
+    assert p2_5 <= true_rate <= p97_5
+
+
+def test_mcmc_seed_reproducibility():
+    """Verify that same seed produces bit-identical MCMC posterior chains."""
+    times = np.array([0.02, 0.08, 0.2, 0.5, 1.0], dtype=np.float64)
+    true_amp = 1000.0
+    true_rate = 1.8
+    sigmas = np.full_like(times, 10.0)
+    y_data = true_amp * np.exp(-true_rate * times)
+
+    reps1, c1, _ = run_single_peak_mcmc(times, y_data, sigmas, true_amp, true_rate, n_samples=100, seed=777)
+    reps2, c2, _ = run_single_peak_mcmc(times, y_data, sigmas, true_amp, true_rate, n_samples=100, seed=777)
+
+    np.testing.assert_array_equal(reps1, reps2)
+    np.testing.assert_array_equal(c1, c2)
+
+
+def test_run_relaxation_resampling_analysis_mcmc(tmp_path: Path):
+    """Verify multi-peak MCMC orchestration and ChemEx-compatible MCMC directory persistence."""
+    times = [0.02, 0.08, 0.2, 0.5, 1.0]
+    peaks = [
+        {
+            "assignment": "15N-D15",
+            "rate": 1.6,
+            "amplitude": 1050.0,
+            "times": times,
+            "intensities": [1050.0 * np.exp(-1.6 * t) for t in times],
+            "intensities_err": [10.0] * len(times),
+        },
+        {
+            "assignment": "15N-E16",
+            "rate": 2.2,
+            "amplitude": 920.0,
+            "times": times,
+            "intensities": [920.0 * np.exp(-2.2 * t) for t in times],
+            "intensities_err": [9.0] * len(times),
+        }
+    ]
+
+    u_res, rep_mat, p_names, chi_arr, diag = run_relaxation_resampling_analysis(
+        peak_results=peaks,
+        analysis_type="R2",
+        method="mcmc",
+        n_samples=200,
+        seed=888,
+    )
+
+    assert u_res.method == "mcmc"
+    assert rep_mat.shape == (200, 4)
+    assert "chains_3d" in diag
+    assert diag["chains_3d"].shape[0] == 16  # 16 walkers
+    assert diag["chains_3d"].shape[2] == 4   # 4 parameters
+
+    # Verify deterministic point estimates preserved
+    assert u_res.point_estimate["R2, NUC->15N-D15"] == 1.6
+    assert u_res.point_estimate["R2, NUC->15N-E16"] == 2.2
+
+    # Save to Statistics/MCMC/
+    stat_dir = tmp_path / "Statistics" / "MCMC"
+    save_relaxation_statistics_files(
+        stat_dir,
+        "MCMC",
+        u_res,
+        rep_mat,
+        p_names,
+        chisqr_array=chi_arr,
+        diagnostics=diag,
+    )
+
+    # Check that mcmc_chains.npz exists and can be loaded
+    assert (stat_dir / "mcmc_chains.npz").is_file()
+    assert (stat_dir / "replicates.npz").is_file()
+    assert (stat_dir / "samples.tsv").is_file()
+    assert (stat_dir / "summary.toml").is_file()
+    assert (stat_dir / "diagnostics.toml").is_file()
+    assert (stat_dir / "correlations.tsv").is_file()
+
+    loaded = load_replicates_or_fallback(stat_dir, "MCMC")
+    assert loaded is not None
+    assert loaded["is_mcmc"] is True
+    assert loaded["chains"].ndim == 3
+    assert loaded["chains"].shape[0] == 16
+    assert len(loaded["parameter_names"]) == 4
+
+    parsed = parse_statistics_directory(str(tmp_path))
+    assert "mcmc" in parsed["methods"]
+    assert parsed["methods"]["mcmc"]["status"] in ("completed", "converged")
+    assert "R2, NUC->15N-D15" in parsed["methods"]["mcmc"]["summary"]
+
 
