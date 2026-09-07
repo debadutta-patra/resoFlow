@@ -13,6 +13,10 @@ from .relaxation_uncertainty import (
     build_covariance_uncertainty_result,
     uncertainty_result_to_statistics_payload,
 )
+from .relaxation_sampling import (
+    run_relaxation_resampling_analysis,
+    save_relaxation_statistics_files,
+)
 from ... import models, database
 
 logger = logging.getLogger(__name__)
@@ -145,8 +149,17 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     noise_source = params.get("noise_model", "lineshape")
     uncertainty_method = params.get("uncertainty_method", "covariance")
+    n_samples = int(params.get("n_samples", 500))
+    raw_seed = params.get("seed")
+    seed = None
+    if raw_seed is not None and str(raw_seed).strip():
+        try:
+            seed = int(raw_seed)
+        except (ValueError, TypeError):
+            seed = None
+
     _log(f"Configured noise model: {noise_source}")
-    _log(f"Configured uncertainty method: {uncertainty_method}")
+    _log(f"Configured uncertainty method: {uncertainty_method} (samples={n_samples}, seed={seed})")
 
     try:
         results = []
@@ -390,9 +403,8 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             diagnostics={"n_peaks": len(peak_results), "analysis_type": atype},
         )
 
-        uncertainty_stats = uncertainty_result_to_statistics_payload({
-            "covariance": cov_result,
-        })
+        unc_results_map = {"covariance": cov_result}
+        correlations_by_method: dict[str, Any] = {}
 
         # Save results
         res_file = resolve_existing_path(analysis.results_path) or analysis.results_path
@@ -455,6 +467,96 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
             except Exception as exc:
                 logger.warning(f"Could not write covariance files: {exc}")
 
+            # Run Resampling Uncertainty Estimation if requested
+            u_method_norm = uncertainty_method.lower().strip()
+            if u_method_norm in ("monte_carlo", "mc", "bootstrap", "bs", "bootstrap_case", "bs_case", "mcmc"):
+                if u_method_norm in ("monte_carlo", "mc"):
+                    stat_folder = "MonteCarlo"
+                    canon_key = "monte_carlo"
+                    method_title = "Monte Carlo"
+                elif u_method_norm in ("bootstrap", "bs", "bootstrap_residuals"):
+                    stat_folder = "Bootstrap"
+                    canon_key = "bootstrap"
+                    method_title = "Bootstrap"
+                elif u_method_norm in ("bootstrap_case", "bs_case"):
+                    stat_folder = "Bootstrap"
+                    canon_key = "bootstrap"
+                    method_title = "Bootstrap (Case)"
+                elif u_method_norm in ("mcmc",):
+                    stat_folder = "MCMC"
+                    canon_key = "mcmc"
+                    method_title = "MCMC"
+                else:
+                    stat_folder = "MonteCarlo"
+                    canon_key = "monte_carlo"
+                    method_title = "Monte Carlo"
+
+                def _resample_progress_cb(cur: int, total: int, msg: str):
+                    try:
+                        p_file = os.path.join(run_dir, "progress.json")
+                        pct = 85 + int((cur / max(1, total)) * 14)
+                        with open(p_file, "w", encoding="utf-8") as pf:
+                            json.dump({
+                                "kind": "resample",
+                                "stage": f"Resampling ({method_title})",
+                                "percent": pct,
+                                "message": msg,
+                                "updated_at": datetime.now().timestamp(),
+                            }, pf)
+                    except Exception:
+                        pass
+
+                _log(f"Starting {method_title} uncertainty estimation ({n_samples} samples, seed={seed})...")
+                resampled_result, rep_mat, p_names, chi_arr, diag_dict = run_relaxation_resampling_analysis(
+                    peak_results=peak_results,
+                    analysis_type=analysis.analysis_type,
+                    method=u_method_norm,
+                    n_samples=n_samples,
+                    seed=seed,
+                    noise_source=noise_source,
+                    progress_callback=_resample_progress_cb,
+                )
+                _log(f"Completed {method_title} resampling across {len(peak_results)} peaks.")
+
+                # Save ChemEx-compatible Statistics folder
+                resamp_stat_dir = os.path.join(run_dir, "Statistics", stat_folder)
+                save_relaxation_statistics_files(
+                    resamp_stat_dir,
+                    method_title,
+                    resampled_result,
+                    rep_mat,
+                    p_names,
+                    chisqr_array=chi_arr,
+                    diagnostics=diag_dict,
+                )
+
+                unc_results_map[canon_key] = resampled_result
+                if "correlations" in diag_dict:
+                    correlations_by_method[canon_key] = diag_dict["correlations"]
+
+                # Update peak_results with resampled error and confidence intervals
+                # Point estimates (rate, amplitude) remain 100% bit-identical
+                for p in peak_results:
+                    assign = p["assignment"]
+                    r_name = f"{rate_param_name}, NUC->{assign}"
+                    a_name = f"{amp_param_name}, NUC->{assign}"
+                    p["rate_err_cov"] = p["rate_err"]
+                    p["amplitude_err_cov"] = p["amplitude_err"]
+                    if r_name in resampled_result.sd:
+                        p["rate_err"] = float(resampled_result.sd[r_name])
+                        p["rate_err_resampled"] = float(resampled_result.sd[r_name])
+                    if a_name in resampled_result.sd:
+                        p["amplitude_err"] = float(resampled_result.sd[a_name])
+                        p["amplitude_err_resampled"] = float(resampled_result.sd[a_name])
+                    if r_name in resampled_result.intervals:
+                        p["interval_68"] = list(resampled_result.intervals[r_name].interval_68)
+                        p["interval_95"] = list(resampled_result.intervals[r_name].interval_95)
+
+            uncertainty_stats = uncertainty_result_to_statistics_payload(
+                unc_results_map,
+                correlations_by_method=correlations_by_method,
+            )
+
             # Emit final completion state to progress.json
             progress_file = os.path.join(run_dir, "progress.json")
             try:
@@ -473,11 +575,10 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                 "analysis_uuid": analysis_uuid,
                 "timestamp": datetime.now().isoformat(),
                 "noise_model": noise_source,
+                "uncertainty_method": uncertainty_method,
                 "peak_results": peak_results,
                 "uncertainty_statistics": uncertainty_stats,
-                "uncertainty_results": {
-                    "covariance": cov_result.model_dump(),
-                },
+                "uncertainty_results": {k: v.model_dump() for k, v in unc_results_map.items()},
             }
 
             with open(res_file, 'w', encoding="utf-8") as f:
