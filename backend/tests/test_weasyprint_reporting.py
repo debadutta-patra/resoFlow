@@ -559,52 +559,52 @@ class TestPhaseEReportEndpoints:
         assert res_forbidden.status_code in (403, 404)
 
     def test_report_endpoints_reject_non_dispersion_analysis(self):
-        """Verify report endpoints return 400 for native relaxation analyses (R1, R2, hetNOE)."""
+        """Verify report endpoints return 400 for unsupported analysis types."""
         from app import models
 
-        r2_analysis = models.Analysis(
-            analysis_uuid="analysis-r2-test",
-            name="R2 Test Analysis",
-            analysis_type="R2",
+        unsupported_analysis = models.Analysis(
+            analysis_uuid="analysis-unsupported-test",
+            name="Unsupported Test Analysis",
+            analysis_type="UNKNOWN",
             project_id=self.project.id,
             status="COMPLETED",
         )
-        self.db.add(r2_analysis)
+        self.db.add(unsupported_analysis)
         self.db.commit()
-        self.db.refresh(r2_analysis)
+        self.db.refresh(unsupported_analysis)
 
         # 1. report.html returns 400 Bad Request
         res_html = self.client.get(
-            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report.html",
+            f"/api/projects/{self.project.project_uuid}/analysis/{unsupported_analysis.analysis_uuid}/report.html",
             headers=self.headers,
         )
         assert res_html.status_code == 400
-        assert "Interactive reports are currently available for CPMG and CEST dispersion analyses" in res_html.json()["detail"]
+        assert "Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses" in res_html.json()["detail"]
 
         # 2. Standalone report.html returns 400
         res_standalone_html = self.client.get(
-            f"/analysis/{r2_analysis.analysis_uuid}/report.html",
+            f"/analysis/{unsupported_analysis.analysis_uuid}/report.html",
             headers=self.headers,
         )
         assert res_standalone_html.status_code == 400
 
         # 3. report.json returns 400
         res_json = self.client.get(
-            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report.json",
+            f"/api/projects/{self.project.project_uuid}/analysis/{unsupported_analysis.analysis_uuid}/report.json",
             headers=self.headers,
         )
         assert res_json.status_code == 400
 
         # 4. report.pdf returns 400
         res_pdf = self.client.get(
-            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report.pdf",
+            f"/api/projects/{self.project.project_uuid}/analysis/{unsupported_analysis.analysis_uuid}/report.pdf",
             headers=self.headers,
         )
         assert res_pdf.status_code == 400
 
         # 5. Async report trigger returns 400
         res_async = self.client.post(
-            f"/api/projects/{self.project.project_uuid}/analysis/{r2_analysis.analysis_uuid}/report/async",
+            f"/api/projects/{self.project.project_uuid}/analysis/{unsupported_analysis.analysis_uuid}/report/async",
             json={"style": "publication"},
             headers=self.headers,
         )
@@ -775,4 +775,61 @@ def test_report_render_with_palette():
     # 2. Render PDF with custom hex
     pdf_buf = render_pdf(model, palette="#BE123C")
     assert len(pdf_buf.getvalue()) > 50000
+
+
+def test_relaxation_report_generation(tmp_path):
+    """Verify relaxation reporting pipeline (R1/R2/hetNOE) for HTML and PDF generation."""
+    import json
+    from app.services.reporting.model import build_report_model
+    from app.services.reporting.render import render_html, render_pdf
+    import pypdf
+
+    peak_results = []
+    for i in range(1, 11):
+        peak_results.append({
+            "assignment": f"{i}ALA",
+            "res_num": i,
+            "res_name": "ALA",
+            "rate": 10.0 + i * 0.2,
+            "rate_err": 0.15,
+            "amplitude": 1000000.0,
+            "amplitude_err": 5000.0,
+            "redchi": 1.05,
+            "rmse": 2500.0,
+            "times": [0.01, 0.02, 0.04, 0.08],
+            "intensities": [1000000.0, 800000.0, 500000.0, 250000.0],
+            "intensities_err": [10000.0, 8000.0, 5000.0, 2500.0],
+            "fit_times_dense": [0.01, 0.03, 0.05, 0.08],
+            "fit_intensities_dense": [1000000.0, 700000.0, 450000.0, 250000.0],
+            "residuals": [100.0, -150.0, 200.0, -50.0],
+        })
+
+    results_data = {
+        "peak_results": peak_results,
+        "noise_model": "lineshape",
+        "uncertainty_method": "covariance",
+    }
+    (tmp_path / "results.json").write_text(json.dumps(results_data), encoding="utf-8")
+
+    model = build_report_model(
+        analysis_dir=tmp_path,
+        analysis_name="Synthetic R2 Fit",
+        analysis_type="R2",
+    )
+    assert len(model.residues) == 10
+    assert model.sequence_summary is not None
+    assert model.sequence_summary["n_residues"] == 10
+
+    # 1. HTML render check
+    html_str = render_html(model, style="screen")
+    assert "Sequence Rate Profile" in html_str
+    assert "Residue Results Index" in html_str
+    assert "R₂ (s⁻¹)" in html_str
+    assert "1ALA" in html_str
+
+    # 2. PDF render check
+    pdf_buf = render_pdf(model, style="publication")
+    reader = pypdf.PdfReader(pdf_buf)
+    assert len(reader.pages) >= 2
+
 

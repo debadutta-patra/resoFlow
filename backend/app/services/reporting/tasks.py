@@ -44,8 +44,16 @@ def generate_report_pdf_task(
             raise ValueError(f"Analysis {analysis_uuid} not found")
 
         project = analysis.project
-        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
-        folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
+        atype = (analysis.analysis_type or "").upper()
+        if atype == "CPMG":
+            folder_name = "cpmg_fitting"
+            analysis_type = "CPMG"
+        elif atype in ("R1", "R2", "HETNOE"):
+            folder_name = f"{analysis.analysis_type.lower()}_fitting"
+            analysis_type = atype
+        else:
+            folder_name = "cest_fitting"
+            analysis_type = "CEST"
 
         if analysis.results_path and os.path.exists(analysis.results_path):
             run_dir = os.path.dirname(analysis.results_path)
@@ -67,7 +75,6 @@ def generate_report_pdf_task(
             palette,
         )
 
-        analysis_type = "CPMG" if is_cpmg else "CEST"
         pdf_buf = generate_modern_pdf_report(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
@@ -127,8 +134,16 @@ def export_plots_zip_task(
             raise ValueError(f"Analysis {analysis_uuid} not found")
 
         project = analysis.project
-        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
-        folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
+        atype = (analysis.analysis_type or "").upper()
+        if atype == "CPMG":
+            folder_name = "cpmg_fitting"
+            analysis_type = "CPMG"
+        elif atype in ("R1", "R2", "HETNOE"):
+            folder_name = f"{analysis.analysis_type.lower()}_fitting"
+            analysis_type = atype
+        else:
+            folder_name = "cest_fitting"
+            analysis_type = "CEST"
 
         if analysis.results_path and os.path.exists(analysis.results_path):
             run_dir = analysis.results_path if os.path.isdir(analysis.results_path) else os.path.dirname(analysis.results_path)
@@ -149,7 +164,6 @@ def export_plots_zip_task(
             chosen_palette,
         )
 
-        analysis_type = "CPMG" if is_cpmg else "CEST"
         export_all_plots_zip(
             analysis_dir=run_dir,
             analysis_name=analysis.name,

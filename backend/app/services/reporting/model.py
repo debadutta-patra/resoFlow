@@ -180,6 +180,12 @@ class ResidueRecord:
     flags: list[str]
     experiments: list[dict]
     step_name: Optional[str] = None
+    rate: Optional[ResolvedParameter] = None
+    amplitude: Optional[ResolvedParameter] = None
+    decay_curve_data: Optional[dict] = None
+    res_num: Optional[int] = None
+    res_name: Optional[str] = None
+    rmse: Optional[float] = None
 
     @property
     def has_flags(self) -> bool:
@@ -220,6 +226,18 @@ class ResidueRecord:
         }
         if self.step_name is not None:
             d["step_name"] = self.step_name
+        if self.rate is not None:
+            d["rate"] = resolved_param_to_dict(self.rate)
+        if self.amplitude is not None:
+            d["amplitude"] = resolved_param_to_dict(self.amplitude)
+        if self.res_num is not None:
+            d["res_num"] = self.res_num
+        if self.res_name is not None:
+            d["res_name"] = self.res_name
+        if self.rmse is not None:
+            d["rmse"] = self.rmse
+        if self.decay_curve_data is not None:
+            d["decay_curve_data"] = to_json_serializable(self.decay_curve_data)
         return d
 
 
@@ -278,6 +296,7 @@ class ReportModel:
     step_order: list[str] = field(default_factory=list)
     steps: list[StepReportModel] = field(default_factory=list)
     grid_2d: Optional[Any] = None
+    sequence_summary: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert model to plain JSON-serializable types for API and golden tests."""
@@ -297,6 +316,8 @@ class ReportModel:
             "grid_1d": to_json_serializable(self.grid_1d),
             "ledger": dict(self.ledger),
         }
+        if self.sequence_summary is not None:
+            d["sequence_summary"] = to_json_serializable(self.sequence_summary)
         if self.is_multi_step:
             d["is_multi_step"] = True
             d["step_order"] = list(self.step_order)
@@ -345,90 +366,198 @@ def build_report_model(
     # 3. Initialize UncertaintyResolver
     resolver = UncertaintyResolver(a_dir, results_data=results_data)
 
-    # 4. Resolve global parameters
-    kex_res = resolver.resolve("kex_ab", "global")
-    pb_res = resolver.resolve("pb", "global")
-    tauc_res = resolver.resolve("tauc_a", "global")
+    is_relaxation = a_type in ("R1", "R2", "HETNOE")
+    sequence_summary: Optional[Dict[str, Any]] = None
 
-    global_params: list[tuple[str, ResolvedParameter]] = [
-        ("kex_ab", kex_res),
-        ("pb", pb_res),
-    ]
-    if tauc_res.status != ParameterStatus.NOT_IN_MODEL:
-        global_params.append(("tauc_a", tauc_res))
+    if is_relaxation:
+        global_params: list[tuple[str, ResolvedParameter]] = []
+        derived_kinetics: dict[str, DerivedKineticResult] = {}
+        peak_results = results_data.get("peak_results", [])
+        residue_records: list[ResidueRecord] = []
+        rate_param = "noe" if a_type == "HETNOE" else ("r1" if a_type == "R1" else "r2")
 
-    # 5. Derived Kinetics (Phase 7)
-    kex_samples = None
-    pb_samples = None
-    for sm_dict in resolver.resampled_cache.values():
-        p_names = [clean_param_name(x).upper() for x in sm_dict.get("parameter_names", [])]
-        reps = sm_dict.get("replicates")
-        if reps is not None and "KEX_AB" in p_names and "PB" in p_names:
-            kex_samples = reps[:, p_names.index("KEX_AB")]
-            pb_samples = reps[:, p_names.index("PB")]
-            break
+        for p in peak_results:
+            raw_key = str(p.get("assignment", f"Peak_{p.get('res_num', '?')}"))
+            display_name = residue_mapping.get(raw_key, raw_key)
+            chi2_red = p.get("redchi")
 
-    derived_kinetics = propagate_derived_kinetics(
-        kex_val=kex_res.value,
-        pb_val=(pb_res.value / 100.0 if (pb_res.value and pb_res.unit == "%") else pb_res.value),
-        kex_sigma=kex_res.sigma,
-        pb_sigma=((pb_res.sigma / 100.0 if pb_res.sigma else None) if (pb_res.unit == "%") else pb_res.sigma),
-        samples={"kex": kex_samples, "pb": pb_samples} if (kex_samples is not None and pb_samples is not None) else None,
-    )
+            rate_res = resolver.resolve(rate_param, raw_key)
+            amp_res = resolver.resolve("i0", raw_key)
 
-    # 6. Index and classify all residues and flags (Phase 5c)
-    raw_residues = results_data.get("residues", {})
-    if not raw_residues and resolver.primary_step and resolver.primary_step.residues:
-        raw_residues = {r_k: {"parameters": {}} for r_k in resolver.primary_step.residues.keys()}
+            if rate_res.value is None and p.get("rate") is not None:
+                rate_val = float(p["rate"])
+                rate_err = float(p.get("rate_err", 0.0))
+                rate_res = ResolvedParameter(
+                    name=rate_param.upper(),
+                    scope=raw_key,
+                    value=rate_val,
+                    err_low=rate_err,
+                    err_high=rate_err,
+                    source=UncertaintySource.COVARIANCE,
+                    status=ParameterStatus.FITTED,
+                    unit="s⁻¹" if a_type != "HETNOE" else "",
+                )
+            if amp_res.value is None and p.get("amplitude") is not None:
+                amp_val = float(p["amplitude"])
+                amp_err = float(p.get("amplitude_err", 0.0))
+                amp_res = ResolvedParameter(
+                    name="I0",
+                    scope=raw_key,
+                    value=amp_val,
+                    err_low=amp_err,
+                    err_high=amp_err,
+                    source=UncertaintySource.COVARIANCE,
+                    status=ParameterStatus.FITTED,
+                    unit="a.u.",
+                )
 
-    sorted_keys = sorted(raw_residues.keys(), key=natural_sort_key)
-    residue_records: list[ResidueRecord] = []
+            flags = []
+            if chi2_red is not None and (chi2_red < 0.5 or chi2_red > 2.0):
+                flags.append(f"χ²ᵣ={chi2_red:.2f}")
+            if rate_res.sigma and rate_res.value and abs(rate_res.value) > 1e-4:
+                if (rate_res.sigma / abs(rate_res.value)) > 0.4:
+                    flags.append("High Rate err")
 
-    for raw_key in sorted_keys:
-        display_name = residue_mapping.get(raw_key, raw_key)
-        r_data = raw_residues[raw_key]
-        params = r_data.get("parameters", {})
+            decay_data = {
+                "times": p.get("times", []),
+                "intensities": p.get("intensities", []),
+                "intensities_err": p.get("intensities_err", []),
+                "fit_times_dense": p.get("fit_times_dense", []),
+                "fit_intensities_dense": p.get("fit_intensities_dense", []),
+                "fit_intensities_lower_68": p.get("fit_intensities_lower_68", []),
+                "fit_intensities_upper_68": p.get("fit_intensities_upper_68", []),
+                "fit_intensities_lower_95": p.get("fit_intensities_lower_95", []),
+                "fit_intensities_upper_95": p.get("fit_intensities_upper_95", []),
+                "residuals": p.get("residuals", []),
+            }
 
-        # Resolve parameters with uncertainties
-        dw_res = resolver.resolve("dw_ab", raw_key)
-        r1a_res = resolver.resolve("r1_a", raw_key)
-        r2a_res = resolver.resolve("r2_a", raw_key)
-        r2b_res = resolver.resolve("r2_b", raw_key)
-        csa_res = resolver.resolve("cs_a", raw_key)
-        csb_res = resolver.resolve("cs_b", raw_key)
+            not_in_mod = ResolvedParameter(name="none", scope=raw_key, value=None, status=ParameterStatus.NOT_IN_MODEL)
+            record = ResidueRecord(
+                raw_key=raw_key,
+                display_name=display_name,
+                chi2_red=chi2_red,
+                dw=not_in_mod,
+                r1a=rate_res if a_type == "R1" else not_in_mod,
+                r2a=rate_res if a_type == "R2" else not_in_mod,
+                r2b=not_in_mod,
+                csa=not_in_mod,
+                csb=not_in_mod,
+                flags=flags,
+                experiments=[],
+                rate=rate_res,
+                amplitude=amp_res,
+                decay_curve_data=decay_data,
+                res_num=p.get("res_num"),
+                res_name=p.get("res_name"),
+                rmse=p.get("rmse"),
+            )
+            residue_records.append(record)
 
-        chi2_red = params.get("chi2_red")
-        if chi2_red is None and r_data.get("chi2_red") is not None:
-            chi2_red = r_data.get("chi2_red")
+        residue_records.sort(key=lambda r: natural_sort_key(r.raw_key))
 
-        flags: list[str] = []
-        if chi2_red is not None and (chi2_red < 0.5 or chi2_red > 2.0):
-            flags.append(f"χ²ᵣ={chi2_red:.2f}")
+        rates = [r.rate.value for r in residue_records if r.rate and r.rate.value is not None]
+        errors = [r.rate.sigma for r in residue_records if r.rate and r.rate.sigma is not None]
+        chi2s = [r.chi2_red for r in residue_records if r.chi2_red is not None]
+        rmses = [r.rmse for r in residue_records if r.rmse is not None]
 
-        if dw_res.is_near_bound or r2a_res.is_near_bound or r2b_res.is_near_bound:
-            flags.append("At Bound")
+        sequence_summary = {
+            "n_residues": len(residue_records),
+            "mean_rate": float(np.mean(rates)) if rates else None,
+            "sd_rate": float(np.std(rates, ddof=1)) if len(rates) > 1 else 0.0,
+            "median_rate": float(np.median(rates)) if rates else None,
+            "mean_sigma": float(np.mean(errors)) if errors else None,
+            "min_rate": float(np.min(rates)) if rates else None,
+            "max_rate": float(np.max(rates)) if rates else None,
+            "mean_chi2_red": float(np.mean(chi2s)) if chi2s else None,
+            "mean_rmse": float(np.mean(rmses)) if rmses else None,
+            "noise_model": results_data.get("noise_model", "lineshape"),
+            "uncertainty_method": results_data.get("uncertainty_method", "covariance"),
+        }
+    else:
+        # 4. Resolve global parameters
+        kex_res = resolver.resolve("kex_ab", "global")
+        pb_res = resolver.resolve("pb", "global")
+        tauc_res = resolver.resolve("tauc_a", "global")
 
-        if dw_res.source == UncertaintySource.NONE and dw_res.status == ParameterStatus.FITTED:
-            flags.append("No Δω err")
+        global_params: list[tuple[str, ResolvedParameter]] = [
+            ("kex_ab", kex_res),
+            ("pb", pb_res),
+        ]
+        if tauc_res.status != ParameterStatus.NOT_IN_MODEL:
+            global_params.append(("tauc_a", tauc_res))
 
-        if dw_res.value and dw_res.sigma and abs(dw_res.value) > 1e-4:
-            if (dw_res.sigma / abs(dw_res.value)) > 0.5:
-                flags.append("High Δω err")
+        # 5. Derived Kinetics (Phase 7)
+        kex_samples = None
+        pb_samples = None
+        for sm_dict in resolver.resampled_cache.values():
+            p_names = [clean_param_name(x).upper() for x in sm_dict.get("parameter_names", [])]
+            reps = sm_dict.get("replicates")
+            if reps is not None and "KEX_AB" in p_names and "PB" in p_names:
+                kex_samples = reps[:, p_names.index("KEX_AB")]
+                pb_samples = reps[:, p_names.index("PB")]
+                break
 
-        record = ResidueRecord(
-            raw_key=raw_key,
-            display_name=display_name,
-            chi2_red=chi2_red,
-            dw=dw_res,
-            r1a=r1a_res,
-            r2a=r2a_res,
-            r2b=r2b_res,
-            csa=csa_res,
-            csb=csb_res,
-            flags=flags,
-            experiments=r_data.get("experiments", []),
+        derived_kinetics = propagate_derived_kinetics(
+            kex_val=kex_res.value,
+            pb_val=(pb_res.value / 100.0 if (pb_res.value and pb_res.unit == "%") else pb_res.value),
+            kex_sigma=kex_res.sigma,
+            pb_sigma=((pb_res.sigma / 100.0 if pb_res.sigma else None) if (pb_res.unit == "%") else pb_res.sigma),
+            samples={"kex": kex_samples, "pb": pb_samples} if (kex_samples is not None and pb_samples is not None) else None,
         )
-        residue_records.append(record)
+
+        # 6. Index and classify all residues and flags (Phase 5c)
+        raw_residues = results_data.get("residues", {})
+        if not raw_residues and resolver.primary_step and resolver.primary_step.residues:
+            raw_residues = {r_k: {"parameters": {}} for r_k in resolver.primary_step.residues.keys()}
+
+        sorted_keys = sorted(raw_residues.keys(), key=natural_sort_key)
+        residue_records: list[ResidueRecord] = []
+
+        for raw_key in sorted_keys:
+            display_name = residue_mapping.get(raw_key, raw_key)
+            r_data = raw_residues[raw_key]
+            params = r_data.get("parameters", {})
+
+            # Resolve parameters with uncertainties
+            dw_res = resolver.resolve("dw_ab", raw_key)
+            r1a_res = resolver.resolve("r1_a", raw_key)
+            r2a_res = resolver.resolve("r2_a", raw_key)
+            r2b_res = resolver.resolve("r2_b", raw_key)
+            csa_res = resolver.resolve("cs_a", raw_key)
+            csb_res = resolver.resolve("cs_b", raw_key)
+
+            chi2_red = params.get("chi2_red")
+            if chi2_red is None and r_data.get("chi2_red") is not None:
+                chi2_red = r_data.get("chi2_red")
+
+            flags: list[str] = []
+            if chi2_red is not None and (chi2_red < 0.5 or chi2_red > 2.0):
+                flags.append(f"χ²ᵣ={chi2_red:.2f}")
+
+            if dw_res.is_near_bound or r2a_res.is_near_bound or r2b_res.is_near_bound:
+                flags.append("At Bound")
+
+            if dw_res.source == UncertaintySource.NONE and dw_res.status == ParameterStatus.FITTED:
+                flags.append("No Δω err")
+
+            if dw_res.value and dw_res.sigma and abs(dw_res.value) > 1e-4:
+                if (dw_res.sigma / abs(dw_res.value)) > 0.5:
+                    flags.append("High Δω err")
+
+            record = ResidueRecord(
+                raw_key=raw_key,
+                display_name=display_name,
+                chi2_red=chi2_red,
+                dw=dw_res,
+                r1a=r1a_res,
+                r2a=r2a_res,
+                r2b=r2b_res,
+                csa=csa_res,
+                csb=csb_res,
+                flags=flags,
+                experiments=r_data.get("experiments", []),
+            )
+            residue_records.append(record)
 
     # 7. Finalize ledger and enforce loud failure guard
     ledger_summary = resolver.get_ledger_summary()
@@ -623,4 +752,5 @@ def build_report_model(
         step_order=step_order,
         steps=step_models,
         grid_2d=resolver.grid_2d_cache,
+        sequence_summary=sequence_summary,
     )

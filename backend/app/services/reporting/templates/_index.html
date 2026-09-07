@@ -2,6 +2,42 @@
 <h2>Residue Results Index</h2>
 
 <table>
+  {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+  <thead>
+    <tr>
+      <th style="width: 18%;">Residue</th>
+      <th class="num-right" style="width: 14%;">Red. χ²</th>
+      <th class="num-right" style="width: 26%;">
+        {% if model.analysis_type == 'R1' %}R<sub>1</sub> (s⁻¹)
+        {% elif model.analysis_type == 'R2' %}R<sub>2</sub> (s⁻¹)
+        {% else %}NOE Ratio{% endif %}
+      </th>
+      <th class="num-right" style="width: 22%;">I<sub>0</sub> (Amplitude)</th>
+      <th class="num-right" style="width: 10%;">RMSD</th>
+      <th class="num-center" style="width: 10%;">Flags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in index_data.rows %}
+    <tr>
+      <td><a class="xref" href="#{{ r.anchor }}">{{ r.display_name }}</a></td>
+      <td class="num-right">{{ r.chi2_red_str }}</td>
+      <td class="num-right">{{ r.rate_html|safe }}</td>
+      <td class="num-right">{{ r.amplitude_html|safe }}</td>
+      <td class="num-right">{{ r.rmse_str }}</td>
+      <td class="num-center">
+        {% if r.flags %}
+          {% for f in r.flags %}
+            <span class="badge-flag" title="{{ f }}">{{ f }}</span>
+          {% endfor %}
+        {% else %}
+          <span class="badge-good">PASS</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% else %}
   <thead>
     <tr>
       <th style="width: 12%;">Residue</th>
@@ -34,6 +70,7 @@
     </tr>
     {% endfor %}
   </tbody>
+  {% endif %}
 </table>
 
 <div class="table-key">

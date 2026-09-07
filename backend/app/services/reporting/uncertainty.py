@@ -64,6 +64,12 @@ PARAMETER_UNITS: Dict[str, str] = {
     "r2_c": "s⁻¹",
     "r1": "s⁻¹",
     "r2": "s⁻¹",
+    "rate": "s⁻¹",
+    "i0": "a.u.",
+    "amplitude": "a.u.",
+    "noe": "",
+    "i_sat": "a.u.",
+    "i_unsat": "a.u.",
     "pb": "%",
     "pa": "%",
     "pc": "%",
@@ -506,6 +512,21 @@ class UncertaintyResolver:
             # Convert to canonical keys and find match
             c_keys = [canonicalize(pn) for pn in p_names]
             col_idx = match_param_in_keys(param_name, scope, c_keys)
+            if col_idx is None:
+                # Try common parameter aliases for relaxation and dispersion
+                aliases = []
+                p_up = param_name.upper()
+                if p_up in ("R1", "R2", "NOE", "RATE", "R1_A", "R2_A"):
+                    aliases = ["R1", "R2", "NOE", "RATE", "R1_A", "R2_A"]
+                elif p_up in ("I0", "AMPLITUDE"):
+                    aliases = ["I0", "AMPLITUDE"]
+                elif p_up in ("I_UNSAT", "I_SAT"):
+                    aliases = ["I_UNSAT", "I_SAT"]
+                for alias in aliases:
+                    if alias != p_up:
+                        col_idx = match_param_in_keys(alias, scope, c_keys)
+                        if col_idx is not None:
+                            break
 
             if col_idx is not None:
                 col = replicates[:, col_idx]
@@ -611,6 +632,32 @@ class UncertaintyResolver:
                     cov_stderr = params_dict.get(f"{p_clean}_err")
                     if p_clean.startswith("cs_b") or p_clean.startswith("kab") or p_clean.startswith("kba") or p_clean.startswith("tau_b"):
                         is_derived = True
+
+            # Fallback to results_json["peak_results"] (native relaxation runs)
+            if value is None and self.results_json.get("peak_results"):
+                for p_entry in self.results_json.get("peak_results", []):
+                    assign = str(p_entry.get("assignment", "")).strip()
+                    res_num = str(p_entry.get("res_num", "")).strip()
+                    if assign == scope_clean or res_num == scope_clean or f"{res_num}N" == scope_clean.upper():
+                        if p_clean in ("r2", "r1", "rate", "noe", "r2_a", "r1_a"):
+                            value = p_entry.get("rate")
+                            cov_stderr = p_entry.get("rate_err_cov", p_entry.get("rate_err"))
+                        elif p_clean in ("i0", "amplitude"):
+                            value = p_entry.get("amplitude")
+                            cov_stderr = p_entry.get("amplitude_err_cov", p_entry.get("amplitude_err"))
+                        elif p_clean in ("i_sat", "sat"):
+                            ints = p_entry.get("intensities", [])
+                            ints_err = p_entry.get("intensities_err", [])
+                            if len(ints) > 1:
+                                value = ints[1]
+                                cov_stderr = ints_err[1] if len(ints_err) > 1 else None
+                        elif p_clean in ("i_unsat", "unsat"):
+                            ints = p_entry.get("intensities", [])
+                            ints_err = p_entry.get("intensities_err", [])
+                            if len(ints) > 0:
+                                value = ints[0]
+                                cov_stderr = ints_err[0] if len(ints_err) > 0 else None
+                        break
 
         if is_global and p_clean in ("kex_ab", "pb", "kex"):
             if not is_fixed:

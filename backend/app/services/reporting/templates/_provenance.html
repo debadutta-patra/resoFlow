@@ -17,14 +17,26 @@
     <tr>
       <td><strong>resoFlow Version</strong></td>
       <td>{{ prov.resoflow_version }} ({{ prov.git_sha or 'clean' }})</td>
+      {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+      <td><strong>Fitting Engine</strong></td>
+      <td>resoFlow native (lmfit/scipy)</td>
+      {% else %}
       <td><strong>ChemEx Version</strong></td>
       <td>{{ prov.chemex_version or '2026.6.1' }}</td>
+      {% endif %}
     </tr>
     <tr>
+      {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+      <td><strong>Noise Model</strong></td>
+      <td><code>{{ (model.sequence_summary and model.sequence_summary.noise_model) or 'lineshape' }}</code></td>
+      <td><strong>Relaxation Model</strong></td>
+      <td>{{ prov.model_name|upper }}</td>
+      {% else %}
       <td><strong>Container Digest</strong></td>
-      <td><code>{{ prov.chemex_image_digest[:20] }}...</code></td>
+      <td><code>{{ (prov.chemex_image_digest[:20] + '...') if prov.chemex_image_digest else 'Host / Local' }}</code></td>
       <td><strong>Kinetic Model</strong></td>
       <td>{{ prov.model_name|upper }}</td>
+      {% endif %}
     </tr>
     <tr>
       <td><strong>Static Field (B₀)</strong></td>
@@ -34,13 +46,18 @@
     </tr>
     <tr>
       <td><strong>Minimizer</strong></td>
-      <td>{{ prov.minimizer }}</td>
+      <td>{{ prov.minimizer or 'Levenberg-Marquardt' }}</td>
       <td><strong>Status</strong></td>
       <td><span class="badge-status">{{ prov.convergence_status|upper }}</span></td>
     </tr>
     <tr>
+      {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+      <td><strong>Uncertainty Method</strong></td>
+      <td>{{ (model.sequence_summary and model.sequence_summary.uncertainty_method|title) or 'Covariance' }}</td>
+      {% else %}
       <td><strong>Δω Sign Convention</strong></td>
-      <td>{{ prov.delta_omega_convention[:35] }}...</td>
+      <td>{{ (prov.delta_omega_convention[:35] + '...') if prov.delta_omega_convention else 'N/A' }}</td>
+      {% endif %}
       <td><strong>Uncertainty Sources</strong></td>
       <td>{{ prov.uncertainty_sources_used|join(', ') }}</td>
     </tr>

@@ -1227,20 +1227,20 @@ def _render_analysis_html(
     palette: Optional[str] = None,
 ) -> HTMLResponse:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
         raise HTTPException(
             status_code=400,
-            detail=f"Interactive reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
-        is_cpmg = atype == "CPMG"
+        report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
-            analysis_type="CPMG" if is_cpmg else "CEST",
+            analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
         )
         html_str = render_html(model, style=style, palette=palette)
@@ -1252,20 +1252,20 @@ def _render_analysis_html(
 
 def _render_analysis_json(analysis: models.Analysis) -> Response:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
         raise HTTPException(
             status_code=400,
-            detail=f"Interactive reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
-        is_cpmg = atype == "CPMG"
+        report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
-            analysis_type="CPMG" if is_cpmg else "CEST",
+            analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
         )
         json_str = json.dumps(model.to_dict())
@@ -1281,16 +1281,16 @@ def _render_or_serve_pdf(
     palette: Optional[str] = None,
 ):
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
         raise HTTPException(
             status_code=400,
-            detail=f"Publication reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
-    is_cpmg = atype == "CPMG"
-    type_name = "cpmg" if is_cpmg else "cest"
+    report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
+    type_name = report_atype.lower()
 
     if palette and palette != "okabe_ito":
         safe_palette = "".join(c for c in palette if c.isalnum() or c in ("_", "-"))
@@ -1309,7 +1309,7 @@ def _render_or_serve_pdf(
         pdf_buf = generate_modern_pdf_report(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
-            analysis_type=type_name.upper(),
+            analysis_type=report_atype,
             style=style,
             palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
@@ -1340,10 +1340,10 @@ def _trigger_pdf_async(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Publication reports are currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     if analysis.status != "COMPLETED":
         raise HTTPException(
@@ -1405,10 +1405,10 @@ def _trigger_plots_export_async(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Plot archive export is currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Plot archive export is available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     if analysis.status != "COMPLETED":
         raise HTTPException(
