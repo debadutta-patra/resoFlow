@@ -168,6 +168,8 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
 
     _log(f"Starting {analysis.analysis_type} relaxation analysis (ID: {analysis_uuid})")
     _log(f"Configured parallel workers: {workers}")
+    _log(f"DB results_path: {analysis.results_path!r} → resolved res_file: {res_file!r}")
+    _log(f"DB log_path: {analysis.log_path!r} → resolved log_file: {log_file!r}")
 
     # Parse configured noise model and uncertainty method
     params = json.loads(analysis.parameters) if analysis.parameters else {}
@@ -442,6 +444,8 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
         # Save results
         if res_file and run_dir:
             os.makedirs(run_dir, exist_ok=True)
+            _log(f"Results will be written to: {res_file}")
+            _log(f"Run directory: {run_dir}")
 
             # Persist Parameters/fitted.toml for ChemEx-style readers
             param_dir = os.path.join(run_dir, "Parameters")
@@ -612,8 +616,13 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
                 "uncertainty_results": {k: v.model_dump() for k, v in unc_results_map.items()},
             }
 
+            _log(f"Writing {len(peak_results)} peak results to {res_file}...")
             with open(res_file, 'w', encoding="utf-8") as f:
                 json.dump(results_payload, f, indent=4, default=_json_serializable)
+            _log(f"Results written successfully ({os.path.getsize(res_file)} bytes).")
+        else:
+            logger.error(f"[{analysis_uuid}] Cannot write results: res_file={res_file!r}, run_dir={run_dir!r}")
+            _log(f"WARNING: Results NOT written to disk — results_path could not be resolved (res_file={res_file}, run_dir={run_dir})")
 
         _log(f"Analysis completed successfully. Fitted {len(peak_results)} peaks.")
         analysis.status = "COMPLETED"
