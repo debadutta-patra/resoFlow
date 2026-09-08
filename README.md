@@ -11,6 +11,7 @@ For a walkthrough of using the app itself (projects, peak fitting, CPMG/CEST/rel
 - [Architecture](#architecture)
 - [Core features](#core-features)
 - [Installation](#installation)
+  - [Extra browsable directories](#extra-browsable-directories)
   - [Updating resoFlow](#updating-resoflow)
   - [Backing up and restoring](#backing-up-and-restoring)
   - [Troubleshooting](#troubleshooting)
@@ -230,7 +231,8 @@ Run without flags in a terminal, the installer prompts interactively for:
 
 1. **Base port** for the web UI (default `8080`; the API gets `8000` if you keep the default, or `port + 1` otherwise).
 2. **Host storage path** for project data — spectra, ChemEx output trees, the project JSON index (default `~/.local/share/resoflow/projects`).
-3. Whether to **create an administrator account** now (email, full name, password), so there's a usable login the moment the pod comes up.
+3. **Additional browsable directories** — any directories outside that storage path the file browser should be able to reach (an instrument drive, a NAS mount). Blank for none; changeable later.
+4. Whether to **create an administrator account** now (email, full name, password), so there's a usable login the moment the pod comes up.
 
 For scripted/unattended installs on any platform, pass CLI flags:
 
@@ -238,6 +240,7 @@ For scripted/unattended installs on any platform, pass CLI flags:
 ./deploy/install.sh -y \
   --port 50000 \
   --data-dir /mnt/nmr_data \
+  --extra-browse-root /mnt/spectrometer \
   --admin-email admin@lab.org \
   --admin-password 'change-me'
 ```
@@ -248,6 +251,7 @@ For scripted/unattended installs on any platform, pass CLI flags:
 | `--api-port PORT` | Override the internal backend API port explicitly. |
 | `--lan` | Allow access over local network (binds to `0.0.0.0` instead of `127.0.0.1`). |
 | `--bind IP` | Bind IP address for Web UI (default `127.0.0.1`). |
+| `--extra-browse-root PATH` | Additional host directory the file browser may reach, beyond the data directory. Repeat for several. Sets up the container bind mount and the backend setting together. See [Extra browsable directories](#extra-browsable-directories). |
 | `-d`, `--data-dir PATH` | Host directory for project/spectra storage (default `~/.local/share/resoflow/projects`). |
 | `--podman PATH` | Path to Podman binary, directory, or static `.tar.gz` archive (default: uses `podman` in `$PATH` or auto-detects bundled Podman). |
 | `--use-bundled-podman` | Extract and use the bundled static Podman archive from the offline distribution bundle. |
@@ -310,6 +314,32 @@ podman ps --filter pod=resoflow    # all five should be Up
 
 ### Managing the deployment
 
+The installer puts a `resoflow` command on your PATH that wraps whichever supervisor it picked, so the same commands work on Linux, WSL and macOS:
+
+```bash
+resoflow status            # service + container state, and whether the UI answers
+resoflow start
+resoflow stop
+resoflow restart           # runs daemon-reload first, so unit-file edits are picked up
+resoflow logs              # follow api and worker
+resoflow logs api          # or: worker | web | postgres | redis
+resoflow url               # print the web address
+resoflow browse-roots ...  # see Extra browsable directories above
+```
+
+Start and stop walk the services in dependency order — Postgres and Redis come up first and go down last, so the database outlives its clients. Services absent from a partial install are skipped rather than reported as errors.
+
+Both `resoflow` and `resoflow-browse-roots` are symlinked into `~/.local/bin`, so **that directory needs to be on your `PATH`**. Most distributions add it automatically when it exists, but if `resoflow: command not found` comes back, add it:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc   # or ~/.zshrc
+source ~/.bashrc
+```
+
+The installer checks this at the end and tells you if it's missing. Either way the real scripts live in `~/.local/share/resoflow/scripts/`, so `~/.local/share/resoflow/scripts/resoflow-ctl.sh status` always works.
+
+The underlying commands remain available if you need finer control.
+
 **Linux / Windows (WSL 2)** — everything hangs off the pod service; restarting it cascades to all five containers:
 
 ```bash
@@ -334,6 +364,35 @@ launchctl list | grep org.resoflow
 ```
 
 Note that `launchctl unload` on `org.resoflow.pod` does not stop the containers — the agent is a one-shot `start` invocation. Use `resoflow-service.sh stop`. Service logs live in `~/.local/share/resoflow/logs/`.
+
+**If `podman ps` shows nothing while the services are plainly running**, your terminal is redirecting `XDG_DATA_HOME` — snap- and flatpak-packaged terminals and editors do this — so `podman` is reading a different image store than the services use. `resoflow status` reports the store path when this happens. Building or inspecting images from such a terminal will silently act on the wrong store; run those from a normal shell, or override `XDG_DATA_HOME=~/.local/share`.
+
+### Extra browsable directories
+
+The in-app file browser is confined to the data directory you chose at install time. Anything outside it is refused with a 403 — that boundary is what keeps one lab member's account from reading the rest of the host.
+
+When spectra genuinely live elsewhere (an instrument drive, a NAS share), name those directories and resoFlow will allow them. Two things have to line up for that to work — a bind mount into the api and worker containers, and the backend's list of permitted roots — so this is managed by tooling rather than by editing files. Setting only one half fails *silently*: an unmounted path doesn't exist inside the container, so the backend drops it without an error.
+
+At install time:
+
+```bash
+./deploy/install.sh --extra-browse-root /mnt/spectrometer
+```
+
+Afterwards, with the `resoflow-browse-roots` command the installer puts on your PATH:
+
+```bash
+resoflow-browse-roots list
+resoflow-browse-roots add /mnt/spectrometer
+resoflow-browse-roots add /srv/nas/nmr /media/backup     # several at once
+resoflow-browse-roots remove /mnt/spectrometer
+```
+
+Give **host** paths, as your shell sees them. Each one is mounted at `/data/extra/<name>` inside the containers, `RESOFLOW_EXTRA_BROWSE_ROOTS` is regenerated to match, and `resoflow-api` and `resoflow-worker` are restarted so the change takes effect immediately. The worker gets the mount too — without it, a fit on a spectrum from that directory would fail with a missing file long after the pick appeared to succeed.
+
+Directories inside the data directory are already browsable and are skipped. Paths containing whitespace are rejected, since they cannot be expressed in the container unit files. A directory that doesn't exist is reported rather than silently ignored.
+
+If the command is not on your PATH, it also lives at `~/.local/share/resoflow/scripts/browse-roots.sh`.
 
 ### Updating resoFlow
 
@@ -544,6 +603,7 @@ The backend reads configuration entirely from environment variables (see `deploy
 | `RESOFLOW_CHEMEX_IMAGE` | `localhost/resoflow-chemex:latest` | Podman image used to run ChemEx fits. |
 | `RESOFLOW_HOST_DATA_ROOT` / `RESOFLOW_CONTAINER_DATA_ROOT` | unset | Path translation between the worker's view of project data and the Podman host's view, needed when the worker itself runs in a container. |
 | `CONTAINER_HOST` | unset | Podman API socket URL, for containerized workers talking to the host's rootless Podman. |
+| `RESOFLOW_EXTRA_BROWSE_ROOTS` / `RESOFLOW_EXTRA_MOUNTS` | unset | Extra directories the file explorer may browse, beyond the project data root. **Managed for you** — set them with `--extra-browse-root` at install time or `resoflow-browse-roots` afterwards (see [Extra browsable directories](#extra-browsable-directories)) rather than by hand, since each root also needs a matching bind mount in the api and worker containers. Paths outside the data root and these extras are refused with a 403; with none set, the explorer is confined to the data root. |
 | `WEB_PORT` / `API_PORT` | `8080` / `8000` | Ports the `resoflow-web` (Caddy) and `resoflow-api` containers listen on; set by the installer. |
 
 ## Testing
@@ -563,3 +623,8 @@ npm run lint
 npm run test       # vitest
 npm run build       # tsc -b && vite build
 ```
+
+Most frontend tests run over plain modules. Component tests that need a DOM opt
+in per file with a `@vitest-environment jsdom` docblock (see
+`src/components/FileBrowserModal.test.tsx`), which keeps the pure-logic suites
+running without the jsdom startup cost.

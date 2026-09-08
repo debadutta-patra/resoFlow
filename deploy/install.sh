@@ -23,6 +23,8 @@ ADMIN_NAME="Administrator"
 CREATE_ADMIN=""
 NON_INTERACTIVE=false
 BIND_HOST="127.0.0.1"
+EXTRA_BROWSE_ROOTS=()
+EXTRA_ROOTS_GIVEN=false
 
 # Podman binary and supervisor options
 PODMAN_CUSTOM_PATH="${PODMAN_BIN:-${PODMAN_PATH:-}}"
@@ -46,6 +48,11 @@ Options:
       --bind IP            Bind IP address for Web UI (default: 127.0.0.1)
   -d, --data-dir PATH      Host storage directory for projects and spectra
                            (default: ~/.local/share/resoflow/projects)
+      --extra-browse-root PATH
+                           Additional host directory the file explorer may browse,
+                           beyond the data directory. Repeat for several. The bind
+                           mount and backend setting are wired up for you.
+                           Change later with: resoflow-browse-roots add|remove PATH
       --podman PATH        Path to Podman binary, directory, or static .tar.gz archive
                            (default: uses 'podman' in PATH or auto-detects bundled static Podman)
       --use-bundled-podman Extract and use bundled static Podman archive from offline bundle
@@ -64,6 +71,7 @@ Examples:
   ./deploy/install.sh --podman /opt/podman-static/podman
   ./deploy/install.sh --podman ./podman-linux-amd64.tar.gz
   ./deploy/install.sh --lan --port 50000 --data-dir /data
+  ./deploy/install.sh --data-dir /data --extra-browse-root /mnt/spectrometer
   ./deploy/install.sh -y --port 8080 --admin-email admin@lab.org --admin-password secret
 EOF
     exit 0
@@ -90,6 +98,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--data-dir)
             DATA_DIR="$2"
+            shift 2
+            ;;
+        --extra-browse-root|--extra-browse-roots)
+            EXTRA_BROWSE_ROOTS+=("$2")
+            EXTRA_ROOTS_GIVEN=true
             shift 2
             ;;
         --podman|--podman-bin|--podman-path)
@@ -410,6 +423,22 @@ if [ "$IS_TTY" = true ]; then
         DATA_DIR="${input_data_dir}"
     fi
 
+    # Extra browse roots prompt. The explorer is confined to the data directory
+    # above; anything else a user needs to reach has to be named here (or later
+    # with resoflow-browse-roots).
+    if [ "${EXTRA_ROOTS_GIVEN}" = false ]; then
+        echo ""
+        echo "The file browser is limited to the storage path above."
+        echo "If spectra live elsewhere (an instrument drive, a NAS mount), list those"
+        echo "directories now, separated by spaces. Leave blank for none."
+        read -r -p "Additional browsable directories []: " input_extra_roots
+        if [ -n "${input_extra_roots}" ]; then
+            # shellcheck disable=SC2206
+            EXTRA_BROWSE_ROOTS=(${input_extra_roots})
+            EXTRA_ROOTS_GIVEN=true
+        fi
+    fi
+
     # Admin account prompt
     if [ -z "${CREATE_ADMIN}" ]; then
         echo ""
@@ -622,6 +651,31 @@ fi
 cp -f "${SCRIPT_DIR}/backup.sh" "${SCRIPTS_DIR}/backup.sh"
 chmod +x "${SCRIPTS_DIR}/backup.sh"
 
+# Browse-root management, so extra directories can be added after install
+# without hand-editing unit files.
+if [ -f "${SCRIPT_DIR}/browse-roots.sh" ] && [ -f "${SCRIPT_DIR}/lib/browse_roots.sh" ]; then
+    mkdir -p "${SCRIPTS_DIR}/lib"
+    cp -f "${SCRIPT_DIR}/browse-roots.sh" "${SCRIPTS_DIR}/browse-roots.sh"
+    cp -f "${SCRIPT_DIR}/lib/browse_roots.sh" "${SCRIPTS_DIR}/lib/browse_roots.sh"
+    chmod +x "${SCRIPTS_DIR}/browse-roots.sh"
+    if [ -d "${HOME}/.local/bin" ] || mkdir -p "${HOME}/.local/bin" 2>/dev/null; then
+        ln -sf "${SCRIPTS_DIR}/browse-roots.sh" "${HOME}/.local/bin/resoflow-browse-roots"
+    fi
+fi
+
+# Service control command.
+CTL_INSTALLED=false
+CTL_ON_PATH=false
+if [ -f "${SCRIPT_DIR}/resoflow-ctl.sh" ]; then
+    cp -f "${SCRIPT_DIR}/resoflow-ctl.sh" "${SCRIPTS_DIR}/resoflow-ctl.sh"
+    chmod +x "${SCRIPTS_DIR}/resoflow-ctl.sh"
+    CTL_INSTALLED=true
+    if [ -d "${HOME}/.local/bin" ] || mkdir -p "${HOME}/.local/bin" 2>/dev/null; then
+        ln -sf "${SCRIPTS_DIR}/resoflow-ctl.sh" "${HOME}/.local/bin/resoflow"
+        CTL_ON_PATH=true
+    fi
+fi
+
 USER_SYSTEMD_DIR="${HOME}/.config/systemd/user"
 
 if [ "${DEPLOY_MODE}" = "launchd" ]; then
@@ -711,6 +765,47 @@ else
     cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.service" "${USER_SYSTEMD_DIR}/"
     cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/"
     echo -e "${GREEN}✓ Systemd user units installed with customized ports, storage, and Podman binary (${PODMAN_BIN}).${NC}"
+fi
+
+# 6b. Wire up any extra browse roots (bind mounts + backend setting together).
+if [ -f "${SCRIPT_DIR}/lib/browse_roots.sh" ]; then
+    # shellcheck source=lib/browse_roots.sh
+    . "${SCRIPT_DIR}/lib/browse_roots.sh"
+    BROWSE_ROOTS_LIB=true
+else
+    BROWSE_ROOTS_LIB=false
+    if [ "${EXTRA_ROOTS_GIVEN}" = true ]; then
+        echo -e "${RED}Cannot configure extra browse roots: lib/browse_roots.sh is missing.${NC}" >&2
+    fi
+fi
+
+if [ "${BROWSE_ROOTS_LIB}" = true ] && [ "${EXTRA_ROOTS_GIVEN}" = true ]; then
+    echo -e "\n${BLUE}Configuring additional browsable directories...${NC}"
+    for extra_root in ${EXTRA_BROWSE_ROOTS[@]+"${EXTRA_BROWSE_ROOTS[@]}"}; do
+        [ -n "${extra_root}" ] || continue
+        br_status="$(br_mounts_add "${extra_root}" "${DATA_DIR}" || true)"
+        case "${br_status}" in
+            added)
+                echo -e "  ${GREEN}✓ ${extra_root}${NC}" ;;
+            exists)
+                echo -e "  ${YELLOW}• ${extra_root} already configured${NC}" ;;
+            covered)
+                echo -e "  ${YELLOW}• ${extra_root} is inside the data directory and already browsable${NC}" ;;
+            missing)
+                echo -e "  ${RED}✗ ${extra_root} does not exist or is not a directory${NC}" ;;
+            whitespace)
+                echo -e "  ${RED}✗ ${extra_root} contains whitespace, which unit files cannot express${NC}" ;;
+            *)
+                echo -e "  ${RED}✗ ${extra_root}: unexpected result '${br_status}'${NC}" ;;
+        esac
+    done
+fi
+
+# Always sync: this also re-applies previously configured roots onto unit files
+# that were just regenerated from the templates.
+if [ "${BROWSE_ROOTS_LIB}" = true ]; then
+    br_sync
+    echo -e "${GREEN}✓ Browse roots synced to unit files and ${ENV_FILE}.${NC}"
 fi
 
 # 7. Enable Daemons / Sockets / Timers
@@ -883,7 +978,45 @@ if [ "$READY" = true ]; then
         echo -e "  - Admin login email:  ${BOLD}${ADMIN_EMAIL}${NC}"
     fi
 
-    if [ "${DEPLOY_MODE}" = "launchd" ]; then
+    if [ "${CTL_INSTALLED}" = true ]; then
+        echo -e "\n${BLUE}${BOLD}Management commands:${NC}"
+        echo -e "  Status:       ${BOLD}resoflow status${NC}"
+        echo -e "  Start:        ${BOLD}resoflow start${NC}"
+        echo -e "  Stop:         ${BOLD}resoflow stop${NC}"
+        echo -e "  Restart:      ${BOLD}resoflow restart${NC}"
+        echo -e "  Logs:         ${BOLD}resoflow logs${NC}         (or: resoflow logs api)"
+        echo -e "  Web address:  ${BOLD}resoflow url${NC}"
+        if [ -f "${SCRIPTS_DIR}/browse-roots.sh" ]; then
+            echo -e "\n${BLUE}Let the file browser reach directories outside ${DATA_DIR}:${NC}"
+            echo -e "  List:    ${BOLD}resoflow browse-roots list${NC}"
+            echo -e "  Add:     ${BOLD}resoflow browse-roots add /path/to/spectra${NC}"
+            echo -e "  Remove:  ${BOLD}resoflow browse-roots remove /path/to/spectra${NC}"
+        fi
+
+        # The commands above only resolve if ~/.local/bin is on PATH. Saying so
+        # here is cheaper than the user discovering "command not found" later.
+        case ":${PATH}:" in
+            *":${HOME}/.local/bin:"*)
+                : ;;
+            *)
+                SHELL_RC="${HOME}/.profile"
+                case "$(basename "${SHELL:-sh}")" in
+                    zsh)  SHELL_RC="${HOME}/.zshrc" ;;
+                    bash) SHELL_RC="${HOME}/.bashrc" ;;
+                esac
+                echo -e "\n${YELLOW}${BOLD}Note: ${HOME}/.local/bin is not on your PATH,${NC}"
+                echo -e "${YELLOW}so the 'resoflow' command above will not be found yet. Add it with:${NC}"
+                echo -e "  ${BOLD}echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ${SHELL_RC}${NC}"
+                echo -e "  ${BOLD}source ${SHELL_RC}${NC}"
+                echo -e "${YELLOW}Until then, use the full path:${NC}"
+                echo -e "  ${BOLD}${SCRIPTS_DIR}/resoflow-ctl.sh status${NC}"
+                ;;
+        esac
+        if [ "${CTL_ON_PATH}" != true ]; then
+            echo -e "\n${YELLOW}Could not create ${HOME}/.local/bin/resoflow; use the full path:${NC}"
+            echo -e "  ${BOLD}${SCRIPTS_DIR}/resoflow-ctl.sh status${NC}"
+        fi
+    elif [ "${DEPLOY_MODE}" = "launchd" ]; then
         echo -e "\n${BLUE}macOS management commands:${NC}"
         echo -e "  Status:  ${BOLD}${SCRIPTS_DIR}/resoflow-service.sh status${NC}"
         echo -e "  Logs:    ${BOLD}${PODMAN_BIN} logs -f resoflow-api${NC}"

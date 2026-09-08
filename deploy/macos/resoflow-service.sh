@@ -48,6 +48,20 @@ start_pod() {
         API_PORT="${API_PORT:-8000}"
         DATA_DIR="${RESOFLOW_HOST_DATA_ROOT:-${HOME}/.local/share/resoflow/projects}"
 
+        # Extra browse roots, written by install.sh / resoflow-browse-roots as
+        # "host:container;host:container". Mounted into api and worker so the
+        # paths in RESOFLOW_EXTRA_BROWSE_ROOTS actually exist in the container.
+        EXTRA_MOUNT_ARGS=()
+        if [ -n "${RESOFLOW_EXTRA_MOUNTS:-}" ]; then
+            OLD_IFS="${IFS}"
+            IFS=';'
+            for pair in ${RESOFLOW_EXTRA_MOUNTS}; do
+                [ -n "${pair}" ] || continue
+                EXTRA_MOUNT_ARGS+=("-v" "${pair%%:*}:${pair#*:}")
+            done
+            IFS="${OLD_IFS}"
+        fi
+
         # Ensure persistent volumes
         podman volume exists resoflow-pgdata 2>/dev/null || podman volume create resoflow-pgdata >/dev/null
         podman volume exists resoflow-redisdata 2>/dev/null || podman volume create resoflow-redisdata >/dev/null
@@ -70,6 +84,7 @@ start_pod() {
         podman run -d --name resoflow-api --pod resoflow --restart always \
             --env-file "${ENV_FILE}" \
             -v "${DATA_DIR}:/data/projects" \
+            ${EXTRA_MOUNT_ARGS[@]+"${EXTRA_MOUNT_ARGS[@]}"} \
             localhost/resoflow-api:latest \
             sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT}"
 
@@ -80,6 +95,7 @@ start_pod() {
             --env CONTAINER_HOST=unix:///run/podman/podman.sock \
             -v "${DATA_DIR}:/data/projects" \
             -v "${PODMAN_SOCK}:/run/podman/podman.sock" \
+            ${EXTRA_MOUNT_ARGS[@]+"${EXTRA_MOUNT_ARGS[@]}"} \
             localhost/resoflow-worker:latest
 
         # Start Web Proxy (Caddy)

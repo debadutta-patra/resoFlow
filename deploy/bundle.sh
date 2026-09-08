@@ -29,7 +29,7 @@ echo -e "${BLUE}${BOLD}======================================================${N
 
 # 1. Clean and prepare output directory
 rm -rf "${BUNDLE_DIR}" "${ARCHIVE_PATH}"
-mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet" "${BUNDLE_DIR}/systemd" "${BUNDLE_DIR}/macos" "${BUNDLE_DIR}/windows" "${BUNDLE_DIR}/podman"
+mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet" "${BUNDLE_DIR}/systemd" "${BUNDLE_DIR}/macos" "${BUNDLE_DIR}/windows" "${BUNDLE_DIR}/podman" "${BUNDLE_DIR}/lib"
 
 # 2. Copy Quadlet units, systemd templates, macOS/Windows assets, and lifecycle scripts
 echo -e "\n${BLUE}[1/5] Copying deployment scripts and platform assets...${NC}"
@@ -40,7 +40,12 @@ cp -f "${SCRIPT_DIR}/windows/"* "${BUNDLE_DIR}/windows/" 2>/dev/null || true
 cp -f "${SCRIPT_DIR}/backup.sh" "${BUNDLE_DIR}/backup.sh"
 cp -f "${SCRIPT_DIR}/install.sh" "${BUNDLE_DIR}/install.sh"
 cp -f "${SCRIPT_DIR}/uninstall.sh" "${BUNDLE_DIR}/uninstall.sh"
-chmod +x "${BUNDLE_DIR}/install.sh" "${BUNDLE_DIR}/uninstall.sh" "${BUNDLE_DIR}/backup.sh" "${BUNDLE_DIR}/macos/resoflow-service.sh" 2>/dev/null || true
+# install.sh sources lib/browse_roots.sh, and installs browse-roots.sh for
+# post-install use; both must travel with the bundle.
+cp -f "${SCRIPT_DIR}/lib/"* "${BUNDLE_DIR}/lib/"
+cp -f "${SCRIPT_DIR}/browse-roots.sh" "${BUNDLE_DIR}/browse-roots.sh"
+cp -f "${SCRIPT_DIR}/resoflow-ctl.sh" "${BUNDLE_DIR}/resoflow-ctl.sh"
+chmod +x "${BUNDLE_DIR}/install.sh" "${BUNDLE_DIR}/uninstall.sh" "${BUNDLE_DIR}/backup.sh" "${BUNDLE_DIR}/browse-roots.sh" "${BUNDLE_DIR}/resoflow-ctl.sh" "${BUNDLE_DIR}/macos/resoflow-service.sh" 2>/dev/null || true
 
 # 2b. Download podman-static binaries (Linux only)
 echo -e "\n${BLUE}[1b/5] Downloading podman-static v${PODMAN_STATIC_VER} for Linux...${NC}"

@@ -92,6 +92,7 @@ if [ "$PURGE_DATA" = true ]; then
     if [ -d "${DATA_DIR}" ]; then
         rm -rf "${DATA_DIR}"
     fi
+    rm -f "${HOME}/.local/bin/resoflow-browse-roots" "${HOME}/.local/bin/resoflow"
     rm -rf "${HOME}/.local/share/resoflow"
     echo -e "${GREEN}✓ Data directories, volumes, and secrets purged.${NC}"
 else
