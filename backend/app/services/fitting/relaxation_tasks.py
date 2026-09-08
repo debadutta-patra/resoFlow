@@ -152,7 +152,24 @@ def run_relaxation_analysis_task(self, analysis_uuid: str, spectrum_ids: list, w
     if log_file:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-    res_file = resolve_existing_path(analysis.results_path) or analysis.results_path
+    # Resolve results_path: the file does not exist yet, so we cannot use
+    # resolve_existing_path on it directly (it would fall through to a
+    # container-mapped path that may land on the overlay rather than the
+    # volume mount).  Instead, resolve the *parent directory* — which the
+    # API already created and which therefore exists on the volume mount —
+    # then append the filename.
+    _raw_res = analysis.results_path
+    if _raw_res:
+        _res_dir = resolve_existing_path(os.path.dirname(_raw_res))
+        if _res_dir:
+            res_file = os.path.join(_res_dir, os.path.basename(_raw_res))
+        else:
+            # Fallback: derive from the log file directory (same run dir)
+            res_file = os.path.join(os.path.dirname(log_file), os.path.basename(_raw_res)) if log_file else _raw_res
+    else:
+        # Last resort: place results.json next to the log file
+        res_file = os.path.join(os.path.dirname(log_file), "results.json") if log_file else None
+
     run_dir = os.path.dirname(res_file) if res_file else None
     if run_dir:
         os.makedirs(run_dir, exist_ok=True)
