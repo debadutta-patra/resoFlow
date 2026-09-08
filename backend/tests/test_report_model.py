@@ -16,6 +16,8 @@ from app.services.reporting.model import (
     StepReportModel,
     build_report_model,
     natural_sort_key,
+    is_residue_excluded,
+    is_param_excluded,
 )
 from app.services.reporting.report_generator import ReportBuilder, generate_modern_pdf_report
 from app.services.reporting.uncertainty import UncertaintySource, ParameterStatus
@@ -238,4 +240,113 @@ class TestReportModel:
         assert s2.has_statistics is True
         assert len(s2.resampled) > 0
         assert s2.ledger.get(UncertaintySource.RESAMPLED.value, 0) > 0
+
+    def test_residue_exclusion_helpers(self):
+        """Verify is_residue_excluded and is_param_excluded logic."""
+        excluded = ["10PHE", "15N"]
+        assert is_residue_excluded("10PHE", excluded) is True
+        assert is_residue_excluded("10phe", excluded) is True
+        assert is_residue_excluded("10", excluded) is True
+        assert is_residue_excluded(10, excluded) is True
+        assert is_residue_excluded("11ASN", excluded) is False
+
+        # Parameter checks
+        assert is_param_excluded("[R2, NUC->10PHE]", excluded) is True
+        assert is_param_excluded("I0, NUC->10PHE", excluded) is True
+        assert is_param_excluded("[DW_AB, NUC->15N]", excluded) is True
+        assert is_param_excluded("[KEX_AB]", excluded) is False
+        assert is_param_excluded("[PB]", excluded) is False
+        assert is_param_excluded("[R2, NUC->11ASN]", excluded) is False
+
+    def test_build_model_cpmg_with_exclusions(self):
+        """Verify build_report_model excludes residues in CPMG mode."""
+        # Single step test
+        fix_dir = FIXTURES_ROOT / "single_step"
+        model_full = build_report_model(
+            analysis_dir=fix_dir,
+            analysis_name="single_step",
+            analysis_type="CPMG",
+            fixed_timestamp=FIXED_TIMESTAMP,
+        )
+        assert len(model_full.residues) == 1
+        assert model_full.residues[0].raw_key == "15N"
+
+        model_excluded = build_report_model(
+            analysis_dir=fix_dir,
+            analysis_name="single_step",
+            analysis_type="CPMG",
+            fixed_timestamp=FIXED_TIMESTAMP,
+            excluded_residues=["15N"],
+        )
+        assert len(model_excluded.residues) == 0
+        assert model_excluded.excluded_residues == ["15N"]
+
+        # Multi-step test: STEP2 has 15N and 31N
+        multi_dir = FIXTURES_ROOT / "multi_step"
+        model_multi = build_report_model(
+            analysis_dir=multi_dir,
+            analysis_name="multi_step",
+            analysis_type="CPMG",
+            fixed_timestamp=FIXED_TIMESTAMP,
+            excluded_residues=["31N"],
+        )
+        assert model_multi.is_multi_step is True
+        s2 = model_multi.steps[1]
+        assert len(s2.residues) == 1
+        assert s2.residues[0].raw_key == "15N"
+
+    def test_build_model_relaxation_with_exclusions(self, tmp_path):
+        """Verify build_report_model excludes residues in relaxation mode and updates sequence_summary."""
+        results_data = {
+            "peak_results": [
+                {
+                    "assignment": "10PHE",
+                    "res_num": 10,
+                    "res_name": "PHE",
+                    "rate": 15.0,
+                    "rate_err": 0.5,
+                    "amplitude": 1000.0,
+                    "amplitude_err": 10.0,
+                    "redchi": 1.0,
+                },
+                {
+                    "assignment": "11ASN",
+                    "res_num": 11,
+                    "res_name": "ASN",
+                    "rate": 12.0,
+                    "rate_err": 0.4,
+                    "amplitude": 950.0,
+                    "amplitude_err": 9.0,
+                    "redchi": 1.1,
+                },
+            ],
+            "noise_model": "lineshape",
+            "uncertainty_method": "covariance",
+        }
+        (tmp_path / "results.json").write_text(json.dumps(results_data), encoding="utf-8")
+
+        # Full run: 2 residues
+        model_all = build_report_model(
+            analysis_dir=tmp_path,
+            analysis_name="r2_test",
+            analysis_type="R2",
+            fixed_timestamp=FIXED_TIMESTAMP,
+        )
+        assert len(model_all.residues) == 2
+        assert model_all.sequence_summary["n_residues"] == 2
+        assert model_all.sequence_summary["mean_rate"] == 13.5
+
+        # Excluded 10PHE: only 1 residue remains
+        model_ex = build_report_model(
+            analysis_dir=tmp_path,
+            analysis_name="r2_test",
+            analysis_type="R2",
+            fixed_timestamp=FIXED_TIMESTAMP,
+            excluded_residues=["10PHE"],
+        )
+        assert len(model_ex.residues) == 1
+        assert model_ex.residues[0].raw_key == "11ASN"
+        assert model_ex.sequence_summary["n_residues"] == 1
+        assert model_ex.sequence_summary["mean_rate"] == 12.0
+
 

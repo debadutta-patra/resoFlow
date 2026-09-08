@@ -5,6 +5,7 @@ Dispatched to the 'stats' queue per WeasyPrint design spec §8.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -75,6 +76,14 @@ def generate_report_pdf_task(
             palette,
         )
 
+        excluded_residues = None
+        if analysis.parameters:
+            try:
+                p_data = json.loads(analysis.parameters)
+                excluded_residues = p_data.get("excludedResidues") or p_data.get("excluded_residues")
+            except Exception:
+                pass
+
         pdf_buf = generate_modern_pdf_report(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
@@ -82,6 +91,7 @@ def generate_report_pdf_task(
             style=style,
             palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
+            excluded_residues=excluded_residues,
         )
 
         with open(pdf_path, "wb") as f:

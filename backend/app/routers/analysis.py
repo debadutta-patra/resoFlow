@@ -105,6 +105,19 @@ def update_analysis(
     for key, value in update_data.items():
         setattr(analysis, key, value)
     
+    if "parameters" in update_data:
+        try:
+            run_dir = _get_analysis_run_dir(analysis)
+            if os.path.isdir(run_dir):
+                for fname in os.listdir(run_dir):
+                    if fname.startswith("report") and fname.endswith(".pdf"):
+                        try:
+                            os.remove(os.path.join(run_dir, fname))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
     db.commit()
     db.refresh(analysis)
     return analysis
@@ -1221,6 +1234,16 @@ def restore_cest_analysis(
 
 
 
+def _extract_excluded_residues(analysis: models.Analysis) -> Optional[List[str]]:
+    if not analysis.parameters:
+        return None
+    try:
+        p_data = json.loads(analysis.parameters)
+        return p_data.get("excludedResidues") or p_data.get("excluded_residues")
+    except Exception:
+        return None
+
+
 def _render_analysis_html(
     analysis: models.Analysis,
     style: str = "screen",
@@ -1237,11 +1260,13 @@ def _render_analysis_html(
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
         report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
+        excluded = _extract_excluded_residues(analysis)
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
             analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
+            excluded_residues=excluded,
         )
         html_str = render_html(model, style=style, palette=palette)
         return HTMLResponse(content=html_str)
@@ -1262,11 +1287,13 @@ def _render_analysis_json(analysis: models.Analysis) -> Response:
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
     try:
         report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
+        excluded = _extract_excluded_residues(analysis)
         model = build_report_model(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
             analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
+            excluded_residues=excluded,
         )
         json_str = json.dumps(model.to_dict())
         return Response(content=json_str, media_type="application/json")
@@ -1306,6 +1333,7 @@ def _render_or_serve_pdf(
         )
 
     try:
+        excluded = _extract_excluded_residues(analysis)
         pdf_buf = generate_modern_pdf_report(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
@@ -1313,6 +1341,7 @@ def _render_or_serve_pdf(
             style=style,
             palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
+            excluded_residues=excluded,
         )
         try:
             with open(pdf_path, "wb") as f:

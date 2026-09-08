@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { formatUncertainty } from '../../lib/uncertaintyFormatter';
 import { parseParameterLabel } from '../../lib/parameterSymbols';
+import { isParameterExcluded, filterCorrelations } from '../../lib/residueExclusion';
 import ParameterSparkline from './ParameterSparkline';
 import MarginalDistributionModal from './MarginalDistributionModal';
 import JointDistributionModal from './JointDistributionModal';
@@ -88,6 +89,7 @@ export interface StatisticsResultsSectionProps {
   analysisUuid: string;
   stepName?: string;
   uncertaintyStatistics?: any;
+  excludedResidues?: string[];
 }
 
 function normalizeCorrelations(corrObj: any): { parameters: string[]; matrix: number[][] } | undefined {
@@ -121,6 +123,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
   analysisUuid,
   stepName,
   uncertaintyStatistics,
+  excludedResidues,
 }) => {
   if (!uncertaintyStatistics) {
     return null;
@@ -271,7 +274,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
     }
   };
 
-  // Check available parameter types in summary
+  // Check available parameter types in summary (ignoring excluded residues)
   const paramTypes = useMemo(() => {
     if (!activeMethod?.summary) {
       return { hasRates: false, hasAmps: false, hasChemShift: false, hasGlobals: false, rateName: 'Rates' };
@@ -283,6 +286,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
     let rateName = 'Rates';
 
     for (const key of Object.keys(activeMethod.summary)) {
+      if (isParameterExcluded(key, excludedResidues)) continue;
       const parsed = parseParameterLabel(key);
       if (parsed.category === 'global') hasGlobals = true;
       else if (parsed.category === 'chemical_shift') hasChemShift = true;
@@ -295,7 +299,20 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
       }
     }
     return { hasRates, hasAmps, hasChemShift, hasGlobals, rateName };
-  }, [activeMethod]);
+  }, [activeMethod, excludedResidues]);
+
+  // Total count of parameters belonging to non-excluded residues
+  const totalNonExcludedCount = useMemo(() => {
+    if (!activeMethod?.summary) return 0;
+    return Object.keys(activeMethod.summary).filter(
+      k => !isParameterExcluded(k, excludedResidues)
+    ).length;
+  }, [activeMethod?.summary, excludedResidues]);
+
+  // Correlation matrix filtered by excluded residues
+  const activeCorrelations = useMemo(() => {
+    return filterCorrelations(activeMethod?.correlations, excludedResidues);
+  }, [activeMethod?.correlations, excludedResidues]);
 
   // Filter parameters for the active method table
   const filteredParameters = useMemo(() => {
@@ -308,6 +325,11 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
         parsed: parseParameterLabel(paramName),
       }))
       .filter(({ paramName, parsed }) => {
+        // Excluded residue filter
+        if (isParameterExcluded(paramName, excludedResidues)) {
+          return false;
+        }
+
         // Category filter
         if (categoryFilter !== 'all') {
           if (categoryFilter === 'global' && parsed.category !== 'global') return false;
@@ -352,7 +374,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
 
         return a.paramName.localeCompare(b.paramName);
       });
-  }, [activeMethod, categoryFilter, searchQuery]);
+  }, [activeMethod, categoryFilter, searchQuery, excludedResidues]);
 
   const isIncomplete =
     activeMethod?.status === 'incomplete' || activeMethod?.status === 'partial';
@@ -481,6 +503,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
           <MethodComparisonTab
             methods={methods}
             onSelectParameter={p => setSelectedParamForModal(p)}
+            excludedResidues={excludedResidues}
           />
         )}
 
@@ -505,6 +528,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
             <DerivedQuantitiesCards
               summary={activeMethod.summary}
               methodName={activeMethod.method_name}
+              excludedResidues={excludedResidues}
             />
 
             {/* MCMC Diagnostics View if active tab is MCMC */}
@@ -520,7 +544,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                       Parameter Uncertainty & Distributions
                     </h4>
                     <span className="text-xs text-slate-400 font-mono">
-                      ({filteredParameters.length} of {Object.keys(activeMethod.summary).length})
+                      ({filteredParameters.length} of {totalNonExcludedCount})
                     </span>
                   </div>
 
@@ -726,9 +750,9 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
             )}
 
             {/* Pairwise Correlation Matrix (Phase 6) */}
-            {activeMethod.correlations &&
-              activeMethod.correlations.parameters &&
-              activeMethod.correlations.parameters.length > 1 && (
+            {activeCorrelations &&
+              activeCorrelations.parameters &&
+              activeCorrelations.parameters.length > 1 && (
                 <div className="space-y-3 pt-2">
                   <div className="flex items-center justify-between">
                     <div>
@@ -766,7 +790,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                           <th className="py-2 px-3 sticky left-0 bg-slate-50 dark:bg-slate-800/80 z-10"></th>
-                          {activeMethod.correlations.parameters.map(p => {
+                          {activeCorrelations.parameters.map(p => {
                             const parsed = parseParameterLabel(p);
                             const label =
                               parsed.residue && parsed.residue !== 'Global' && !parsed.displaySymbol.includes(parsed.residue)
@@ -781,7 +805,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                        {activeMethod.correlations.parameters.map((pRow, rowIdx) => {
+                        {activeCorrelations.parameters.map((pRow, rowIdx) => {
                           const parsedRow = parseParameterLabel(pRow);
                           const labelRow =
                             parsedRow.residue && parsedRow.residue !== 'Global' && !parsedRow.displaySymbol.includes(parsedRow.residue)
@@ -797,7 +821,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                                 {labelRow}
                               </td>
 
-                              {activeMethod.correlations!.parameters.map((pCol, colIdx) => {
+                              {activeCorrelations!.parameters.map((pCol, colIdx) => {
                                 // Lower triangle only: rowIdx >= colIdx
                                 if (colIdx > rowIdx) {
                                   return (
@@ -811,7 +835,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                                 }
 
                                 const val =
-                                  activeMethod.correlations!.matrix[rowIdx]?.[colIdx] ??
+                                  activeCorrelations!.matrix[rowIdx]?.[colIdx] ??
                                   (rowIdx === colIdx ? 1.0 : 0.0);
                                 const isDiag = rowIdx === colIdx;
                                 const absVal = Math.abs(val);

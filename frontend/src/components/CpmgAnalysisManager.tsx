@@ -1579,6 +1579,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
                   setTimeout(() => setSuccessMsg(''), 5000);
                 }
               }}
+              excludedResidues={parameterConfig.excludedResidues}
             />
           )}
         </div>

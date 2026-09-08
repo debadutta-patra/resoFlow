@@ -2,15 +2,18 @@ import React from 'react';
 import { Layers, Zap, Clock, ShieldCheck, Activity, BarChart2 } from 'lucide-react';
 import { formatUncertainty } from '../../lib/uncertaintyFormatter';
 import { ppmToHz } from '../../lib/parameterSymbols';
+import { isParameterExcluded } from '../../lib/residueExclusion';
 
 interface DerivedQuantitiesCardsProps {
   summary?: Record<string, any>;
   methodName?: string;
+  excludedResidues?: string[];
 }
 
 export const DerivedQuantitiesCards: React.FC<DerivedQuantitiesCardsProps> = ({
   summary = {},
   methodName,
+  excludedResidues,
 }) => {
   // Extract globals or clean keys
   const getParam = (candidates: string[]) => {
@@ -221,7 +224,7 @@ export const DerivedQuantitiesCards: React.FC<DerivedQuantitiesCardsProps> = ({
     const clean = key.trim().replace(/^\[|\]$/g, '').toUpperCase();
     const parts = clean.split(',').map(s => s.trim());
     const base = parts[0];
-    return (
+    const isRate = (
       base === 'R1' ||
       base === 'R2' ||
       base === 'HETNOE' ||
@@ -232,6 +235,11 @@ export const DerivedQuantitiesCards: React.FC<DerivedQuantitiesCardsProps> = ({
       base.startsWith('R1_') ||
       base.startsWith('R2_')
     );
+    if (!isRate) return false;
+    if (excludedResidues && isParameterExcluded(key, excludedResidues)) {
+      return false;
+    }
+    return true;
   });
 
   if (rateEntries.length === 0) {

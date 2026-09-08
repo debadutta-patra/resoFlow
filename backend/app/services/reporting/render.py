@@ -17,7 +17,7 @@ import numpy as np
 import pypdf
 import weasyprint
 
-from .model import ReportModel, ResidueRecord, StepReportModel
+from .model import ReportModel, ResidueRecord, StepReportModel, is_param_excluded
 from .formatting import format_with_error, SOURCE_SUPERSCRIPTS_HTML, format_subscript_html
 from .uncertainty import ParameterStatus, UncertaintySource, ResolvedParameter
 from .plot_styles import apply_report_style, PALETTE_METADATA
@@ -655,6 +655,12 @@ def build_statistics_data(model: ReportModel) -> Optional[Dict[str, Any]]:
             reps = sm_data.get("replicates")
             p_names = sm_data.get("parameter_names", [])
             if reps is not None and len(p_names) > 0:
+                if model.excluded_residues:
+                    keep_idx = [i for i, p in enumerate(p_names) if not is_param_excluded(p, model.excluded_residues)]
+                    if len(keep_idx) < len(p_names):
+                        p_names = [p_names[i] for i in keep_idx]
+                        reps = reps[:, keep_idx]
+
                 distributions = []
                 dist_p_indices = list(range(len(p_names)))
                 if len(dist_p_indices) > 24:

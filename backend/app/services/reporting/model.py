@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -38,6 +38,95 @@ logger = logging.getLogger(__name__)
 def natural_sort_key(s: str) -> list:
     """Sort residues numerically (e.g. 2N, 14N, 55N, 100N)."""
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r"([0-9]+)", s)]
+
+
+def is_residue_excluded(
+    residue: Any,
+    excluded: Optional[Sequence[str]],
+    res_num: Optional[int] = None,
+) -> bool:
+    """
+    Check if a residue (string like '10PHE', '15N', or int 10) matches
+    any residue in the excluded list.
+    """
+    if not excluded or residue is None:
+        return False
+
+    r_str = str(residue).strip().upper()
+    if not r_str:
+        return False
+
+    r_digits = "".join(c for c in r_str if c.isdigit())
+    r_letters = "".join(c for c in r_str if c.isalpha())
+
+    for ex in excluded:
+        if not ex:
+            continue
+        ex_str = str(ex).strip().upper()
+        if not ex_str:
+            continue
+        if r_str == ex_str:
+            return True
+
+        ex_digits = "".join(c for c in ex_str if c.isdigit())
+        ex_letters = "".join(c for c in ex_str if c.isalpha())
+
+        if res_num is not None and ex_digits and str(res_num) == ex_digits:
+            if not ex_letters or not r_letters or ex_letters == r_letters:
+                return True
+
+        if r_digits and ex_digits and r_digits == ex_digits:
+            if not r_letters or not ex_letters or r_letters == ex_letters:
+                return True
+
+    return False
+
+
+def is_param_excluded(param_name: str, excluded: Optional[Sequence[str]]) -> bool:
+    """
+    Check if a parameter name (e.g. '[R2, NUC->10PHE]', 'R2, NUC->10PHE', 'I0, NUC->10PHE')
+    is associated with an excluded residue.
+    """
+    if not excluded or not param_name:
+        return False
+
+    p_clean = param_name.strip().strip("[]")
+    parts = [x.strip() for x in p_clean.split(",")]
+    if not parts:
+        return False
+
+    base = parts[0].upper()
+    if base in ("KEX_AB", "KEX", "PB", "PA", "KAB", "KBA", "TAUC_A", "TAUC"):
+        return False
+
+    # Find NUC-> part or residue part
+    res = None
+    for part in parts[1:]:
+        if part.upper().startswith("NUC->"):
+            res = part[5:].strip()
+            break
+        elif not part.upper().startswith("B0->"):
+            res = part.strip()
+            break
+
+    if res:
+        return is_residue_excluded(res, excluded)
+
+    # Fallback substring check
+    upper_param = param_name.upper()
+    for ex in excluded:
+        if not ex:
+            continue
+        ex_upper = str(ex).strip().upper()
+        if not ex_upper:
+            continue
+        if f"NUC->{ex_upper}" in upper_param or f", {ex_upper}" in upper_param or f",{ex_upper}" in upper_param:
+            return True
+        ex_digits = "".join(c for c in ex_upper if c.isdigit())
+        if ex_digits and (f"NUC->{ex_digits}" in upper_param or f", {ex_digits}" in upper_param or f",{ex_digits}" in upper_param):
+            return True
+
+    return False
 
 
 def resolved_param_to_dict(p: ResolvedParameter) -> dict[str, Any]:
@@ -297,6 +386,7 @@ class ReportModel:
     steps: list[StepReportModel] = field(default_factory=list)
     grid_2d: Optional[Any] = None
     sequence_summary: Optional[Dict[str, Any]] = None
+    excluded_residues: Optional[list[str]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert model to plain JSON-serializable types for API and golden tests."""
@@ -316,6 +406,8 @@ class ReportModel:
             "grid_1d": to_json_serializable(self.grid_1d),
             "ledger": dict(self.ledger),
         }
+        if self.excluded_residues is not None:
+            d["excluded_residues"] = list(self.excluded_residues)
         if self.sequence_summary is not None:
             d["sequence_summary"] = to_json_serializable(self.sequence_summary)
         if self.is_multi_step:
@@ -331,6 +423,7 @@ def build_report_model(
     analysis_type: str = "CEST",
     chemex_image_digest: Optional[str] = None,
     fixed_timestamp: Optional[str] = None,
+    excluded_residues: Optional[Sequence[str]] = None,
 ) -> ReportModel:
     """
     Build the canonical ReportModel from an analysis output directory.
@@ -363,6 +456,22 @@ def build_report_model(
             except Exception:
                 pass
 
+    # 2b. Load excluded residues if not explicitly passed
+    if excluded_residues is None:
+        for cfg_name in ["cpmg_config.json", "config.json", "relaxation_config.json"]:
+            cfg_p = a_dir / cfg_name
+            if cfg_p.is_file():
+                try:
+                    c_data = json.loads(cfg_p.read_text(encoding="utf-8"))
+                    ex_cfg = c_data.get("excluded_residues") or c_data.get("excludedResidues")
+                    if ex_cfg:
+                        excluded_residues = ex_cfg
+                        break
+                except Exception:
+                    pass
+        if excluded_residues is None and results_data:
+            excluded_residues = results_data.get("excluded_residues") or results_data.get("excludedResidues")
+
     # 3. Initialize UncertaintyResolver
     resolver = UncertaintyResolver(a_dir, results_data=results_data)
 
@@ -378,6 +487,8 @@ def build_report_model(
 
         for p in peak_results:
             raw_key = str(p.get("assignment", f"Peak_{p.get('res_num', '?')}"))
+            if is_residue_excluded(raw_key, excluded_residues, res_num=p.get("res_num")):
+                continue
             display_name = residue_mapping.get(raw_key, raw_key)
             chi2_red = p.get("redchi")
 
@@ -514,6 +625,8 @@ def build_report_model(
         residue_records: list[ResidueRecord] = []
 
         for raw_key in sorted_keys:
+            if is_residue_excluded(raw_key, excluded_residues):
+                continue
             display_name = residue_mapping.get(raw_key, raw_key)
             r_data = raw_residues[raw_key]
             params = r_data.get("parameters", {})
@@ -563,7 +676,7 @@ def build_report_model(
     ledger_summary = resolver.get_ledger_summary()
     has_stats_runs = len(resolver.resampled_cache) > 0
 
-    if has_stats_runs and ledger_summary.get(UncertaintySource.RESAMPLED.value, 0) == 0:
+    if has_stats_runs and len(residue_records) > 0 and ledger_summary.get(UncertaintySource.RESAMPLED.value, 0) == 0:
         raise RuntimeError(
             "Resampling statistics artifacts were found on disk, but zero parameters "
             "resolved to them. Failing loud to prevent silent degradation."
@@ -651,6 +764,8 @@ def build_report_model(
             s_residue_records: list[ResidueRecord] = []
 
             for raw_key in s_sorted_keys:
+                if is_residue_excluded(raw_key, excluded_residues):
+                    continue
                 display_name = residue_mapping.get(raw_key, raw_key)
                 r_data = s_raw_residues[raw_key]
                 params = r_data.get("parameters", {})
@@ -753,4 +868,5 @@ def build_report_model(
         steps=step_models,
         grid_2d=resolver.grid_2d_cache,
         sequence_summary=sequence_summary,
+        excluded_residues=list(excluded_residues) if excluded_residues else None,
     )

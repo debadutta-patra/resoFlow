@@ -2498,6 +2498,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
                       projectUuid={projectUuid!}
                       analysisUuid={analysis.analysis_uuid}
                       uncertaintyStatistics={currentStepData?.statistical_analyses || (analysisResults as any)?.uncertainty_statistics}
+                      excludedResidues={parameterConfig.excludedResidues}
                     />
                   </div>
                 )}

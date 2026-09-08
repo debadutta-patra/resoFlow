@@ -99,6 +99,7 @@ export interface CpmgResultsTabProps {
   diagnostics?: CpmgDiagnosticsResult;
   unitLabel?: string;
   onApplyStartingParameters?: (coords: Record<string, number>) => void;
+  excludedResidues?: string[];
 }
 
 export const CpmgResultsTab: React.FC<CpmgResultsTabProps> = ({
@@ -116,6 +117,7 @@ export const CpmgResultsTab: React.FC<CpmgResultsTabProps> = ({
   diagnostics,
   unitLabel: _unitLabel,
   onApplyStartingParameters,
+  excludedResidues,
 }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -677,6 +679,7 @@ export const CpmgResultsTab: React.FC<CpmgResultsTabProps> = ({
             analysisUuid={analysisUuid!}
             stepName={selectedStep || undefined}
             uncertaintyStatistics={currentStepData?.statistical_analyses || (analysisResults as any)?.uncertainty_statistics}
+            excludedResidues={excludedResidues}
           />
         </div>
       )}

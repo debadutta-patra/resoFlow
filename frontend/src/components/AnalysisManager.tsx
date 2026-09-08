@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import Plot, { PLOT_COLORS } from './Plot';
 import StatisticsResultsSection from './methods/StatisticsResultsSection';
+import { isResidueExcluded } from '../lib/residueExclusion';
 
 interface Spectrum {
   id: number;
@@ -399,7 +400,9 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
       'Uncertainty Method'
     ];
 
-    const rows = results.peak_results.map((p: any) => [
+    const rows = results.peak_results
+      .filter((p: any) => !isResidueExcluded(p.assignment, excludedResidues) && (p.res_num == null || !isResidueExcluded(p.res_num, excludedResidues)))
+      .map((p: any) => [
       p.res_num || '',
       p.res_name || '',
       p.assignment,
@@ -450,8 +453,10 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
     const plotsPerPage = 2;
     let plotCount = 0;
 
-    // Sort by residue number
-    const sortedPeaks = [...results.peak_results].sort((a, b) => (a.res_num || 0) - (b.res_num || 0));
+    // Sort by residue number (excluding hidden residues)
+    const sortedPeaks = [...results.peak_results]
+      .filter((p: any) => !isResidueExcluded(p.assignment, excludedResidues) && (p.res_num == null || !isResidueExcluded(p.res_num, excludedResidues)))
+      .sort((a, b) => (a.res_num || 0) - (b.res_num || 0));
 
     for (const peak of sortedPeaks) {
         if (plotCount > 0 && plotCount % plotsPerPage === 0) {
@@ -1327,6 +1332,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                         projectUuid={projectUuid!}
                                         analysisUuid={currentAnalysis.analysis_uuid}
                                         uncertaintyStatistics={results.uncertainty_statistics}
+                                        excludedResidues={excludedResidues}
                                     />
                                 </div>
                             )}

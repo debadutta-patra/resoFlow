@@ -1,15 +1,18 @@
 import React from 'react';
 import { formatUncertainty } from '../../lib/uncertaintyFormatter';
 import { parseParameterLabel } from '../../lib/parameterSymbols';
+import { isParameterExcluded } from '../../lib/residueExclusion';
 
 interface MethodComparisonTabProps {
   methods: Record<string, any>;
   onSelectParameter?: (paramName: string) => void;
+  excludedResidues?: string[];
 }
 
 export const MethodComparisonTab: React.FC<MethodComparisonTabProps> = ({
   methods,
   onSelectParameter,
+  excludedResidues,
 }) => {
   const methodKeys = Object.keys(methods).filter(k => !!methods[k] && !!methods[k].summary);
 
@@ -28,7 +31,9 @@ export const MethodComparisonTab: React.FC<MethodComparisonTabProps> = ({
     Object.keys(sum).forEach(p => paramSet.add(p));
   });
 
-  const allParams = Array.from(paramSet).sort((a, b) => {
+  const allParams = Array.from(paramSet)
+    .filter(p => !isParameterExcluded(p, excludedResidues))
+    .sort((a, b) => {
     const labelA = parseParameterLabel(a);
     const labelB = parseParameterLabel(b);
     if (labelA.category === 'global' && labelB.category !== 'global') return -1;
