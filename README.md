@@ -53,6 +53,7 @@ For a walkthrough of using the app itself (projects, peak fitting, CPMG/CEST/rel
 - **Project & spectrum management** — organize spectra (Bruker pdata directories or NMRPipe `.ft2` files) into projects, browse/import from the host filesystem, auto-extract B0 from spectral metadata.
 - **Interactive peak fitting** — cluster picking/preview, per-cluster lineshape fitting (Gaussian/Lorentzian/pseudo-Voigt/PV-PV), re-clustering, and job-level progress/log streaming.
 - **Relaxation analysis (R1/R2/hetNOE)** — exponential decay fitting across a project's spectra with statistics.
+- **Spectral density mapping (RSDM)** — converts per-residue R1/R2/hetNOE at a single field into J(0), J(ωN) and J(0.87ωH), with full per-residue covariance, a J(0)–J(ωN) correlation plot against the rigid-rotor line, and an optional experimental chemical-exchange correction.
 - **CPMG relaxation dispersion** — ChemEx-driven dispersion curve fitting, per-experiment method/config generation, live log streaming, cancellation, and diagnostics.
 - **CEST** — ChemEx-driven CEST profile fitting with the same config/run/log/cancel lifecycle, plus PDF report generation.
 - **Statistics & uncertainty** — parses ChemEx's grid search, Monte Carlo, Bootstrap, and MCMC output trees into structured, provenance-tracked results, with parameter histograms, joint-distribution plots, and raw replicate downloads.
@@ -604,6 +605,7 @@ The backend reads configuration entirely from environment variables (see `deploy
 | `RESOFLOW_HOST_DATA_ROOT` / `RESOFLOW_CONTAINER_DATA_ROOT` | unset | Path translation between the worker's view of project data and the Podman host's view, needed when the worker itself runs in a container. |
 | `CONTAINER_HOST` | unset | Podman API socket URL, for containerized workers talking to the host's rootless Podman. |
 | `RESOFLOW_EXTRA_BROWSE_ROOTS` / `RESOFLOW_EXTRA_MOUNTS` | unset | Extra directories the file explorer may browse, beyond the project data root. **Managed for you** — set them with `--extra-browse-root` at install time or `resoflow-browse-roots` afterwards (see [Extra browsable directories](#extra-browsable-directories)) rather than by hand, since each root also needs a matching bind mount in the api and worker containers. Paths outside the data root and these extras are refused with a 403; with none set, the explorer is confined to the data root. |
+| `RESOFLOW_ENABLE_EXPERIMENTAL_SDM_REX` | `false` | Enables the **experimental** chemical-exchange (R_ex) correction in spectral density mapping. When false, the API rejects any request asking for a correction and the UI hides the controls. When true, every result derived from a corrected analysis is marked **Experimental** in the API response, the CSV export header and the PDF report footer. Off by default: these numbers are not validated and must not circulate looking as though they are. |
 | `WEB_PORT` / `API_PORT` | `8080` / `8000` | Ports the `resoflow-web` (Caddy) and `resoflow-api` containers listen on; set by the installer. |
 
 ## Testing

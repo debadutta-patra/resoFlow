@@ -31,6 +31,11 @@
     {% include "_residuals.html" %}
     {% endif %}
 
+    {% if spectral_density_data %}
+    <div class="page-break"></div>
+    {% include "_spectral_density.html" %}
+    {% endif %}
+
     {% if statistics_data %}
     <div class="page-break"></div>
     {% include "_statistics.html" %}

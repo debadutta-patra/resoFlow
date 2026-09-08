@@ -752,6 +752,79 @@ def build_statistics_data(model: Union[ReportModel, StepReportModel]) -> Optiona
     return None
 
 
+def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
+    """Render the spectral density section: profiles, correlation plot, table.
+
+    Returns None for any analysis that is not a spectral density mapping, so
+    the section simply does not appear in other reports.
+    """
+    payload = getattr(model, "spectral_density", None)
+    if not payload:
+        return None
+
+    residues = payload.get("residues") or []
+    if not residues:
+        return None
+
+    omega_n = float(
+        (payload.get("physics_snapshot") or {}).get("omega_n_rad_s") or 0.0
+    )
+
+    summary = payload.get("summary", {})
+    band = summary.get("systematic_band") or {}
+    constants = payload.get("constants_snapshot", {})
+
+    rows = []
+    for r in residues:
+        cov = r.get("covariance") or [[0.0] * 3 for _ in range(3)]
+        rows.append({
+            "assignment": r.get("assignment"),
+            "res_num": r.get("res_num"),
+            "res_name": r.get("res_name"),
+            "j0": r.get("j0"),
+            "j0_err": r.get("j0_err"),
+            "j_wn": r.get("j_wn"),
+            "j_wn_err": r.get("j_wn_err"),
+            "j_h": r.get("j_h"),
+            "j_h_err": r.get("j_h_err"),
+            "cov_j0_jwn": cov[0][1],
+            "r1": r.get("r1"),
+            "r2": r.get("r2"),
+            "noe": r.get("noe"),
+            "flags": r.get("flags") or [],
+        })
+
+    tau_ns = summary.get("tau_c_estimate_ns")
+    return {
+        "profile_svg": figures.spectral_density_profile_plot(residues),
+        "correlation_svg": figures.spectral_density_correlation_plot(residues, omega_n),
+        "rows": rows,
+        "experimental": bool(payload.get("experimental")),
+        "experimental_notice": payload.get("experimental_notice"),
+        "j0_caveat": payload.get("j0_caveat"),
+        "b0_h_mhz": payload.get("b0_h_mhz"),
+        "variant": payload.get("variant"),
+        "error_method": payload.get("error_method"),
+        "rex_source": payload.get("rex_source"),
+        "r2_provenance": payload.get("r2_provenance"),
+        "r_nh_angstrom": constants.get("r_nh_angstrom"),
+        "delta_sigma_ppm": constants.get("delta_sigma_ppm"),
+        "tau_c_ns": tau_ns,
+        "n_residues": summary.get("n_residues"),
+        "n_flagged": summary.get("n_flagged"),
+        "n_excluded": summary.get("n_excluded"),
+        "flag_counts": summary.get("flag_counts") or {},
+        "flag_descriptions": summary.get("flag_descriptions") or {},
+        "excluded_residues": payload.get("excluded_residues") or [],
+        "systematic_band": band,
+        "systematic_band_pct": {
+            "j0": (band.get("j0_fractional") or 0.0) * 100.0,
+            "j_wn": (band.get("j_wn_fractional") or 0.0) * 100.0,
+            "j_h": (band.get("j_h_fractional") or 0.0) * 100.0,
+        },
+    }
+
+
 def build_grid_1d_data(model_or_grid: Any) -> Optional[List[Dict[str, Any]]]:
     """Render 1D grid search likelihood profiles with Delta-chi2 thresholds."""
     grid_dict = model_or_grid.grid_1d if hasattr(model_or_grid, "grid_1d") else model_or_grid
@@ -930,6 +1003,7 @@ def build_report_context(
         detailed_residues = build_detailed_residues(model)
         statistics_data = build_statistics_data(model)
         grid_1d_plots = build_grid_1d_data(model)
+        spectral_density_data = build_spectral_density_data(model)
 
         if model.is_multi_step and model.steps:
             for idx, step in enumerate(model.steps):
@@ -957,6 +1031,7 @@ def build_report_context(
         "detailed_residues": detailed_residues,
         "statistics_data": statistics_data,
         "grid_1d_plots": grid_1d_plots,
+        "spectral_density_data": spectral_density_data,
         "steps_data": steps_data,
         "prov": model.provenance,
         "prov_data": prov_data,

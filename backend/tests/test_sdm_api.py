@@ -578,3 +578,104 @@ class TestSpectralDensityApi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSpectralDensityReport(TestSpectralDensityApi):
+    """PDF report generation goes through the shared generator, not a fork."""
+
+    def test_report_renders_a_pdf_with_the_section(self):
+        r1, r2, noe = self._standard_sources()
+        url = SDM_URL.format(p=self.project.project_uuid)
+        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
+                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
+        resp = self.client.post(f"{url}/{uuid}/report",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(resp.headers["content-type"], "application/pdf")
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+        self.assertGreater(len(resp.content), 5000)
+
+    def test_report_html_contains_the_spectral_density_section(self):
+        """Assert on the rendered HTML, where the section content is legible."""
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        r1, r2, noe = self._standard_sources()
+        url = SDM_URL.format(p=self.project.project_uuid)
+        created = self.client.post(url, json=self._create_body(r1, r2, noe),
+                                   headers=self._auth(self.token_a)).json()
+
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == created["analysis_uuid"])
+            .first()
+        )
+        run_dir = os.path.dirname(analysis.results_path)
+        model = build_report_model(run_dir, analysis.name, analysis_type="SDM")
+        html = render_html(model, style="screen")
+
+        self.assertIn("Reduced Spectral Density Mapping", html)
+        self.assertIn("J(0) vs J(", html)
+        self.assertIn("Per-Residue Spectral Densities", html)
+        self.assertIn("ns", html)
+        # The J(0) exchange caveat is in the report as well as the UI.
+        self.assertIn("assumes no chemical exchange", html)
+        # The systematic band is described separately from statistical error.
+        self.assertIn("not</em> included in the per-residue", html)
+        # A non-experimental report carries no marker.
+        self.assertNotIn("experimental-marker", html)
+
+    def test_report_is_refused_for_an_incomplete_analysis(self):
+        r1, r2, noe = self._standard_sources()
+        url = SDM_URL.format(p=self.project.project_uuid)
+        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
+                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        analysis.status = "RUNNING"
+        self.db.commit()
+        resp = self.client.post(f"{url}/{uuid}/report",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_experimental_report_carries_the_footer_marker(self):
+        """An experimental result must not escape looking validated.
+
+        The marker is a page string, so it lands in EVERY page footer -- not
+        just the cover someone might not print.
+        """
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        r1, r2, noe = self._standard_sources()
+        url = SDM_URL.format(p=self.project.project_uuid)
+        created = self.client.post(
+            url,
+            json=self._create_body(r1, r2, noe, rex_source="multi_field"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        body = created.json()
+        self.assertTrue(body["experimental"])
+        self.assertIn("EXPERIMENTAL", body["experimental_notice"])
+
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == body["analysis_uuid"]).first()
+        )
+        self.assertTrue(analysis.experimental)
+
+        model = build_report_model(
+            os.path.dirname(analysis.results_path), analysis.name, analysis_type="SDM"
+        )
+        html = render_html(model, style="screen")
+        self.assertIn("experimental-marker", html)
+        self.assertIn("EXPERIMENTAL", html)
+
+        csv_text = self.client.get(f"{url}/{body['analysis_uuid']}/export.csv",
+                                   headers=self._auth(self.token_a)).text
+        self.assertTrue(csv_text.startswith("#"))
+        self.assertIn("EXPERIMENTAL", csv_text.split("\n")[0])

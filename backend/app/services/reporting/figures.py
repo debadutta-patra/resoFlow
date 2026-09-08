@@ -771,3 +771,155 @@ def sequence_rate_plot(
             return _render()
     return _render()
 
+
+
+def _spectral_density_series(residues: List[Any]) -> Dict[str, np.ndarray]:
+    """Pull the J arrays out of SDM result rows, sorted along the sequence."""
+    nums, j0, jwn, jh, e0, ewn, eh, cov = [], [], [], [], [], [], [], []
+    for i, r in enumerate(residues):
+        num = r.get("res_num")
+        if num is None:
+            digits = re.findall(r"\d+", str(r.get("assignment", "")))
+            num = int(digits[0]) if digits else i + 1
+        nums.append(num)
+        j0.append(r.get("j0", np.nan))
+        jwn.append(r.get("j_wn", np.nan))
+        jh.append(r.get("j_h", np.nan))
+        e0.append(r.get("j0_err", 0.0))
+        ewn.append(r.get("j_wn_err", 0.0))
+        eh.append(r.get("j_h_err", 0.0))
+        cov.append(r.get("covariance") or [[0.0] * 3 for _ in range(3)])
+
+    order = np.argsort(np.asarray(nums))
+    return {
+        "res_num": np.asarray(nums)[order],
+        "j0": np.asarray(j0, dtype=float)[order],
+        "jwn": np.asarray(jwn, dtype=float)[order],
+        "jh": np.asarray(jh, dtype=float)[order],
+        "j0_err": np.asarray(e0, dtype=float)[order],
+        "jwn_err": np.asarray(ewn, dtype=float)[order],
+        "jh_err": np.asarray(eh, dtype=float)[order],
+        "covariance": np.asarray(cov, dtype=float)[order],
+    }
+
+
+def spectral_density_profile_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """Three stacked panels: J(0), J(wN) and J(0.87 wH) against residue number.
+
+    Every axis is labelled with its unit, since a spectral density in
+    ns rad^-1 is easy to confuse with one in s rad^-1 or with a rate.
+    """
+    def _render():
+        data = _spectral_density_series(residues)
+        colors = get_current_palette()
+        fig, axes = plt.subplots(3, 1, figsize=(7.2, 6.6), sharex=True)
+
+        panels = [
+            (axes[0], data["j0"], data["j0_err"], "J(0)", colors[0]),
+            (axes[1], data["jwn"], data["jwn_err"], "J(ω$_N$)", colors[1 % len(colors)]),
+            (axes[2], data["jh"], data["jh_err"], "J(0.87ω$_H$)", colors[2 % len(colors)]),
+        ]
+        for ax, values, errors, label, color in panels:
+            ax.errorbar(
+                data["res_num"], values, yerr=errors,
+                fmt="o-", color=color, markersize=4.0, linewidth=1.1,
+                capsize=2.0, alpha=0.9, zorder=3,
+            )
+            finite = values[np.isfinite(values)]
+            if finite.size:
+                mean_v = float(np.mean(finite))
+                ax.axhline(mean_v, color="#6B7280", linestyle="--", linewidth=1.0,
+                           zorder=2, label=f"mean {mean_v:.3g}")
+                ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                          edgecolor="#E5E7EB", loc="upper right")
+            ax.set_ylabel(f"{label}\n(ns rad⁻¹)", fontsize=8.5)
+            ax.grid(True, linestyle=":", alpha=0.5)
+
+        axes[0].set_title("Reduced Spectral Density vs Residue Number",
+                          fontsize=11.0, fontweight="bold", pad=10)
+        axes[-1].set_xlabel("Residue Number", fontsize=9.0)
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+def spectral_density_correlation_plot(
+    residues: List[Any],
+    omega_n_rad_s: float,
+    palette: Optional[str] = None,
+) -> str:
+    """J(0) against J(wN), with the rigid-rotor locus overlaid.
+
+    Error ELLIPSES rather than crossed bars: J(0) and J(wN) are correlated by
+    construction, so independent bars overstate the plausible region along
+    one diagonal and understate it along the other.
+
+    Exchange displaces points along J(0); fast internal motion drops them
+    below the line. That is the whole point of the plot, so both directions
+    are annotated.
+    """
+    def _render():
+        data = _spectral_density_series(residues)
+        colors = get_current_palette()
+        fig, ax = plt.subplots(figsize=(5.4, 5.0))
+
+        j0 = data["j0"]
+        jwn = data["jwn"]
+        good = np.isfinite(j0) & np.isfinite(jwn)
+        if not good.any():
+            return _svg(fig)
+
+        # Covariance is stored in ns^2 rad^-2, matching the plotted units.
+        theta = np.linspace(0.0, 2.0 * np.pi, 48)
+        unit = np.vstack([np.cos(theta), np.sin(theta)])
+        for i in np.flatnonzero(good):
+            block = data["covariance"][i][np.ix_([1, 0], [1, 0])]
+            vals, vecs = np.linalg.eigh(0.5 * (block + block.T))
+            vals = np.clip(vals, 0.0, None)
+            offs = (vecs * np.sqrt(vals)) @ unit
+            ax.plot(jwn[i] + offs[0], j0[i] + offs[1],
+                    color=colors[0], linewidth=0.6, alpha=0.35, zorder=2)
+
+        ax.scatter(jwn[good], j0[good], s=18, color=colors[0],
+                   edgecolor="white", linewidth=0.4, zorder=3, label="Residues")
+
+        # Rigid rotor: J(0) = (2/5)tau, J(wN) = J(0)/(1+(wN tau)^2).
+        lo = max(float(np.nanmin(j0[good])) * 0.5, 1e-6)
+        hi = float(np.nanmax(j0[good])) * 1.25
+        curve_j0 = np.linspace(lo, hi, 200)
+        tau = 2.5 * curve_j0 * 1e-9          # ns rad^-1 -> s rad^-1
+        curve_jwn = curve_j0 / (1.0 + (omega_n_rad_s * tau) ** 2)
+        ax.plot(curve_jwn, curve_j0, color="#6B7280", linestyle="--",
+                linewidth=1.3, zorder=1, label="Rigid isotropic rotor")
+
+        ax.set_xlabel("J(ω$_N$) (ns rad⁻¹)", fontsize=9.0)
+        ax.set_ylabel("J(0) (ns rad⁻¹)", fontsize=9.0)
+        ax.set_title("J(0) vs J(ω$_N$) Correlation", fontsize=11.0,
+                     fontweight="bold", pad=10)
+        ax.grid(True, linestyle=":", alpha=0.5)
+        ax.legend(fontsize=8.0, frameon=True, facecolor="white",
+                  edgecolor="#E5E7EB", loc="lower right")
+        ax.annotate(
+            "exchange →\ndisplaces along J(0)",
+            xy=(0.03, 0.95), xycoords="axes fraction", fontsize=7.5,
+            color="#6B7280", va="top",
+        )
+        ax.annotate(
+            "fast internal motion →\nbelow the line",
+            xy=(0.03, 0.10), xycoords="axes fraction", fontsize=7.5,
+            color="#6B7280", va="bottom",
+        )
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()

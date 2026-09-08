@@ -390,6 +390,7 @@ class ReportModel:
     grid_2d: Optional[Any] = None
     sequence_summary: Optional[Dict[str, Any]] = None
     excluded_residues: Optional[list[str]] = None
+    spectral_density: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert model to plain JSON-serializable types for API and golden tests."""
@@ -413,6 +414,8 @@ class ReportModel:
             d["excluded_residues"] = list(self.excluded_residues)
         if self.sequence_summary is not None:
             d["sequence_summary"] = to_json_serializable(self.sequence_summary)
+        if self.spectral_density is not None:
+            d["spectral_density"] = to_json_serializable(self.spectral_density)
         if self.is_multi_step:
             d["is_multi_step"] = True
             d["step_order"] = list(self.step_order)
@@ -479,9 +482,67 @@ def build_report_model(
     resolver = UncertaintyResolver(a_dir, results_data=results_data)
 
     is_relaxation = a_type in ("R1", "R2", "HETNOE")
+    is_sdm = a_type == "SDM"
     sequence_summary: Optional[Dict[str, Any]] = None
+    spectral_density: Optional[Dict[str, Any]] = None
 
-    if is_relaxation:
+    if is_sdm:
+        # Spectral density results are already reduced per residue, so there
+        # is nothing to resolve out of a ChemEx statistics tree; the payload
+        # written by the mapper is carried through intact and the residue
+        # records exist so the shared index/summary machinery still works.
+        global_params: list[tuple[str, ResolvedParameter]] = []
+        derived_kinetics: dict[str, DerivedKineticResult] = {}
+        residue_records: list[ResidueRecord] = []
+        spectral_density = results_data
+
+        not_in_mod_tpl = dict(value=None, status=ParameterStatus.NOT_IN_MODEL)
+        for row in results_data.get("residues", []):
+            raw_key = str(row.get("assignment", ""))
+            if is_residue_excluded(raw_key, excluded_residues, res_num=row.get("res_num")):
+                continue
+            # J(0) stands in as "the rate" so the shared sequence plot and
+            # index table render without special-casing.
+            j0 = ResolvedParameter(
+                name="J0",
+                scope=raw_key,
+                value=row.get("j0"),
+                err_low=row.get("j0_err", 0.0),
+                err_high=row.get("j0_err", 0.0),
+                source=UncertaintySource.COVARIANCE,
+                status=ParameterStatus.FITTED,
+                unit="ns rad⁻¹",
+            )
+            nim = ResolvedParameter(name="none", scope=raw_key, **not_in_mod_tpl)
+            residue_records.append(ResidueRecord(
+                raw_key=raw_key,
+                display_name=residue_mapping.get(raw_key, raw_key),
+                chi2_red=None,
+                dw=nim, r1a=nim, r2a=nim, r2b=nim, csa=nim, csb=nim,
+                flags=list(row.get("flags") or []),
+                experiments=[],
+                rate=j0,
+                amplitude=nim,
+                res_num=row.get("res_num"),
+                res_name=row.get("res_name"),
+            ))
+        residue_records.sort(key=lambda r: natural_sort_key(r.raw_key))
+
+        summary = results_data.get("summary", {})
+        sequence_summary = {
+            "n_residues": len(residue_records),
+            "mean_rate": summary.get("j0_trimmed_mean"),
+            "sd_rate": 0.0,
+            "median_rate": summary.get("j0_trimmed_mean"),
+            "mean_sigma": None,
+            "min_rate": None,
+            "max_rate": None,
+            "mean_chi2_red": None,
+            "mean_rmse": None,
+            "noise_model": "propagated",
+            "uncertainty_method": results_data.get("error_method", "analytic"),
+        }
+    elif is_relaxation:
         global_params: list[tuple[str, ResolvedParameter]] = []
         derived_kinetics: dict[str, DerivedKineticResult] = {}
         peak_results = results_data.get("peak_results", [])
@@ -873,4 +934,5 @@ def build_report_model(
         grid_2d=resolver.grid_2d_cache,
         sequence_summary=sequence_summary,
         excluded_residues=list(excluded_residues) if excluded_residues else None,
+        spectral_density=spectral_density,
     )

@@ -289,6 +289,45 @@ def export_spectral_density_csv(
     )
 
 
+@router.post("/{analysis_uuid}/report")
+def generate_spectral_density_report(
+    analysis_uuid: str,
+    style: str = "publication",
+    palette: Optional[str] = None,
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(database.get_db),
+):
+    """Render the PDF report.
+
+    Goes through the shared report generator so the spectral density section
+    sits alongside every other section, rather than through a parallel
+    reporting path.
+    """
+    analysis = _get_sdm_analysis(analysis_uuid, project, db)
+    if analysis.status != "COMPLETED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Report requires status COMPLETED (current: {analysis.status})",
+        )
+
+    from ..services.reporting.report_generator import generate_modern_pdf_report
+
+    buffer = generate_modern_pdf_report(
+        analysis_dir=sdm_run_dir(analysis),
+        analysis_name=analysis.name,
+        analysis_type=ANALYSIS_TYPE,
+        style=style,
+        palette=palette,
+    )
+    clean = re.sub(r"[^A-Za-z0-9_-]", "_", (analysis.name or "sdm").strip()).lower()
+    filename = f"resoflow_sdm_{clean}_{analysis.analysis_uuid[:8]}.pdf"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.delete("/{analysis_uuid}")
 def delete_spectral_density(
     analysis_uuid: str,

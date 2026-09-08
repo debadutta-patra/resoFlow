@@ -9,6 +9,7 @@ This is a walkthrough of using the resoFlow web app as a researcher — accounts
 - [Projects](#projects)
 - [Peak fitting](#peak-fitting)
 - [Relaxation analysis (R1 / R2 / hetNOE)](#relaxation-analysis-r1--r2--hetnoe)
+- [Spectral density mapping (RSDM)](#spectral-density-mapping-rsdm)
 - [CPMG relaxation dispersion](#cpmg-relaxation-dispersion)
 - [CEST](#cest)
 - [Statistics, reports & export](#statistics-reports--export)
@@ -87,6 +88,90 @@ These analyses fit an exponential decay (R1/R2) or compute a peak-intensity rati
 - **Analysis Log** — the backend log for the run.
 
 Use **Run Analysis** to start it (or **Rerun Analysis** once it has already completed/failed — this overwrites existing results). **Restore Backup** brings back the previous run's results if one exists.
+
+## Spectral density mapping (RSDM)
+
+Reduced spectral density mapping converts per-residue R₁, R₂ and heteronuclear NOE measured **at a single field** into the spectral density values J(0), J(ω_N) and J(0.87ω_H). It is a post-processing step on results resoFlow already produces — no ChemEx, no container, and no fitting.
+
+Open it from **Spectral Density** in the project navbar.
+
+### What it needs
+
+Three **completed** relaxation analyses in the same project — one R₁, one R₂, one hetNOE — that share a static field. The mapping runs in the request and returns immediately; there is no queue to wait on.
+
+The setup panel asks for:
+
+- **Sources** — the three analyses. Each option shows its ¹H frequency so a mismatch is visible before you run.
+- **Constants** — `r_NH` (1.02 or 1.015 Å) and `Δσ` (−160, −170 or −172 ppm), or your own values. The choice is snapshotted with the analysis, so a run from two months ago is self-describing.
+- **Variant** — which published convention fixes the 0.87 factor. Currently `farrow1995`.
+- **Error method** — analytic (the default) or Monte Carlo. The analytic propagation is *exact* for Gaussian input errors, not a first-order approximation, because the rate → density map is linear. Monte Carlo exists as a cross-check and agrees with it to within sampling error.
+
+**Fields must match.** Mapping a 600 MHz R₁ against an 800 MHz R₂ produces J values that look entirely reasonable and are entirely wrong, so a mismatch is refused outright rather than warned about. Sources without a recorded B₀ are refused too — the analysis will not silently assume 600 MHz.
+
+### Reading the correlation plot
+
+The J(0) vs J(ω_N) plot is the main interpretive tool. The dashed line is the rigid isotropic rotor locus: where a residue would sit if the molecule tumbled isotropically with no internal motion and no exchange. Residues leave that line in two characteristic directions:
+
+- **Displaced along J(0)**, to the right of the line → chemical exchange.
+- **Below the line** → fast internal motion on the ps–ns timescale.
+
+Points carry **error ellipses**, not crossed error bars. J(0) and J(ω_N) are correlated by construction — they come from the same three measurements through a shared matrix — so independent bars would overstate the plausible region along one diagonal and understate it along the other. The ellipses come from the full 3×3 covariance, which is stored per residue and included in the CSV export.
+
+> **Interpreting J(0).** Base RSDM assumes no chemical exchange. R₁ and the NOE carry no R_ex, so any exchange contribution lands *entirely* on J(0). An elevated J(0) is as consistent with microsecond–millisecond exchange as with slow overall tumbling, and the mapping alone cannot tell you which. This is the single easiest thing to over-interpret in an RSDM result.
+
+### Exclusion flags
+
+A residue is **excluded** when it is not present in all three sources. The reason is specific (`missing hetNOE`, `missing R2`, …) and appears in the results table, the CSV export and the PDF report, so the dataset never shrinks silently.
+
+A residue that *is* mapped may still be **flagged**. Flags are advisory — nothing is dropped on their account:
+
+| Flag | Meaning |
+|---|---|
+| `negative_noe` | The heteronuclear NOE is negative. Physically valid for tails and flexible loops, so it is mapped rather than filtered — but J(0.87ω_H) then carries very large relative error. |
+| `low_noe_precision` | The NOE uncertainty dominates J(0.87ω_H). Treat J_h for that residue as indicative. |
+| `negative_j` | A spectral density came out negative, which is unphysical — usually inconsistent input rates, a field mismatch, or an over-subtracted R_ex. |
+| `elevated_j0` | J(0) sits well above the trimmed mean: the expected signature of exchange. |
+| `reduced_j0` | J(0) sits well below the trimmed mean: the expected signature of fast internal motion. |
+
+### Statistical vs systematic error
+
+Per-residue error bars carry **statistical** uncertainty only, propagated from the R₁, R₂ and NOE errors.
+
+The `r_NH` and `Δσ` choice is **systematic**: it shifts every residue coherently in the same direction. Folding it into per-residue bars would make it look like independent scatter and let it be wrongly averaged down, so it is reported separately as a band on the summary card and in the report.
+
+### What the approximation costs
+
+The reduced approximation collapses J(ω_H−ω_N), J(ω_H) and J(ω_H+ω_N) onto a single J(0.87ω_H). Round-tripping a Lipari–Szabo model through the *full* master equations and back out through RSDM measures the resulting bias. At 600 MHz, over S² ∈ {0.70, 0.85, 0.95}, τ_c ∈ {5, 10, 15} ns and τ_e ∈ {20, 100, 500} ps:
+
+| τ_e | J(0) bias | J(ω_N) bias | J(0.87ω_H) bias |
+|---|---|---|---|
+| 20 ps | −0.10% to −0.01% | −0.33% to −0.26% | +0.01% |
+| 100 ps | −0.13% to −0.01% | −0.47% to −0.29% | +0.07% to +0.28% |
+| 500 ps | −0.35% to −0.02% | −1.60% to −0.42% | +0.18% to +0.50% |
+
+The bias is worst for low order parameters and long internal correlation times — where the approximation's assumption that J falls as ω⁻² at high frequency is least true. It is under 2% everywhere in this range, and well below typical experimental error. The table is generated by `test_round_trip_bias_table` in `backend/tests/test_sdm_mapping.py`, which also pins these bounds so the documentation cannot drift from the code.
+
+### Exchange correction (experimental)
+
+> **Experimental, off by default.** Enabled only by setting `RESOFLOW_ENABLE_EXPERIMENTAL_SDM_REX=true` on the server. When it is off, the R_ex controls are hidden entirely and the API refuses any request that asks for a correction. When it is on, every plot, table, CSV export and report derived from a corrected analysis carries an **Experimental** marker — such results must not circulate looking validated.
+
+Two corrections are offered:
+
+1. **R_ex subtraction from a CPMG run** — the fitted per-residue R_ex is subtracted from R₂ before mapping (`y₂ → R₂ − R_ex`), leaving the coefficient matrix untouched. Var(R_ex) is added to the input covariance.
+2. **Multi-field consistency** — with data at two or more fields the system becomes overdetermined and is solved by generalised least squares. Its residual χ² *is* the exchange test: the surplus degree of freedom is exactly the "one field-independent J(0)" assumption, and because R₁ and the NOE carry no R_ex, a bad χ² implicates exchange.
+
+**On the field dependence of R_ex.** R_ex ∝ B₀² holds only in the fast-exchange limit. resoFlow does not fit R₂ against B₀² with a fixed exponent. Where a scaling analysis is offered, the exponent α = ∂ln R_ex/∂ln B₀ is fitted as a free parameter in [0, 2] and reported, because α is itself the diagnostic of the exchange timescale (Millet et al. 2000). Assuming α = 2 when exchange is not fast will misattribute the result.
+
+*Not in scope, noted as future work:* η_xy cross-correlation as an exchange-free R₂ surrogate. It would enter as an additional matrix row with nonzero entries only on J(0) and J(ω_N), but its geometric prefactor carries a P₂(cos θ) convention that must be taken carefully from the literature rather than derived.
+
+### References
+
+- Peng & Wagner (1992) *J Magn Reson* **98**, 308–332; *Biochemistry* **31**, 8571–8586
+- Farrow, Zhang, Szabo, Torchia & Kay (1995) *J Biomol NMR* **6**, 153–162
+- Lefèvre, Dayie, Peng & Wagner (1996) *Biochemistry* **35**, 2674–2686, [doi:10.1021/bi9526802](https://doi.org/10.1021/bi9526802)
+- Kroenke, Loria, Lee, Rance & Palmer (1998) *JACS* **120**, 7905–7915, [doi:10.1021/ja980832l](https://doi.org/10.1021/ja980832l)
+- Millet, Loria, Kroenke, Pons & Palmer (2000) *JACS* **122**, 2867–2877, [doi:10.1021/ja993511y](https://doi.org/10.1021/ja993511y)
+- Kadeřávek, Zapletal, Rabatinová, Krásný, Sklenář & Žídek (2014) *J Biomol NMR* **58**, 193–207, [doi:10.1007/s10858-014-9816-4](https://doi.org/10.1007/s10858-014-9816-4)
 
 ## CPMG relaxation dispersion
 

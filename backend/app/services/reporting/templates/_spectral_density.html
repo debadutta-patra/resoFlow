@@ -1,0 +1,145 @@
+<!-- backend/app/services/reporting/templates/_spectral_density.html -->
+<h2>Reduced Spectral Density Mapping</h2>
+
+{% if spectral_density_data.experimental %}
+<div class="callout callout-warn" style="border:1.2pt solid #B45309;background:#FEF3C7;padding:7pt 9pt;margin:8pt 0;border-radius:3pt;">
+  <strong>EXPERIMENTAL</strong> &mdash;
+  {{ spectral_density_data.experimental_notice }}
+</div>
+{% endif %}
+
+<table class="pipeline-table">
+  <tbody>
+    <tr>
+      <td><strong>Static field</strong></td>
+      <td>{{ "%.2f"|format(spectral_density_data.b0_h_mhz) }} MHz (<sup>1</sup>H)</td>
+      <td><strong>Variant</strong></td>
+      <td><code>{{ spectral_density_data.variant }}</code></td>
+    </tr>
+    <tr>
+      <td><strong>r<sub>NH</sub></strong></td>
+      <td>{{ "%.4g"|format(spectral_density_data.r_nh_angstrom) }} &Aring;</td>
+      <td><strong>&Delta;&sigma;</strong></td>
+      <td>{{ "%.4g"|format(spectral_density_data.delta_sigma_ppm) }} ppm</td>
+    </tr>
+    <tr>
+      <td><strong>Error method</strong></td>
+      <td>{{ spectral_density_data.error_method }}</td>
+      <td><strong>R<sub>2</sub> provenance</strong></td>
+      <td>{{ spectral_density_data.r2_provenance }}</td>
+    </tr>
+    <tr>
+      <td><strong>R<sub>ex</sub> correction</strong></td>
+      <td>{{ spectral_density_data.rex_source }}</td>
+      <td><strong>Residues</strong></td>
+      <td>
+        {{ spectral_density_data.n_residues }} mapped,
+        {{ spectral_density_data.n_flagged }} flagged,
+        {{ spectral_density_data.n_excluded }} excluded
+      </td>
+    </tr>
+    {% if spectral_density_data.tau_c_ns %}
+    <tr>
+      <td><strong>&tau;<sub>c</sub> estimate</strong></td>
+      <td>{{ "%.2f"|format(spectral_density_data.tau_c_ns) }} ns</td>
+      <td><strong>Systematic band</strong></td>
+      <td>
+        J(0) &plusmn;{{ "%.1f"|format(spectral_density_data.systematic_band_pct.j0) }}%,
+        J(&omega;<sub>N</sub>) &plusmn;{{ "%.1f"|format(spectral_density_data.systematic_band_pct.j_wn) }}%,
+        J(0.87&omega;<sub>H</sub>) &plusmn;{{ "%.1f"|format(spectral_density_data.systematic_band_pct.j_h) }}%
+      </td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<p style="font-size:8pt;color:#4B5563;margin-top:4pt;">
+  The systematic band above comes from the r<sub>NH</sub> and &Delta;&sigma; choice
+  ({{ spectral_density_data.systematic_band.description }}). It shifts every residue
+  coherently in the same direction and is <em>not</em> included in the per-residue
+  error bars, which carry statistical uncertainty only.
+</p>
+
+{% if spectral_density_data.j0_caveat %}
+<div class="callout" style="border-left:2.5pt solid #6B7280;padding:5pt 9pt;margin:8pt 0;background:#F9FAFB;">
+  <strong>Interpreting J(0).</strong> {{ spectral_density_data.j0_caveat }}
+</div>
+{% endif %}
+
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.profile_svg|safe }}
+</div>
+
+<div class="page-break"></div>
+<h3>J(0) vs J(&omega;<sub>N</sub>) Correlation</h3>
+<div class="sequence-plot-container" style="margin: 10pt 0; text-align: center;">
+  {{ spectral_density_data.correlation_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  Ellipses are 1&sigma; contours from the full covariance, not independent error
+  bars: J(0) and J(&omega;<sub>N</sub>) are correlated by construction, so crossed
+  bars would misstate the plausible region.
+</p>
+
+<div class="page-break"></div>
+<h3>Per-Residue Spectral Densities</h3>
+<table class="residue-table">
+  <thead>
+    <tr>
+      <th>Residue</th>
+      <th class="num-right">J(0)</th>
+      <th class="num-right">J(&omega;<sub>N</sub>)</th>
+      <th class="num-right">J(0.87&omega;<sub>H</sub>)</th>
+      <th class="num-right">R<sub>1</sub></th>
+      <th class="num-right">R<sub>2</sub></th>
+      <th class="num-right">NOE</th>
+      <th>Flags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in spectral_density_data.rows %}
+    <tr>
+      <td><strong>{{ row.assignment }}</strong></td>
+      <td class="num-right">{{ "%.3f"|format(row.j0) }} &plusmn; {{ "%.3f"|format(row.j0_err) }}</td>
+      <td class="num-right">{{ "%.4f"|format(row.j_wn) }} &plusmn; {{ "%.4f"|format(row.j_wn_err) }}</td>
+      <td class="num-right">{{ "%.5f"|format(row.j_h) }} &plusmn; {{ "%.5f"|format(row.j_h_err) }}</td>
+      <td class="num-right">{{ "%.3f"|format(row.r1) }}</td>
+      <td class="num-right">{{ "%.3f"|format(row.r2) }}</td>
+      <td class="num-right">{{ "%.3f"|format(row.noe) }}</td>
+      <td style="font-size:7.5pt;">{{ row.flags|join(", ") }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="font-size:8pt;color:#4B5563;">
+  J values in ns&nbsp;rad<sup>&minus;1</sup>; R<sub>1</sub> and R<sub>2</sub> in
+  s<sup>&minus;1</sup>. Full 3&times;3 covariances are in the CSV export.
+</p>
+
+{% if spectral_density_data.flag_descriptions %}
+<h3>Flag Meanings</h3>
+<table class="residue-table">
+  <thead><tr><th style="width:22%;">Flag</th><th class="num-right" style="width:8%;">Count</th><th>Meaning</th></tr></thead>
+  <tbody>
+    {% for flag, description in spectral_density_data.flag_descriptions.items() %}
+    <tr>
+      <td><code>{{ flag }}</code></td>
+      <td class="num-right">{{ spectral_density_data.flag_counts.get(flag, 0) }}</td>
+      <td style="font-size:8pt;">{{ description }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if spectral_density_data.excluded_residues %}
+<h3>Excluded Residues</h3>
+<table class="residue-table">
+  <thead><tr><th style="width:25%;">Residue</th><th>Reason</th></tr></thead>
+  <tbody>
+    {% for item in spectral_density_data.excluded_residues %}
+    <tr><td><strong>{{ item.residue }}</strong></td><td>{{ item.reason }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

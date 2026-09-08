@@ -4,7 +4,7 @@ import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import nmrSpectraDark from '../assets/nmr_spectra_dark.jpg';
 import nmrSpectraLight from '../assets/nmr_spectra_light.jpg';
-import { ChevronDown, Activity, Folder } from 'lucide-react';
+import { ChevronDown, Activity, Folder, Waves } from 'lucide-react';
 
 const ProjectNavbar: React.FC = () => {
   const location = useLocation();
@@ -153,7 +153,20 @@ const ProjectNavbar: React.FC = () => {
                 </div>
               )}
             </div>
-            
+
+            {/* Spectral Density Mapping */}
+            <Link
+              to={`/projects/${projectUuid}/spectral-density`}
+              className={`flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  location.pathname.endsWith('/spectral-density')
+                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Waves className="w-4 h-4 mr-2" />
+              Spectral Density
+            </Link>
+
           </div>
         </div>
       </div>

@@ -12,6 +12,7 @@ import ProjectDetails from './pages/ProjectDetails';
 import SpectraAnalysis from './pages/SpectraAnalysis';
 import AnalysisDetails from './pages/AnalysisDetails';
 import AnalysisReport from './pages/AnalysisReport';
+import SpectralDensity from './pages/SpectralDensity';
 import Layout from './components/Layout';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -74,6 +75,13 @@ const AppRoutes = () => {
         <ProtectedRoute>
           <Layout>
             <SpectraAnalysis />
+          </Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/projects/:projectUuid/spectral-density" element={
+        <ProtectedRoute>
+          <Layout>
+            <SpectralDensity />
           </Layout>
         </ProtectedRoute>
       } />

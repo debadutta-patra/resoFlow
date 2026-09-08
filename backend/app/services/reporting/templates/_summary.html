@@ -1,4 +1,7 @@
 <!-- backend/app/services/reporting/templates/_summary.html -->
+{% if spectral_density_data is defined and spectral_density_data and spectral_density_data.experimental %}
+<div class="experimental-marker">EXPERIMENTAL — not validated</div>
+{% endif %}
 <div class="doc-header">
   {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
   <h1>{{ model.analysis_type }} Relaxation Analysis Report</h1>
