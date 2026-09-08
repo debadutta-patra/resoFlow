@@ -368,6 +368,7 @@ class Analysis(AnalysisBase):
     log_path: Optional[str] = None
     error_message: Optional[str] = None
     has_backup: bool = False
+    experimental: bool = False
     chemex_image_digest: Optional[str] = None
     chemex_version: Optional[str] = None
     celery_task_id: Optional[str] = None

@@ -130,6 +130,12 @@ class Analysis(Base):
     log_path = Column(String, nullable=True)
     error_message = Column(String, nullable=True)
     
+    # Experimental-feature marker. Structural rather than buried in the
+    # parameters JSON blob, so a result derived from an experimental code
+    # path cannot circulate unlabelled: the API response, CSV header and PDF
+    # footer all key off this.
+    experimental = Column(Boolean, default=False, nullable=False, server_default="0")
+
     # ChemEx container metadata & execution tracking
     chemex_image_digest = Column(String, nullable=True)
     chemex_version = Column(String, nullable=True)

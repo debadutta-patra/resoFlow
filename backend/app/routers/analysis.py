@@ -44,6 +44,8 @@ def _get_analysis_run_dir(analysis: models.Analysis) -> str:
     atype = (analysis.analysis_type or "").upper()
     if atype == "CPMG":
         folder_name = "cpmg_fitting"
+    elif atype == "SDM":
+        folder_name = "sdm_fitting"
     elif atype in ("R1", "R2", "HETNOE"):
         folder_name = f"{analysis.analysis_type.lower()}_fitting"
     else:
