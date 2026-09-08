@@ -53,6 +53,10 @@ def format_param_label(p_raw: Any) -> str:
         return f"CS_B ({nuc})" if nuc else "CS_B (ppm)"
     elif base in ("R1_A", "R1A"):
         return f"R₁A ({nuc})" if nuc else "R₁A (s⁻¹)"
+    elif base in ("R2_A", "R2A"):
+        return f"R₂A ({nuc})" if nuc else "R₂A (s⁻¹)"
+    elif base in ("R2_B", "R2B"):
+        return f"R₂B ({nuc})" if nuc else "R₂B (s⁻¹)"
     elif base in ("R2", "RATE") and ("R2" in s.upper() or base == "R2"):
         return f"R₂ ({nuc})" if nuc else "R₂ (s⁻¹)"
     elif base in ("R1", "RATE") and ("R1" in s.upper() or base == "R1"):

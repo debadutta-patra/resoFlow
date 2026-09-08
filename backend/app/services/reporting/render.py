@@ -646,8 +646,12 @@ def _build_covariance_corr_mat(labels: List[str]) -> np.ndarray:
     return corr_mat
 
 
-def build_statistics_data(model: ReportModel) -> Optional[Dict[str, Any]]:
-    """Render distributions (SVG) and correlation heatmap (300 dpi base64 PNG) for statistics."""
+def build_statistics_data(model: Union[ReportModel, StepReportModel]) -> Optional[Dict[str, Any]]:
+    """Render distributions (SVG) and correlation heatmap (300 dpi base64 PNG) for statistics.
+
+    Accepts either the whole-report model or a single step of a multi-step fit; both
+    carry the resampled cache and the document-level residue exclusion list.
+    """
     # Case A: Resampled cache available
     if model.resampled:
         methods = []

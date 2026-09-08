@@ -346,6 +346,7 @@ class StepReportModel:
     grid_1d: dict
     grid_2d: Optional[Any] = None
     ledger: dict[str, int] = field(default_factory=dict)
+    excluded_residues: Optional[list[str]] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -364,6 +365,8 @@ class StepReportModel:
             "resampled": to_json_serializable(self.resampled),
             "grid_1d": to_json_serializable(self.grid_1d),
             "ledger": dict(self.ledger),
+            **({"excluded_residues": list(self.excluded_residues)}
+               if self.excluded_residues is not None else {}),
         }
 
 
@@ -848,6 +851,7 @@ def build_report_model(
                     grid_1d=s_resolver.grid_1d_cache,
                     grid_2d=s_resolver.grid_2d_cache,
                     ledger=s_ledger,
+                    excluded_residues=list(excluded_residues) if excluded_residues else None,
                 )
             )
 
