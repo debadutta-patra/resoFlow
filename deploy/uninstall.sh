@@ -23,12 +23,22 @@ echo -e "${BLUE}${BOLD}======================================================${N
 
 # 1. Stop services
 echo -e "\n${BLUE}[1/3] Stopping resoFlow services...${NC}"
+CONFIG_DIR="${HOME}/.config/resoflow"
+ENV_FILE="${CONFIG_DIR}/resoflow.env"
+PODMAN_CMD="podman"
+if [ -f "${ENV_FILE}" ]; then
+    ENV_PODMAN="$(grep '^PODMAN_BIN=' "${ENV_FILE}" 2>/dev/null | cut -d'=' -f2- || true)"
+    if [ -n "${ENV_PODMAN}" ] && [ -x "${ENV_PODMAN}" ]; then
+        PODMAN_CMD="${ENV_PODMAN}"
+    fi
+fi
+
 if [ "${OS_TYPE}" = "Darwin" ]; then
     LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
     launchctl unload "${LAUNCH_AGENTS_DIR}/org.resoflow.pod.plist" 2>/dev/null || true
     launchctl unload "${LAUNCH_AGENTS_DIR}/org.resoflow.backup.plist" 2>/dev/null || true
-    podman pod stop resoflow 2>/dev/null || true
-    podman pod rm -f resoflow 2>/dev/null || true
+    "${PODMAN_CMD}" pod stop resoflow 2>/dev/null || true
+    "${PODMAN_CMD}" pod rm -f resoflow 2>/dev/null || true
 else
     systemctl --user disable --now resoflow-backup.timer > /dev/null 2>&1 || true
     systemctl --user stop resoflow-pod.service \
@@ -38,7 +48,7 @@ else
         resoflow-postgres.service \
         resoflow-redis.service \
         resoflow-backup.service > /dev/null 2>&1 || true
-    podman pod rm -f resoflow > /dev/null 2>&1 || true
+    "${PODMAN_CMD}" pod rm -f resoflow > /dev/null 2>&1 || true
 fi
 echo -e "${GREEN}✓ Services stopped.${NC}"
 
@@ -77,7 +87,7 @@ fi
 
 if [ "$PURGE_DATA" = true ]; then
     echo -e "${YELLOW}Purging data volumes and secrets (--purge-data requested)...${NC}"
-    podman volume rm -f resoflow-pgdata resoflow-redisdata 2>/dev/null || true
+    "${PODMAN_CMD}" volume rm -f resoflow-pgdata resoflow-redisdata 2>/dev/null || true
     rm -rf "${CONFIG_DIR}"
     if [ -d "${DATA_DIR}" ]; then
         rm -rf "${DATA_DIR}"

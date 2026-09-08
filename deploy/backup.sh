@@ -22,15 +22,16 @@ fi
 
 PG_USER="${POSTGRES_USER:-resoflow}"
 PG_DB="${POSTGRES_DB:-resoflow}"
+PODMAN_CMD="${PODMAN_BIN:-podman}"
 
 # Check if postgres container is running
-if ! podman ps --filter "name=resoflow-postgres" --filter "status=running" -q | grep -q .; then
+if ! "${PODMAN_CMD}" ps --filter "name=resoflow-postgres" --filter "status=running" -q | grep -q .; then
     echo "Warning: resoflow-postgres is not running. Backup skipped." >&2
     exit 0
 fi
 
 echo "Creating database backup to ${TARGET_FILE}..."
-podman exec -i resoflow-postgres pg_dump -U "${PG_USER}" "${PG_DB}" | gzip -9 > "${TARGET_FILE}"
+"${PODMAN_CMD}" exec -i resoflow-postgres pg_dump -U "${PG_USER}" "${PG_DB}" | gzip -9 > "${TARGET_FILE}"
 chmod 600 "${TARGET_FILE}"
 echo "✓ Backup created successfully ($(du -h "${TARGET_FILE}" | cut -f1))."
 

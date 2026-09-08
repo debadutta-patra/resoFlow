@@ -10,6 +10,8 @@ param(
     [string]$Bind = "",
     [Alias("d")]
     [string]$DataDir = "",
+    [string]$Podman = "",
+    [switch]$UseBundledPodman,
     [string]$AdminEmail = "",
     [string]$AdminPassword = "",
     [string]$AdminName = "Administrator",
@@ -31,6 +33,8 @@ Options:
       -Lan                 Allow access over local network (0.0.0.0)
       -Bind IP             Bind IP address for Web UI (default: 127.0.0.1)
   -d, -DataDir PATH        Storage directory (e.g. C:\Users\<Name>\resoflow\projects)
+      -Podman PATH         Path to Podman binary, directory, or .tar.gz archive
+      -UseBundledPodman    Extract and use bundled static Podman if present in bundle
       -AdminEmail EMAIL    Initial administrator account email
       -AdminPassword PWD   Initial administrator account password
       -AdminName NAME      Initial administrator full name (default: "Administrator")
@@ -41,6 +45,7 @@ Options:
 Examples:
   .\deploy\windows\install.ps1
   .\deploy\windows\install.ps1 -Port 50000 -DataDir "C:\resoflow_data"
+  .\deploy\windows\install.ps1 -Podman "C:\podman\podman-linux-amd64.tar.gz"
   .\deploy\windows\install.ps1 -y -Port 8080 -AdminEmail admin@lab.org -AdminPassword secret
 "@
     exit 0
@@ -86,6 +91,16 @@ if ($DataDir) {
     $dataDirWsl = (wsl.exe -e wslpath -u "$DataDir").Trim()
     $argsList += "-d `"$dataDirWsl`""
 }
+if ($Podman) {
+    # Convert Windows path to WSL path if provided as Windows-style path
+    if ($Podman -match '^[a-zA-Z]:\\') {
+        $podmanWsl = (wsl.exe -e wslpath -u "$Podman").Trim()
+        $argsList += "--podman `"$podmanWsl`""
+    } else {
+        $argsList += "--podman `"$Podman`""
+    }
+}
+if ($UseBundledPodman) { $argsList += "--use-bundled-podman" }
 if ($AdminEmail) { $argsList += "--admin-email `"$AdminEmail`"" }
 if ($AdminPassword) { $argsList += "--admin-password `"$AdminPassword`"" }
 if ($AdminName) { $argsList += "--admin-name `"$AdminName`"" }

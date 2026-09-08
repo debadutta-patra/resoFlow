@@ -76,7 +76,7 @@ The installer picks the mode for you: Quadlet on Podman 5.x, systemd user servic
 
 Common to every platform:
 
-- **Podman 4.x or 5.x** (rootless)
+- **Podman 4.x or 5.x** (rootless) — on Linux, a standalone static Podman binary or archive can also be pointed to directly without root or system package manager installation
 - `curl` — used by the installer's post-start health check
 - `openssl` for secret generation (falls back to `python3 -c "import secrets..."` if absent)
 - Roughly **2–3 GB** of disk for the built images (they share a common base layer), plus whatever your project data needs
@@ -102,7 +102,7 @@ For an air-gapped lab machine, build a self-contained offline bundle on a connec
 ./deploy/bundle.sh [version]
 ```
 
-This produces `dist/resoflow-<version>-offline-bundle.tar.gz`, containing the pre-built images (`podman save`d as tarballs, including `postgres:16-alpine` and `redis:7-alpine`), the Quadlet units, `install.sh`/`uninstall.sh`, and a generated `INSTALL.md`. Copy that archive to the target host, extract it, and run `./install.sh` from inside — the installer auto-detects and `podman load`s any image tarballs found under its own `images/` directory before proceeding.
+This produces `dist/resoflow-<version>-offline-bundle.tar.gz`, containing the pre-built images (`podman save`d as tarballs, including `postgres:16-alpine` and `redis:7-alpine`), a pinned standalone static Podman release (`5.8.4` for Linux `amd64`/`arm64`), systemd and Quadlet units, `install.sh`/`uninstall.sh`, and a generated `INSTALL.md`. Copy that archive to the target host, extract it, and run `./install.sh` from inside — the installer auto-detects and `podman load`s any image tarballs found under its own `images/` directory, and can automatically extract and configure the bundled static Podman if Podman is missing or outdated on the host.
 
 ### Step 2 — Run the installer
 
@@ -201,6 +201,8 @@ PowerShell parameters map onto the `install.sh` flags one-to-one:
 | `-Lan` | `--lan` | |
 | `-Bind` | `--bind` | |
 | `-DataDir` / `-d` | `--data-dir` | Accepts a Windows path; translated via `wslpath` |
+| `-Podman` | `--podman` | Path to static Podman binary, directory, or `.tar.gz` archive |
+| `-UseBundledPodman` | `--use-bundled-podman` | Use bundled static Podman archive |
 | `-AdminEmail` | `--admin-email` | |
 | `-AdminPassword` | `--admin-password` | |
 | `-AdminName` | `--admin-name` | Default `Administrator` |
@@ -210,6 +212,7 @@ PowerShell parameters map onto the `install.sh` flags one-to-one:
 
 ```powershell
 .\deploy\windows\install.ps1 -Port 50000 -DataDir "C:\resoflow_data"
+.\deploy\windows\install.ps1 -Podman "C:\podman\podman-linux-amd64.tar.gz"
 .\deploy\windows\install.ps1 -y -Port 8080 -AdminEmail admin@lab.org -AdminPassword secret
 ```
 
@@ -246,6 +249,10 @@ For scripted/unattended installs on any platform, pass CLI flags:
 | `--lan` | Allow access over local network (binds to `0.0.0.0` instead of `127.0.0.1`). |
 | `--bind IP` | Bind IP address for Web UI (default `127.0.0.1`). |
 | `-d`, `--data-dir PATH` | Host directory for project/spectra storage (default `~/.local/share/resoflow/projects`). |
+| `--podman PATH` | Path to Podman binary, directory, or static `.tar.gz` archive (default: uses `podman` in `$PATH` or auto-detects bundled Podman). |
+| `--use-bundled-podman` | Extract and use the bundled static Podman archive from the offline distribution bundle. |
+| `--podman-extract-dir DIR` | Extraction directory for static Podman archive (default: `~/.local/podman-static`). |
+| `--mode MODE` | Service supervisor mode: `systemd`, `quadlet`, or `launchd` (default: auto-detected). |
 | `--admin-email EMAIL` | Initial administrator account email. |
 | `--admin-password PWD` | Initial administrator account password. |
 | `--admin-name NAME` | Initial administrator full name (default `Administrator`). |
@@ -253,13 +260,35 @@ For scripted/unattended installs on any platform, pass CLI flags:
 | `-y`, `--non-interactive` | Run unattended, using flags/defaults instead of prompting. |
 | `-h`, `--help` | Show usage and exit. |
 
+#### Using a static Podman binary (rootless / no root required)
+
+On Linux workstations where Podman is missing, locked to an older unsupported version (< 4.0, such as Ubuntu 22.04 default packages), or where you do not have root/sudo permissions to install system packages, you can point the installer directly to a standalone static Podman build (such as those provided by [podman-static](https://github.com/mgoltzsche/podman-static)):
+
+```bash
+# Point directly to an executable Podman binary:
+./deploy/install.sh --podman /opt/podman-static/bin/podman
+
+# Point to a static archive (.tar.gz):
+./deploy/install.sh --podman ~/Downloads/podman-linux-amd64.tar.gz
+
+# Use the bundled static Podman packaged inside an offline bundle:
+./deploy/install.sh --use-bundled-podman
+```
+
+When a custom or static Podman is specified, the installer:
+- Unpacks the archive into `~/.local/podman-static` (or `--podman-extract-dir`) and verifies executable permissions.
+- Automatically selects `systemd` user service mode and customizes all service unit files (`resoflow-pod`, `resoflow-api`, `resoflow-worker`, `resoflow-postgres`, `resoflow-redis`, `resoflow-web`) to invoke this specific binary.
+- Configures `Environment="PATH=...:/usr/local/bin:/usr/bin:/bin"` in the service units so Podman's helper binaries (`conmon`, `crun`, `netavark`, `fuse-overlayfs`) are properly resolved by systemd.
+- Automatically sets up a user-level `podman.socket` and `podman.service` if not present on the host system, enabling Celery background workers to access `%t/podman/podman.sock` for ChemEx job execution.
+- Records `PODMAN_BIN` in `~/.config/resoflow/resoflow.env` so `backup.sh` and `uninstall.sh` use the exact same Podman instance.
+
 ### What the installer does
 
-1. **Pre-flight checks** — verifies `podman` is available, initializes `podman machine` on macOS, and verifies `systemd` on Linux/WSL.
+1. **Pre-flight checks** — verifies `podman` is available (or resolves the static binary / bundled archive), initializes `podman machine` on macOS, and verifies `systemd` on Linux/WSL.
 2. **Loads offline images**, if run from an offline bundle (an adjacent `images/` directory with image tarballs).
 3. **Generates secrets** on first run: a Postgres password and the JWT `SECRET_KEY`, written to `~/.config/resoflow/resoflow.env` (`chmod 600`). Re-running the installer preserves those secrets — but it re-prompts from built-in defaults rather than your current settings, so see [Updating resoFlow](#updating-resoflow) before re-running it against a live install.
 4. **Installs service definitions**:
-   - **Linux / WSL 2**: Installs Podman 5.x Quadlets (`~/.config/containers/systemd/`) or Podman 4.x systemd user units.
+   - **Linux / WSL 2**: Installs Podman 5.x Quadlets (`~/.config/containers/systemd/`) or customized systemd user units (`~/.config/systemd/user/`) invoking the resolved Podman binary.
    - **macOS**: Installs native `launchd` LaunchAgents in `~/Library/LaunchAgents/` (`org.resoflow.pod.plist`, `org.resoflow.backup.plist`).
 5. **Enables the Podman socket, backup timers, and background persistence**.
 6. **Starts the pod and verifies health** by polling the web interface on `http://127.0.0.1:<WEB_PORT>`.

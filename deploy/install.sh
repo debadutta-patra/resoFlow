@@ -24,6 +24,14 @@ CREATE_ADMIN=""
 NON_INTERACTIVE=false
 BIND_HOST="127.0.0.1"
 
+# Podman binary and supervisor options
+PODMAN_CUSTOM_PATH="${PODMAN_BIN:-${PODMAN_PATH:-}}"
+USE_BUNDLED_PODMAN=false
+PODMAN_EXTRACT_DIR="${HOME}/.local/podman-static"
+FORCE_DEPLOY_MODE=""
+IS_CUSTOM_PODMAN=false
+PODMAN_BIN="podman"
+
 OS_TYPE="$(uname -s)"
 
 usage() {
@@ -38,6 +46,12 @@ Options:
       --bind IP            Bind IP address for Web UI (default: 127.0.0.1)
   -d, --data-dir PATH      Host storage directory for projects and spectra
                            (default: ~/.local/share/resoflow/projects)
+      --podman PATH        Path to Podman binary, directory, or static .tar.gz archive
+                           (default: uses 'podman' in PATH or auto-detects bundled static Podman)
+      --use-bundled-podman Extract and use bundled static Podman archive from offline bundle
+      --podman-extract-dir DIR
+                           Extraction directory for static Podman archive (default: ~/.local/podman-static)
+      --mode MODE          Service supervisor mode: systemd, quadlet, launchd (default: auto)
       --admin-email EMAIL  Initial administrator account email
       --admin-password PWD Initial administrator account password
       --admin-name NAME    Initial administrator full name (default: "Administrator")
@@ -47,6 +61,8 @@ Options:
 
 Examples:
   ./deploy/install.sh
+  ./deploy/install.sh --podman /opt/podman-static/podman
+  ./deploy/install.sh --podman ./podman-linux-amd64.tar.gz
   ./deploy/install.sh --lan --port 50000 --data-dir /data
   ./deploy/install.sh -y --port 8080 --admin-email admin@lab.org --admin-password secret
 EOF
@@ -74,6 +90,22 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--data-dir)
             DATA_DIR="$2"
+            shift 2
+            ;;
+        --podman|--podman-bin|--podman-path)
+            PODMAN_CUSTOM_PATH="$2"
+            shift 2
+            ;;
+        --use-bundled-podman)
+            USE_BUNDLED_PODMAN=true
+            shift
+            ;;
+        --podman-extract-dir)
+            PODMAN_EXTRACT_DIR="$2"
+            shift 2
+            ;;
+        --mode)
+            FORCE_DEPLOY_MODE="$2"
             shift 2
             ;;
         --admin-email)
@@ -113,23 +145,190 @@ echo -e "${BLUE}${BOLD}======================================================${N
 echo -e "${BLUE}${BOLD}              resoFlow Podman Installer               ${NC}"
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 
-# 1. Pre-flight checks
-if ! command -v podman > /dev/null 2>&1; then
-    echo -e "${RED}Error: 'podman' is not installed. Please install Podman first.${NC}" >&2
-    if [ "${OS_TYPE}" = "Darwin" ]; then
-        echo -e "${YELLOW}On macOS, install via Homebrew: brew install podman${NC}" >&2
+# Helper functions for Podman resolution
+detect_bundled_podman() {
+    local machine_arch
+    machine_arch="$(uname -m)"
+    local arch="amd64"
+    case "${machine_arch}" in
+        x86_64) arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
+    esac
+    local bundled="${SCRIPT_DIR}/podman/podman-linux-${arch}.tar.gz"
+    if [ -f "${bundled}" ]; then
+        echo "${bundled}"
     fi
-    exit 1
+}
+
+extract_podman_archive() {
+    local archive="$1"
+    local target_dir="$2"
+    echo -e "${BLUE}Extracting static Podman from ${archive} to ${target_dir}...${NC}"
+    mkdir -p "${target_dir}"
+    tar -xzf "${archive}" -C "${target_dir}"
+
+    local found_bin=""
+    for cand in "${target_dir}/usr/local/bin/podman" "${target_dir}/bin/podman" "${target_dir}/podman"; do
+        if [ -x "${cand}" ]; then
+            found_bin="${cand}"
+            break
+        fi
+    done
+    if [ -z "${found_bin}" ]; then
+        found_bin="$(find "${target_dir}" -type f -name podman -perm -111 2>/dev/null | head -1)"
+    fi
+
+    if [ -n "${found_bin}" ]; then
+        chmod +x "${found_bin}" 2>/dev/null || true
+        local bin_dir
+        bin_dir="$(dirname "${found_bin}")"
+        chmod +x "${bin_dir}"/* 2>/dev/null || true
+        echo "${found_bin}"
+        return 0
+    fi
+    return 1
+}
+
+resolve_podman_from_path() {
+    local p="$1"
+    if [[ "${p}" == ~* ]]; then
+        p="${HOME}${p#\~}"
+    fi
+
+    # Case 1: Archive (.tar.gz, .tgz, .tar)
+    if [ -f "${p}" ] && [[ "${p}" =~ \.t(ar\.)?gz$|\.tar$ ]]; then
+        local extracted
+        if extracted="$(extract_podman_archive "${p}" "${PODMAN_EXTRACT_DIR}")"; then
+            echo "${extracted}"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Case 2: Directory
+    if [ -d "${p}" ]; then
+        for cand in "${p}/bin/podman" "${p}/usr/local/bin/podman" "${p}/usr/bin/podman" "${p}/podman"; do
+            if [ -x "${cand}" ]; then
+                echo "${cand}"
+                return 0
+            fi
+        done
+        local found_bin
+        found_bin="$(find "${p}" -type f -name podman -perm -111 2>/dev/null | head -1)"
+        if [ -n "${found_bin}" ]; then
+            echo "${found_bin}"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Case 3: Executable file
+    if [ -f "${p}" ]; then
+        chmod +x "${p}" 2>/dev/null || true
+        if [ -x "${p}" ]; then
+            echo "${p}"
+            return 0
+        fi
+        return 1
+    fi
+
+    return 1
+}
+
+# 1. Pre-flight checks: Resolve Podman binary
+BUNDLED_PODMAN_ARCHIVE="$(detect_bundled_podman)"
+
+if [ -n "${PODMAN_CUSTOM_PATH}" ]; then
+    if [ "${PODMAN_CUSTOM_PATH}" = "bundled" ]; then
+        if [ -n "${BUNDLED_PODMAN_ARCHIVE}" ]; then
+            if RESOLVED_BIN="$(extract_podman_archive "${BUNDLED_PODMAN_ARCHIVE}" "${PODMAN_EXTRACT_DIR}")"; then
+                PODMAN_BIN="${RESOLVED_BIN}"
+                IS_CUSTOM_PODMAN=true
+            else
+                echo -e "${RED}Error: Failed to extract bundled static Podman from ${BUNDLED_PODMAN_ARCHIVE}.${NC}" >&2
+                exit 1
+            fi
+        else
+            echo -e "${RED}Error: 'bundled' Podman requested but no bundled archive was found in ${SCRIPT_DIR}/podman.${NC}" >&2
+            exit 1
+        fi
+    else
+        if RESOLVED_BIN="$(resolve_podman_from_path "${PODMAN_CUSTOM_PATH}")"; then
+            PODMAN_BIN="${RESOLVED_BIN}"
+            IS_CUSTOM_PODMAN=true
+            echo -e "${GREEN}✓ Using specified Podman binary: ${PODMAN_BIN}${NC}"
+        else
+            echo -e "${RED}Error: Could not resolve executable Podman from '${PODMAN_CUSTOM_PATH}'.${NC}" >&2
+            exit 1
+        fi
+    fi
+elif [ "${USE_BUNDLED_PODMAN}" = true ]; then
+    if [ -n "${BUNDLED_PODMAN_ARCHIVE}" ]; then
+        if RESOLVED_BIN="$(extract_podman_archive "${BUNDLED_PODMAN_ARCHIVE}" "${PODMAN_EXTRACT_DIR}")"; then
+            PODMAN_BIN="${RESOLVED_BIN}"
+            IS_CUSTOM_PODMAN=true
+            echo -e "${GREEN}✓ Using bundled static Podman: ${PODMAN_BIN}${NC}"
+        else
+            echo -e "${RED}Error: Failed to extract bundled static Podman.${NC}" >&2
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: --use-bundled-podman requested but no bundled archive was found in ${SCRIPT_DIR}/podman.${NC}" >&2
+        exit 1
+    fi
+elif ! command -v podman > /dev/null 2>&1; then
+    if [ -n "${BUNDLED_PODMAN_ARCHIVE}" ]; then
+        DO_USE_BUNDLED=true
+        if [ -t 0 ] && [ "$NON_INTERACTIVE" = false ]; then
+            echo -e "\n${YELLOW}'podman' command was not found on your system.${NC}"
+            echo -e "A bundled static Podman archive is available: ${BOLD}${BUNDLED_PODMAN_ARCHIVE}${NC}"
+            read -r -p "Install and use the bundled static Podman? [Y/n]: " input_use_bundled
+            case "${input_use_bundled}" in
+                [nN]|[nN][oO]) DO_USE_BUNDLED=false ;;
+                *) DO_USE_BUNDLED=true ;;
+            esac
+        fi
+        if [ "${DO_USE_BUNDLED}" = true ]; then
+            if RESOLVED_BIN="$(extract_podman_archive "${BUNDLED_PODMAN_ARCHIVE}" "${PODMAN_EXTRACT_DIR}")"; then
+                PODMAN_BIN="${RESOLVED_BIN}"
+                IS_CUSTOM_PODMAN=true
+                echo -e "${GREEN}✓ Installed bundled static Podman: ${PODMAN_BIN}${NC}"
+            else
+                echo -e "${RED}Error: Failed to extract bundled static Podman.${NC}" >&2
+                exit 1
+            fi
+        else
+            echo -e "${RED}Error: Podman is required. You can specify a static binary with: ./deploy/install.sh --podman PATH${NC}" >&2
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: 'podman' is not installed or not in PATH.${NC}" >&2
+        echo -e "${YELLOW}You can point to a static binary or archive using: ./deploy/install.sh --podman /path/to/podman${NC}" >&2
+        if [ "${OS_TYPE}" = "Darwin" ]; then
+            echo -e "${YELLOW}On macOS, install via Homebrew: brew install podman${NC}" >&2
+        fi
+        exit 1
+    fi
+else
+    PODMAN_BIN="$(command -v podman)"
 fi
 
-PODMAN_RAW_VER="$(podman --version 2>&1 || true)"
+# Ensure the directory containing the Podman binary and its helpers (conmon, crun, etc.) is on PATH
+PODMAN_BIN_DIR="$(cd "$(dirname "${PODMAN_BIN}")" 2>/dev/null && pwd || dirname "${PODMAN_BIN}")"
+export PATH="${PODMAN_BIN_DIR}:${PATH}"
+
+PODMAN_RAW_VER="$("${PODMAN_BIN}" --version 2>&1 || true)"
 PODMAN_VER="$(echo "${PODMAN_RAW_VER}" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)"
 PODMAN_MAJOR="$(echo "${PODMAN_VER}" | cut -d. -f1)"
 
 if [ -z "${PODMAN_MAJOR}" ] || [ "${PODMAN_MAJOR}" -lt 4 ]; then
     echo -e "${RED}Error: Podman 4.0 or higher is required.${NC}" >&2
     echo -e "${RED}Detected: ${PODMAN_RAW_VER}${NC}" >&2
-    echo -e "${YELLOW}Please upgrade Podman to version 4.x or 5.x.${NC}" >&2
+    if [ -n "${BUNDLED_PODMAN_ARCHIVE}" ] && [ "${IS_CUSTOM_PODMAN}" = false ]; then
+        echo -e "${YELLOW}A bundled static Podman 5.x is available in this bundle. Re-run with: ./deploy/install.sh --use-bundled-podman${NC}" >&2
+    else
+        echo -e "${YELLOW}Please upgrade Podman to version 4.x or 5.x, or specify a static binary with --podman PATH.${NC}" >&2
+    fi
     exit 1
 fi
 
@@ -140,19 +339,24 @@ if [ "${OS_TYPE}" = "Darwin" ]; then
     echo -e "${BLUE}Detected OS: macOS (Darwin). Setting up launchd service supervisor...${NC}"
 
     # Ensure Podman machine is operational
-    if ! podman machine info >/dev/null 2>&1; then
+    if ! "${PODMAN_BIN}" machine info >/dev/null 2>&1; then
         echo -e "\n${YELLOW}Podman machine is not currently running. Attempting to start default machine...${NC}"
-        if ! podman machine start 2>/dev/null; then
+        if ! "${PODMAN_BIN}" machine start 2>/dev/null; then
             echo -e "${BLUE}Initializing new Podman machine (4 CPUs, 8GB RAM, 50GB disk)...${NC}"
-            podman machine init --cpus 4 --memory 8192 --disk-size 50
-            podman machine start
+            "${PODMAN_BIN}" machine init --cpus 4 --memory 8192 --disk-size 50
+            "${PODMAN_BIN}" machine start
         fi
         echo -e "${GREEN}✓ Podman machine is active.${NC}"
     fi
 else
     # Linux / Windows WSL 2
     SELINUX_MOUNT=":z"
-    if [ "${PODMAN_MAJOR}" -ge 5 ]; then
+    if [ -n "${FORCE_DEPLOY_MODE}" ]; then
+        DEPLOY_MODE="${FORCE_DEPLOY_MODE}"
+    elif [ "${IS_CUSTOM_PODMAN}" = true ]; then
+        # Custom/static podman does not register podman-systemd-generator in host systemd
+        DEPLOY_MODE="systemd"
+    elif [ "${PODMAN_MAJOR}" -ge 5 ] && { [ -f "/usr/lib/systemd/user-generators/podman-user-generator" ] || [ -f "/usr/lib/systemd/user-generators/podman-systemd-generator" ] || [ -f "/usr/lib/systemd/system-generators/podman-system-generator" ]; }; then
         DEPLOY_MODE="quadlet"
     else
         DEPLOY_MODE="systemd"
@@ -274,7 +478,7 @@ fi
 
 echo -e "\n${BLUE}Configuration summary:${NC}"
 echo -e "  - OS Platform:         ${BOLD}${OS_TYPE}${NC}"
-echo -e "  - Podman Version:      ${BOLD}${PODMAN_VER} (mode: ${DEPLOY_MODE})${NC}"
+echo -e "  - Podman Executable:   ${BOLD}${PODMAN_BIN} (${PODMAN_VER}, mode: ${DEPLOY_MODE})${NC}"
 echo -e "  - Web UI Port:         ${BOLD}${WEB_PORT}${NC}"
 echo -e "  - Backend API Port:    ${BOLD}${API_PORT}${NC}"
 echo -e "  - Accessible Data Dir: ${BOLD}${DATA_DIR}${NC}"
@@ -293,7 +497,7 @@ if [ -d "${SCRIPT_DIR}/images" ]; then
     for archive in "${SCRIPT_DIR}/images/"*.tar*; do
         if [ -f "${archive}" ]; then
             echo -e "  Loading ${archive}..."
-            podman load -i "${archive}"
+            "${PODMAN_BIN}" load -i "${archive}"
         fi
     done
     echo -e "${GREEN}✓ Offline images loaded.${NC}"
@@ -302,7 +506,7 @@ fi
 # Verify required container images are present locally
 MISSING_IMAGES=()
 for img in "localhost/resoflow-api:latest" "localhost/resoflow-worker:latest" "localhost/resoflow-web:latest"; do
-    if ! podman image exists "${img}" 2>/dev/null; then
+    if ! "${PODMAN_BIN}" image exists "${img}" 2>/dev/null; then
         MISSING_IMAGES+=("${img}")
     fi
 done
@@ -391,6 +595,7 @@ RESOFLOW_CHEMEX_IMAGE=localhost/resoflow-chemex:latest
 RESOFLOW_SELINUX_MOUNT=${SELINUX_SETTING}
 WEB_PORT=${WEB_PORT}
 API_PORT=${API_PORT}
+PODMAN_BIN=${PODMAN_BIN}
 ENVEOF
     chmod 600 "${ENV_FILE}"
     echo -e "${GREEN}✓ Generated ${ENV_FILE} with permissions 600.${NC}"
@@ -409,6 +614,7 @@ else
     update_env_var "RESOFLOW_SELINUX_MOUNT" "${SELINUX_SETTING}"
     update_env_var "WEB_PORT" "${WEB_PORT}"
     update_env_var "API_PORT" "${API_PORT}"
+    update_env_var "PODMAN_BIN" "${PODMAN_BIN}"
     echo -e "${GREEN}✓ Updated ${ENV_FILE}.${NC}"
 fi
 
@@ -466,32 +672,45 @@ elif [ "${DEPLOY_MODE}" = "quadlet" ]; then
     echo -e "${GREEN}✓ Quadlet units installed with customized ports and storage.${NC}"
 
 else
-    echo -e "\n${BLUE}[2/5] Installing and tailoring Podman 4.x systemd user units...${NC}"
+    echo -e "\n${BLUE}[2/5] Installing and tailoring Podman systemd user units...${NC}"
     mkdir -p "${USER_SYSTEMD_DIR}"
     rm -f "${QUADLET_DIR}/resoflow.pod" \
           "${QUADLET_DIR}/resoflow-"*.container \
           "${QUADLET_DIR}/resoflow-"*.volume 2>/dev/null || true
 
-    podman volume exists resoflow-pgdata 2>/dev/null || podman volume create resoflow-pgdata >/dev/null
-    podman volume exists resoflow-redisdata 2>/dev/null || podman volume create resoflow-redisdata >/dev/null
+    "${PODMAN_BIN}" volume exists resoflow-pgdata 2>/dev/null || "${PODMAN_BIN}" volume create resoflow-pgdata >/dev/null
+    "${PODMAN_BIN}" volume exists resoflow-redisdata 2>/dev/null || "${PODMAN_BIN}" volume create resoflow-redisdata >/dev/null
 
-    sed -e "s|__BIND_HOST__|${BIND_HOST}|g" \
+    tailor_service_unit() {
+        local src="$1"
+        local dst="$2"
+        sed -e "s|/usr/bin/podman|${PODMAN_BIN}|g" \
+            -e "s|Environment=PODMAN_SYSTEMD_UNIT=%n|Environment=PODMAN_SYSTEMD_UNIT=%n\nEnvironment=\"PATH=${PODMAN_BIN_DIR}:/usr/local/bin:/usr/bin:/bin\"|g" \
+            "${src}" > "${dst}"
+    }
+
+    sed -e "s|/usr/bin/podman|${PODMAN_BIN}|g" \
+        -e "s|__BIND_HOST__|${BIND_HOST}|g" \
         -e "s|__WEB_PORT__|${WEB_PORT}|g" \
         "${SCRIPT_DIR}/systemd/resoflow-pod.service" > "${USER_SYSTEMD_DIR}/resoflow-pod.service"
 
-    sed -e "s|__DATA_DIR__|${DATA_DIR}|g" \
+    sed -e "s|/usr/bin/podman|${PODMAN_BIN}|g" \
+        -e "s|Environment=PODMAN_SYSTEMD_UNIT=%n|Environment=PODMAN_SYSTEMD_UNIT=%n\nEnvironment=\"PATH=${PODMAN_BIN_DIR}:/usr/local/bin:/usr/bin:/bin\"|g" \
+        -e "s|__DATA_DIR__|${DATA_DIR}|g" \
         -e "s|__API_PORT__|${API_PORT}|g" \
         "${SCRIPT_DIR}/systemd/resoflow-api.service" > "${USER_SYSTEMD_DIR}/resoflow-api.service"
 
-    sed -e "s|__DATA_DIR__|${DATA_DIR}|g" \
+    sed -e "s|/usr/bin/podman|${PODMAN_BIN}|g" \
+        -e "s|Environment=PODMAN_SYSTEMD_UNIT=%n|Environment=PODMAN_SYSTEMD_UNIT=%n\nEnvironment=\"PATH=${PODMAN_BIN_DIR}:/usr/local/bin:/usr/bin:/bin\"|g" \
+        -e "s|__DATA_DIR__|${DATA_DIR}|g" \
         "${SCRIPT_DIR}/systemd/resoflow-worker.service" > "${USER_SYSTEMD_DIR}/resoflow-worker.service"
 
-    cp -f "${SCRIPT_DIR}/systemd/resoflow-postgres.service" "${USER_SYSTEMD_DIR}/resoflow-postgres.service"
-    cp -f "${SCRIPT_DIR}/systemd/resoflow-redis.service" "${USER_SYSTEMD_DIR}/resoflow-redis.service"
-    cp -f "${SCRIPT_DIR}/systemd/resoflow-web.service" "${USER_SYSTEMD_DIR}/resoflow-web.service"
+    tailor_service_unit "${SCRIPT_DIR}/systemd/resoflow-postgres.service" "${USER_SYSTEMD_DIR}/resoflow-postgres.service"
+    tailor_service_unit "${SCRIPT_DIR}/systemd/resoflow-redis.service" "${USER_SYSTEMD_DIR}/resoflow-redis.service"
+    tailor_service_unit "${SCRIPT_DIR}/systemd/resoflow-web.service" "${USER_SYSTEMD_DIR}/resoflow-web.service"
     cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.service" "${USER_SYSTEMD_DIR}/"
     cp -f "${SCRIPT_DIR}/systemd/resoflow-backup.timer" "${USER_SYSTEMD_DIR}/"
-    echo -e "${GREEN}✓ Systemd user units installed with customized ports and storage.${NC}"
+    echo -e "${GREEN}✓ Systemd user units installed with customized ports, storage, and Podman binary (${PODMAN_BIN}).${NC}"
 fi
 
 # 7. Enable Daemons / Sockets / Timers
@@ -504,6 +723,41 @@ if [ "${DEPLOY_MODE}" = "launchd" ]; then
     echo -e "${GREEN}✓ LaunchAgents registered with launchd.${NC}"
 else
     echo -e "\n${BLUE}[3/5] Configuring systemd user services, backup timer & Podman socket...${NC}"
+
+    # Ensure Podman API socket unit exists; create user unit if system does not provide it
+    if ! systemctl --user list-unit-files podman.socket > /dev/null 2>&1 && ! systemctl --user cat podman.socket > /dev/null 2>&1; then
+        echo -e "  Creating user-level podman.socket and podman.service for ${PODMAN_BIN}..."
+        mkdir -p "${USER_SYSTEMD_DIR}"
+        cat << SOCK_EOF > "${USER_SYSTEMD_DIR}/podman.socket"
+[Unit]
+Description=Podman API Socket
+Documentation=man:podman-system-service(1)
+
+[Socket]
+ListenStream=%t/podman/podman.sock
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target
+SOCK_EOF
+
+        cat << SERV_EOF > "${USER_SYSTEMD_DIR}/podman.service"
+[Unit]
+Description=Podman API Service
+Documentation=man:podman-system-service(1)
+Requires=podman.socket
+After=podman.socket
+
+[Service]
+Type=exec
+ExecStart=${PODMAN_BIN} system service
+Environment="PATH=${PODMAN_BIN_DIR}:/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=default.target
+SERV_EOF
+    fi
+
     systemctl --user daemon-reload
     systemctl --user enable --now podman.socket > /dev/null 2>&1 || true
     systemctl --user enable --now resoflow-backup.timer > /dev/null 2>&1 || true
@@ -544,14 +798,10 @@ echo ""
 # 10. Bootstrap administrator account if requested
 if [ "${CREATE_ADMIN}" = "true" ] && [ -n "${ADMIN_EMAIL}" ] && [ -n "${ADMIN_PASSWORD}" ]; then
     echo -e "\n${BLUE}Configuring administrator account (${ADMIN_EMAIL})...${NC}"
-    # The API container runs its own DB-wait + `alembic upgrade head` before serving,
-    # so the `users` table may not exist yet even though the web readiness check above
-    # already passed (Caddy serves the static UI independently of API/DB readiness).
-    # Retry for a while instead of failing on the first attempt.
     ADMIN_BOOTSTRAP_OK=false
     ADMIN_BOOTSTRAP_OUTPUT=""
     for i in {1..15}; do
-        if ADMIN_BOOTSTRAP_OUTPUT="$(podman exec -i \
+        if ADMIN_BOOTSTRAP_OUTPUT="$("${PODMAN_BIN}" exec -i \
             -e ADMIN_EMAIL="${ADMIN_EMAIL}" \
             -e ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
             -e ADMIN_NAME="${ADMIN_NAME}" \
@@ -607,7 +857,7 @@ PYEOF
         echo -e "${YELLOW}Warning: Could not create admin account automatically:${NC}"
         echo -e "${YELLOW}${ADMIN_BOOTSTRAP_OUTPUT}${NC}"
         echo -e "${YELLOW}You can create one anytime with:${NC}"
-        echo -e "  ${BOLD}podman exec -it resoflow-api python create_superuser.py${NC}"
+        echo -e "  ${BOLD}${PODMAN_BIN} exec -it resoflow-api python create_superuser.py${NC}"
     fi
 fi
 
@@ -636,7 +886,7 @@ if [ "$READY" = true ]; then
     if [ "${DEPLOY_MODE}" = "launchd" ]; then
         echo -e "\n${BLUE}macOS management commands:${NC}"
         echo -e "  Status:  ${BOLD}${SCRIPTS_DIR}/resoflow-service.sh status${NC}"
-        echo -e "  Logs:    ${BOLD}podman logs -f resoflow-api${NC}"
+        echo -e "  Logs:    ${BOLD}${PODMAN_BIN} logs -f resoflow-api${NC}"
         echo -e "  Stop:    ${BOLD}${SCRIPTS_DIR}/resoflow-service.sh stop${NC}"
         echo -e "  Restart: ${BOLD}${SCRIPTS_DIR}/resoflow-service.sh restart${NC}"
     else
@@ -648,5 +898,5 @@ if [ "$READY" = true ]; then
     fi
 else
     echo -e "\n${YELLOW}Warning: Services started, but healthcheck timed out. Check container logs:${NC}"
-    echo -e "  ${BOLD}podman logs -n 50 resoflow-api${NC}"
+    echo -e "  ${BOLD}${PODMAN_BIN} logs -n 50 resoflow-api${NC}"
 fi

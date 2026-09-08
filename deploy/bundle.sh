@@ -20,16 +20,19 @@ BUNDLE_NAME="resoflow-${VERSION}-offline-bundle"
 BUNDLE_DIR="${DIST_DIR}/${BUNDLE_NAME}"
 ARCHIVE_PATH="${DIST_DIR}/${BUNDLE_NAME}.tar.gz"
 
+# Pinned podman-static version for consistent behavior across installations
+PODMAN_STATIC_VER="5.8.4"
+
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 echo -e "${BLUE}${BOLD}     Building resoFlow Offline Bundle (${VERSION})    ${NC}"
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 
 # 1. Clean and prepare output directory
 rm -rf "${BUNDLE_DIR}" "${ARCHIVE_PATH}"
-mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet" "${BUNDLE_DIR}/systemd" "${BUNDLE_DIR}/macos" "${BUNDLE_DIR}/windows"
+mkdir -p "${BUNDLE_DIR}/images" "${BUNDLE_DIR}/quadlet" "${BUNDLE_DIR}/systemd" "${BUNDLE_DIR}/macos" "${BUNDLE_DIR}/windows" "${BUNDLE_DIR}/podman"
 
 # 2. Copy Quadlet units, systemd templates, macOS/Windows assets, and lifecycle scripts
-echo -e "\n${BLUE}[1/4] Copying deployment scripts and platform assets...${NC}"
+echo -e "\n${BLUE}[1/5] Copying deployment scripts and platform assets...${NC}"
 cp -f "${SCRIPT_DIR}/quadlet/"* "${BUNDLE_DIR}/quadlet/"
 cp -f "${SCRIPT_DIR}/systemd/"* "${BUNDLE_DIR}/systemd/" 2>/dev/null || true
 cp -f "${SCRIPT_DIR}/macos/"* "${BUNDLE_DIR}/macos/" 2>/dev/null || true
@@ -39,8 +42,26 @@ cp -f "${SCRIPT_DIR}/install.sh" "${BUNDLE_DIR}/install.sh"
 cp -f "${SCRIPT_DIR}/uninstall.sh" "${BUNDLE_DIR}/uninstall.sh"
 chmod +x "${BUNDLE_DIR}/install.sh" "${BUNDLE_DIR}/uninstall.sh" "${BUNDLE_DIR}/backup.sh" "${BUNDLE_DIR}/macos/resoflow-service.sh" 2>/dev/null || true
 
+# 2b. Download podman-static binaries (Linux only)
+echo -e "\n${BLUE}[1b/5] Downloading podman-static v${PODMAN_STATIC_VER} for Linux...${NC}"
+PODMAN_STATIC_BASE="https://github.com/mgoltzsche/podman-static/releases/download/v${PODMAN_STATIC_VER}"
+for arch in amd64 arm64; do
+    ARCHIVE_NAME="podman-linux-${arch}.tar.gz"
+    DEST="${BUNDLE_DIR}/podman/${ARCHIVE_NAME}"
+    echo -e "  Downloading ${ARCHIVE_NAME}..."
+    if curl -fsSL -o "${DEST}" "${PODMAN_STATIC_BASE}/${ARCHIVE_NAME}"; then
+        echo -e "  ${GREEN}✓ ${ARCHIVE_NAME} downloaded.${NC}"
+    else
+        echo -e "  ${YELLOW}⚠ Could not download ${ARCHIVE_NAME} (architecture may not be available). Skipping.${NC}"
+        rm -f "${DEST}"
+    fi
+done
+# Record the pinned version for the installer
+echo "${PODMAN_STATIC_VER}" > "${BUNDLE_DIR}/podman/VERSION"
+echo -e "${GREEN}✓ Podman static binaries packaged.${NC}"
+
 # 3. Generate INSTALL.md
-echo -e "\n${BLUE}[2/4] Generating INSTALL.md documentation...${NC}"
+echo -e "\n${BLUE}[2/5] Generating INSTALL.md documentation...${NC}"
 cat << 'EOF' > "${BUNDLE_DIR}/INSTALL.md"
 # resoFlow Offline Installation Guide
 
@@ -51,9 +72,11 @@ This archive is a standalone, self-contained distribution bundle for deploying *
 ## Prerequisites
 
 1. **Linux Workstation** (RHEL 9, Rocky Linux 9, Fedora, Ubuntu 22.04+, Debian 12+).
-2. **Podman 4.x or 5.x** installed with user subuid/subgid configured:
-   - Check with: `podman --version` and `grep "^$USER:" /etc/subuid`
-   - Both Podman 4.x (via systemd user services) and Podman 5.x (via Quadlet) are supported automatically.
+2. **Podman 5.x** — if not installed on the system, the installer will automatically set up a
+   bundled static Podman binary (no root required). The only host-level dependencies are:
+   - `newuidmap` / `newgidmap` (from `uidmap` or `shadow-utils`)
+   - Entries in `/etc/subuid` and `/etc/subgid` for the installing user
+   - Check with: `grep "^$USER:" /etc/subuid`
 3. **Systemd User Session**:
    - Check with: `systemctl --user is-system-running`
 
@@ -122,7 +145,7 @@ POSTGRES_IMAGE="${POSTGRES_IMAGE:-docker.io/library/postgres:16-alpine}"
 REDIS_IMAGE="${REDIS_IMAGE:-docker.io/library/redis:7-alpine}"
 
 # 5. Export Container Images
-echo -e "\n${BLUE}[3/4] Exporting container images to ${BUNDLE_DIR}/images/ (this may take a few minutes)...${NC}"
+echo -e "\n${BLUE}[3/5] Exporting container images to ${BUNDLE_DIR}/images/ (this may take a few minutes)...${NC}"
 
 IMAGES_TO_SAVE=(
     "localhost/resoflow-api:latest"
@@ -141,7 +164,7 @@ gzip -1 "${BUNDLE_DIR}/images/resoflow-images.tar"
 echo -e "${GREEN}✓ Container images packaged (${BUNDLE_DIR}/images/resoflow-images.tar.gz).${NC}"
 
 # 6. Create Tarball
-echo -e "\n${BLUE}[4/4] Creating final distribution archive...${NC}"
+echo -e "\n${BLUE}[5/5] Creating final distribution archive...${NC}"
 tar -czf "${ARCHIVE_PATH}" -C "${DIST_DIR}" "${BUNDLE_NAME}"
 rm -rf "${BUNDLE_DIR}"
 
