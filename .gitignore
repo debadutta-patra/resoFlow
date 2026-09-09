@@ -72,3 +72,4 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+backend/tests/fixtures/chemex_trees/single_step/plots_emerald_green.zip
