@@ -153,10 +153,10 @@ const AnalysisReport: React.FC = () => {
       }
       setAnalysis(a);
 
-      const isSupported = ['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE'].includes((a.analysis_type || '').toUpperCase());
+      const isSupported = ['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE', 'SDM'].includes((a.analysis_type || '').toUpperCase());
       if (!isSupported) {
         setError(
-          `Interactive reports are currently available for CPMG, CEST, R1, R2, and hetNOE analyses. For ${a.analysis_type} analyses, please view results directly from the Analysis view.`
+          `Interactive reports are currently available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. For ${a.analysis_type} analyses, please view results directly from the Analysis view.`
         );
         setIsLoading(false);
         return;
@@ -445,7 +445,7 @@ const AnalysisReport: React.FC = () => {
   }
 
   if (error) {
-    const isUnsupported = analysis && !['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE'].includes((analysis.analysis_type || '').toUpperCase());
+    const isUnsupported = analysis && !['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE', 'SDM'].includes((analysis.analysis_type || '').toUpperCase());
     return (
       <div className="max-w-4xl mx-auto p-8 space-y-6 animate-in fade-in duration-200">
         <button
@@ -647,7 +647,12 @@ const AnalysisReport: React.FC = () => {
             </button>
           )}
 
-          {/* Export All Plots Button (300 DPI PNG & Vector PDF ZIP) */}
+          {/* Export All Plots (300 DPI PNG & vector PDF ZIP).
+              Hidden for SDM: the archive packages per-residue decay and
+              dispersion figures, which a spectral density analysis does not
+              produce, so the server refuses it. Its plots are in this report
+              and in the PDF. A button that always errors is worse than none. */}
+          {(analysis?.analysis_type || '').toUpperCase() !== 'SDM' && (
           <button
             onClick={handleExportPlots}
             disabled={isExportingPlots}
@@ -668,6 +673,7 @@ const AnalysisReport: React.FC = () => {
               </>
             )}
           </button>
+          )}
 
           {/* PDF Export Button (Async Celery Task on stats queue) */}
           <button

@@ -360,6 +360,7 @@ def export_spectral_density_csv(
     )
 
 
+@router.get("/{analysis_uuid}/sdm/report")
 @router.post("/{analysis_uuid}/sdm/report")
 def generate_spectral_density_report(
     analysis_uuid: str,

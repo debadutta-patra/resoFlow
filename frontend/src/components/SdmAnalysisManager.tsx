@@ -1075,14 +1075,14 @@ const ResidueTable: React.FC<ResidueTableProps> = ({
           Flagged only
         </label>
         <a
-          href={`/api/projects/${projectUuid}/spectral-density/${analysisUuid}/export.csv`}
+          href={`/api/projects/${projectUuid}/analysis/${analysisUuid}/sdm/export.csv`}
           className="flex items-center px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-widest"
         >
           <Database className="w-3 h-3 mr-2" />
           CSV
         </a>
         <a
-          href={`/api/projects/${projectUuid}/spectral-density/${analysisUuid}/report`}
+          href={`/api/projects/${projectUuid}/analysis/${analysisUuid}/sdm/report`}
           className="flex items-center px-4 py-2 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-widest"
         >
           <FileText className="w-3 h-3 mr-2" />

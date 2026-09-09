@@ -9,8 +9,10 @@
       {% include "_step_section.html" %}
     {% endfor %}
   {% else %}
+    {% if index_data %}
     <div class="page-break"></div>
     {% include "_index.html" %}
+    {% endif %}
 
     {% if kinetic_data %}
     <div class="page-break"></div>

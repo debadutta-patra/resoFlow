@@ -34,8 +34,14 @@
       {% else %}
       <td><strong>Container Digest</strong></td>
       <td><code>{{ (prov.chemex_image_digest[:20] + '...') if prov.chemex_image_digest else 'Host / Local' }}</code></td>
+      {% if is_spectral_density is defined and is_spectral_density %}
+      {# The mapping solves a linear system; there is no kinetic model. #}
+      <td><strong>Method</strong></td>
+      <td>Reduced spectral density mapping</td>
+      {% else %}
       <td><strong>Kinetic Model</strong></td>
       <td>{{ prov.model_name|upper }}</td>
+      {% endif %}
       {% endif %}
     </tr>
     <tr>

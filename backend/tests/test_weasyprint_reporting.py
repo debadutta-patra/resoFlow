@@ -579,7 +579,7 @@ class TestPhaseEReportEndpoints:
             headers=self.headers,
         )
         assert res_html.status_code == 400
-        assert "Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses" in res_html.json()["detail"]
+        assert "Interactive reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses" in res_html.json()["detail"]
 
         # 2. Standalone report.html returns 400
         res_standalone_html = self.client.get(

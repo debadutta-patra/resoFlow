@@ -1245,3 +1245,173 @@ class TestResidueExclusion(TestSpectralDensityApi):
         # exchange-free and the product is what discriminates.
         self.assertIn("not</em> exchange-free", html)
         self.assertIn("less sensitive to diffusion anisotropy", html)
+
+
+class TestSharedReportEndpoints(TestSpectralDensityApi):
+    """SDM must work through the shared report routes, like every other type.
+
+    These are the endpoints the interactive report page uses; SDM was missing
+    from their allowlists, so the page refused to render it.
+    """
+
+    def _completed(self):
+        r1, r2, noe = self._standard_sources()
+        return self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+    def test_interactive_html_report_renders(self):
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.get(f"{url}/{uuid}/report.html?style=screen",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:400])
+        self.assertIn("Reduced Spectral Density Mapping", resp.text)
+        self.assertIn("Measured Relaxation Rates", resp.text)
+
+    def test_report_json_renders(self):
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.get(f"{url}/{uuid}/report.json",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:400])
+        self.assertEqual(resp.json()["analysis_type"], "SDM")
+
+    def test_report_pdf_renders(self):
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.get(f"{url}/{uuid}/report.pdf",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:400])
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+
+    def test_plot_archive_refuses_with_a_reason(self):
+        """The one shared export SDM genuinely cannot serve.
+
+        The archive packages per-residue decay and dispersion figures, which
+        a spectral density analysis does not produce, so enabling it would
+        hand back a ZIP with none of the SDM plots in it.
+        """
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.post(f"{url}/{uuid}/export/plots/async",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 400)
+        detail = resp.json()["detail"]
+        self.assertIn("does not produce", detail)
+        self.assertIn("interactive reports instead", detail)
+
+    def test_sdm_report_endpoint_is_reachable_as_a_link(self):
+        """The results table links to it with an <a href>, so GET must work."""
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        for method in (self.client.get, self.client.post):
+            resp = method(f"{url}/{uuid}/sdm/report",
+                          headers=self._auth(self.token_a))
+            self.assertEqual(resp.status_code, 200, method.__name__)
+            self.assertTrue(resp.content.startswith(b"%PDF"))
+
+
+class TestFrontendUrlsMatchRoutes(TestSpectralDensityApi):
+    """The URLs the UI builds must exist on the server.
+
+    A stale link survived the move from /spectral-density/... to
+    /analysis/{uuid}/sdm/... and shipped as a 404 in the browser, because
+    nothing checked the two against each other.
+    """
+
+    def test_every_sdm_url_in_the_manager_resolves(self):
+        import re
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "frontend" / "src" / "components" / "SdmAnalysisManager.tsx"
+        ).read_text()
+
+        # Template literals of the form `/api/projects/${x}/...`
+        found = re.findall(r"`(/api/[^`]*)`", source)
+        self.assertTrue(found, "no API URLs found in the manager")
+
+        registered = {
+            r.path for r in app.routes if getattr(r, "path", "").startswith("/api/")
+        }
+
+        for raw in found:
+            # ${expr} -> the route's own parameter placeholder
+            path = re.sub(r"\$\{[^}]+\}", "{x}", raw).split("?")[0]
+            normalised = re.sub(r"\{[^}]+\}", "{x}", path)
+            matches = {re.sub(r"\{[^}]+\}", "{x}", r) for r in registered}
+            self.assertIn(normalised, matches, f"{raw} does not match any route")
+
+
+class TestSdmReportOmitsInapplicableSections(TestSpectralDensityApi):
+    """The report must not render sections a spectral density analysis cannot fill.
+
+    Going through the shared report machinery meant SDM inherited the whole
+    ChemEx/relaxation document: a residue index of em-dashes, a "Global
+    Relaxation & Exchange Parameters" table with nothing in it, and a page of
+    empty NOT_IN_MODEL profile plots. Empty scaffolding reads as missing data
+    rather than as inapplicable, so those sections are skipped outright.
+    """
+
+    def _html(self):
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        return render_html(
+            build_report_model(os.path.dirname(analysis.results_path),
+                               analysis.name, analysis_type="SDM"),
+            style="screen",
+        )
+
+    def test_no_empty_chemex_sections(self):
+        html = self._html()
+        for absent in (
+            "NOT_IN_MODEL",                    # empty per-residue profile plots
+            "Residue Profiles",                # their heading
+            "Global Relaxation",               # the empty exchange-parameter table
+            "Uncertainty Legend",              # legend for uncertainties SDM has none of
+            "Kinetic Model",                   # SDM fits no kinetic model
+            "Scanning Grid",                   # no grid search
+        ):
+            self.assertNotIn(absent, html, f"{absent!r} should not be in an SDM report")
+
+    def test_no_residue_index_of_dashes(self):
+        """The shared index table's columns are all inapplicable to SDM."""
+        html = self._html()
+        for column in ("R<sub>2A</sub>", "R<sub>2B</sub>", "R<sub>1A</sub>",
+                       "&Delta;&omega; (ppm)"):
+            self.assertNotIn(column, html, column)
+
+    def test_the_sections_that_do_apply_are_present(self):
+        """Suppression must not have taken the real content with it."""
+        html = self._html()
+        for present in (
+            "Reduced Spectral Density Mapping Report",   # title, not "SDM Analysis Report"
+            "Reduced Spectral Density Mapping",          # the section
+            "Measured Relaxation Rates",
+            "R<sub>2</sub>/R<sub>1</sub>",
+            "R<sub>1</sub>&middot;R<sub>2</sub>",
+            "Per-Residue Spectral Densities",
+            "Provenance",
+        ):
+            self.assertIn(present, html, present)
+
+    def test_other_analysis_types_keep_their_sections(self):
+        """The suppression must be SDM-only, not a change to every report."""
+        from pathlib import Path
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        fixture = (Path(__file__).parent / "fixtures" / "chemex_trees" / "single_step")
+        html = render_html(
+            build_report_model(fixture, "cpmg demo", analysis_type="CPMG"),
+            style="screen",
+        )
+        self.assertIn("Global Relaxation", html)
+        self.assertIn("Kinetic Model", html)

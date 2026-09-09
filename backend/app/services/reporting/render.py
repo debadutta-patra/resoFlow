@@ -1095,22 +1095,40 @@ def build_report_context(
 
     steps_data = []
     sequence_rate_plot = None
+    is_spectral_density = (model.analysis_type or "").upper() == "SDM"
+
     with apply_report_style(style, palette=palette):
-        kinetic_data = build_kinetic_data(model)
-        if (model.analysis_type or "").upper() in ("R1", "R2", "HETNOE"):
-            sequence_rate_plot = figures.sequence_rate_plot(model.residues, analysis_type=model.analysis_type)
-        profile_curves = build_profile_curves(model)
-        detailed_residues = build_detailed_residues(model)
-        statistics_data = build_statistics_data(model)
-        grid_1d_plots = build_grid_1d_data(model)
         spectral_density_data = build_spectral_density_data(model)
+
+        if is_spectral_density:
+            # A spectral density analysis produces none of the artefacts the
+            # remaining sections describe -- no exchange model, no decay or
+            # dispersion profiles, no grid scan, no resampling tree. Rendering
+            # them anyway gave a residue index of em-dashes, a "Global
+            # Relaxation & Exchange Parameters" table with nothing in it, and
+            # a page of empty NOT_IN_MODEL profile plots. They are skipped
+            # rather than emitted empty, which also saves rendering one
+            # matplotlib figure per residue for nothing.
+            kinetic_data = None
+            profile_curves = None
+            detailed_residues = None
+            statistics_data = None
+            grid_1d_plots = None
+        else:
+            kinetic_data = build_kinetic_data(model)
+            if (model.analysis_type or "").upper() in ("R1", "R2", "HETNOE"):
+                sequence_rate_plot = figures.sequence_rate_plot(model.residues, analysis_type=model.analysis_type)
+            profile_curves = build_profile_curves(model)
+            detailed_residues = build_detailed_residues(model)
+            statistics_data = build_statistics_data(model)
+            grid_1d_plots = build_grid_1d_data(model)
 
         if model.is_multi_step and model.steps:
             for idx, step in enumerate(model.steps):
                 steps_data.append(build_step_context(step, model, idx + 1))
 
     summary_data = build_summary_data(model)
-    index_data = build_index_data(model, fallback_anchors=False)
+    index_data = None if is_spectral_density else build_index_data(model, fallback_anchors=False)
     prov_data = build_provenance_data(model)
 
     css_file = s_dir / ("screen.css" if style == "screen" else "print.css")
@@ -1118,6 +1136,7 @@ def build_report_context(
 
     return {
         "model": model,
+        "is_spectral_density": is_spectral_density,
         "style": style,
         "palette": palette or "okabe_ito",
         "palette_metadata": PALETTE_METADATA,

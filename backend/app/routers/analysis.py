@@ -1252,10 +1252,10 @@ def _render_analysis_html(
     palette: Optional[str] = None,
 ) -> HTMLResponse:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=400,
-            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
@@ -1279,10 +1279,10 @@ def _render_analysis_html(
 
 def _render_analysis_json(analysis: models.Analysis) -> Response:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=400,
-            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
@@ -1310,10 +1310,10 @@ def _render_or_serve_pdf(
     palette: Optional[str] = None,
 ):
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=400,
-            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
@@ -1371,10 +1371,10 @@ def _trigger_pdf_async(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     if analysis.status != "COMPLETED":
         raise HTTPException(
@@ -1439,7 +1439,7 @@ def _trigger_plots_export_async(
     if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Plot archive export is available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Plot archive export is available for CPMG, CEST, R1, R2 and hetNOE analyses; it packages per-residue decay and dispersion figures, which a {analysis.analysis_type} analysis does not produce. Its plots are in the PDF and interactive reports instead.",
         )
     if analysis.status != "COMPLETED":
         raise HTTPException(

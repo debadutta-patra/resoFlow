@@ -8,11 +8,17 @@
   {% elif model.analysis_type == 'CPMG' %}
   <h1>CPMG Relaxation Dispersion Analysis Report</h1>
   {% else %}
+  {% if is_spectral_density is defined and is_spectral_density %}
+  <h1>Reduced Spectral Density Mapping Report</h1>
+  {% else %}
   <h1>{{ model.analysis_type }} Analysis Report</h1>
+  {% endif %}
   {% endif %}
   <div class="subtitle">
     Analysis: <strong>{{ model.analysis_name }}</strong> &nbsp;|&nbsp;
-    {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
+    {% if is_spectral_density is defined and is_spectral_density %}
+    {# No kinetic model: the mapping fits nothing, it solves a linear system. #}
+    {% elif model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
     Model: <strong>{{ model.provenance.model_name|upper }}</strong> &nbsp;|&nbsp;
     {% else %}
     Kinetic Model: <strong>{{ model.provenance.model_name|upper }}</strong> &nbsp;|&nbsp;
@@ -55,6 +61,7 @@
 </table>
 {% endif %}
 
+{% if not (is_spectral_density is defined and is_spectral_density) %}
 {% if model.analysis_type in ['R1', 'R2', 'HETNOE'] %}
 <h2>Sequence Relaxation Rate Summary</h2>
 {% else %}
@@ -86,6 +93,8 @@
     {% endfor %}
   </tbody>
 </table>
+
+{% endif %}
 
 {% if summary_data.derived_rows %}
 <h2>Derived Kinetic Quantities (Covariance-Aware Propagation)</h2>
