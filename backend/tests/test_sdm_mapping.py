@@ -749,3 +749,147 @@ def test_matches_published_spectral_densities():
         assert j_ns[i, 0] == pytest.approx(row["j0_ns"], rel=tol), row["assignment"]
         assert j_ns[i, 1] == pytest.approx(row["j_wn_ns"], rel=tol), row["assignment"]
         assert j_ns[i, 2] == pytest.approx(row["j_h_ns"], rel=tol), row["assignment"]
+
+
+# --------------------------------------------------------------------------
+# tau_m from the J(wN) vs J(0) correlation (Lefevre et al. 1996)
+# --------------------------------------------------------------------------
+
+from app.services.sdm.diagnostics import (  # noqa: E402
+    JCorrelationFit,
+    fit_j_correlation,
+    tau_m_from_correlation,
+)
+
+PAPER_ALPHA = 0.0772
+PAPER_BETA_S = 0.2182e-9          # 0.2182 ns/rad
+PAPER_ROOTS_NS = (-14.4, 0.6, 5.7)
+PAPER_TAU_M_NS = 5.7
+
+
+def _omega_n(mhz: float) -> float:
+    return 2.0 * math.pi * mhz * 1e6 * (GAMMA_N / GAMMA_H)
+
+
+def test_cubic_reproduces_the_published_worked_example():
+    """The published alpha/beta must give the published roots.
+
+    This is the regression that anchors the whole tau_m path: the cubic was
+    transcribed from a paper, and a transposed coefficient would still
+    produce plausible numbers.
+    """
+    fit = JCorrelationFit(alpha=PAPER_ALPHA, beta=PAPER_BETA_S, r=0.218, n=80)
+    solution = tau_m_from_correlation(fit, _omega_n(600.0), j0_reference=2.28e-9)
+
+    roots_ns = sorted(t * 1e9 for t in solution.roots)
+    assert len(roots_ns) == 3
+    for got, want in zip(roots_ns, PAPER_ROOTS_NS):
+        # The negative root is the most sensitive to the rounding of alpha
+        # and beta as printed, so it is checked loosely; the two that matter
+        # are checked tightly.
+        assert got == pytest.approx(want, abs=1.1), roots_ns
+    assert roots_ns[1] == pytest.approx(0.6, abs=0.05)
+    assert roots_ns[2] == pytest.approx(PAPER_TAU_M_NS, abs=0.1)
+    assert solution.tau_m * 1e9 == pytest.approx(PAPER_TAU_M_NS, abs=0.1)
+
+
+def test_fit_recovers_a_known_line():
+    rng = np.random.default_rng(3)
+    j0 = np.linspace(1.0e-9, 5.0e-9, 60)
+    alpha, beta = 0.08, 0.2e-9
+    jwn = alpha * j0 + beta + rng.normal(0, 1e-12, j0.size)
+
+    fit = fit_j_correlation(j0, jwn)
+    assert fit is not None
+    assert fit.alpha == pytest.approx(alpha, rel=0.02)
+    assert fit.beta == pytest.approx(beta, rel=0.02)
+    assert fit.r > 0.99
+    assert fit.n == 60
+
+
+def test_fit_declines_on_degenerate_input():
+    assert fit_j_correlation([1e-9, 2e-9], [1e-10, 2e-10]) is None   # too few
+    assert fit_j_correlation([1e-9] * 5, [1e-10] * 5) is None        # no spread
+
+
+def test_round_trip_a_known_tau_m_through_fit_and_cubic():
+    """Synthesise a rigid rotor, fit it, and get its tau_c back."""
+    tau_true = 9.0e-9
+    phys = field_physics(600e6, constants_from_presets("1.02", "-160"))
+    w = abs(phys.omega_n)
+
+    # A rigid rotor at one tau_c with S^2 varying: both J values scale with
+    # S^2, so the points lie on a line through the origin.
+    s2 = np.linspace(0.6, 1.0, 40)
+    j0 = 0.4 * s2 * tau_true
+    jwn = j0 / (1.0 + (w * tau_true) ** 2)
+
+    fit = fit_j_correlation(j0, jwn)
+    solution = tau_m_from_correlation(fit, phys.omega_n, j0_reference=float(np.mean(j0)))
+    assert solution.tau_m == pytest.approx(tau_true, rel=0.02)
+
+
+def test_selection_rejects_a_root_inconsistent_with_the_data():
+    """A slightly negative slope adds a spurious far-off root.
+
+    Taking the largest positive root would then return a tumbling time an
+    order of magnitude too long. The chosen root has to describe the J(0)
+    that was actually observed.
+    """
+    fit = JCorrelationFit(alpha=-0.0046, beta=0.2754e-9, r=-0.19, n=85)
+    omega_n = _omega_n(600.263)
+    j0_ref = 3.19e-9
+
+    solution = tau_m_from_correlation(fit, omega_n, j0_reference=j0_ref)
+    positives_ns = sorted(t * 1e9 for t in solution.positive_roots)
+    assert len(positives_ns) == 3, positives_ns
+    assert max(positives_ns) > 100.0            # the spurious one
+    assert solution.tau_m * 1e9 == pytest.approx(9.94, abs=0.2)
+    assert solution.tau_m * 1e9 < 20.0
+
+
+def test_negative_slope_is_called_out():
+    """No rigid rotor gives a falling J(wN) against J(0)."""
+    fit = JCorrelationFit(alpha=-0.0046, beta=0.2754e-9, r=-0.19, n=85)
+    solution = tau_m_from_correlation(fit, _omega_n(600.0), j0_reference=3.19e-9)
+    assert "negative" in solution.selected_reason
+    assert "not well founded" in solution.selected_reason
+
+
+def test_every_root_is_reported_not_just_the_choice():
+    """The selection is a judgement, so it must be auditable."""
+    fit = JCorrelationFit(alpha=PAPER_ALPHA, beta=PAPER_BETA_S, r=0.218, n=80)
+    solution = tau_m_from_correlation(fit, _omega_n(600.0), j0_reference=2.28e-9)
+    assert len(solution.roots) == 3
+    assert solution.tau_m in solution.positive_roots
+    assert solution.selected_reason
+
+
+def test_no_positive_root_is_reported_as_such():
+    fit = JCorrelationFit(alpha=-5.0, beta=-1e-9, r=-0.9, n=20)
+    solution = tau_m_from_correlation(fit, _omega_n(600.0), j0_reference=3e-9)
+    if not solution.positive_roots:
+        assert solution.tau_m is None
+        assert "no positive real root" in solution.selected_reason
+
+
+def test_analyse_prefers_the_correlation_method():
+    phys = field_physics(600e6, constants_from_presets("1.02", "-160"))
+    params = [(0.85, 9e-9, 50e-12), (0.80, 9e-9, 80e-12), (0.75, 9e-9, 120e-12),
+              (0.90, 9e-9, 40e-12), (0.70, 9e-9, 200e-12)]
+    r1s, r2s, noes = [], [], []
+    for s2, tc, te in params:
+        a, b, c, _, _ = forward_rates(s2, tc, te, phys)
+        r1s.append(a); r2s.append(b); noes.append(c)
+
+    zeros = np.zeros(len(params))
+    result = map_dataset(np.array(r1s), zeros, np.array(r2s), zeros,
+                         np.array(noes), zeros, phys)
+    from app.services.sdm import analyse
+
+    payload = analyse(result, noes, zeros).to_dict()
+    assert payload["tau_c_method"] == "correlation"
+    assert payload["correlation_fit"] is not None
+    assert payload["correlation_fit"]["roots_ns"]
+    # A clean single-tau_c dataset must recover roughly that tau_c.
+    assert payload["tau_c_estimate_ns"] == pytest.approx(9.0, rel=0.15)

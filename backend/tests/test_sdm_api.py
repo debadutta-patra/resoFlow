@@ -592,7 +592,7 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
         html = render_html(model, style="screen")
 
         self.assertIn("Reduced Spectral Density Mapping", html)
-        self.assertIn("J(0) vs J(", html)
+        self.assertIn("J(&omega;<sub>N</sub>) vs J(0) Correlation", html)
         self.assertIn("Per-Residue Spectral Densities", html)
         self.assertIn("ns", html)
         # The J(0) exchange caveat is in the report as well as the UI.
@@ -1220,7 +1220,7 @@ class TestResidueExclusion(TestSpectralDensityApi):
             "Measured Relaxation Rates",
             "R<sub>2</sub>/R<sub>1</sub>",
             "R<sub>1</sub>&middot;R<sub>2</sub>",
-            "J(0) vs J(&omega;<sub>N</sub>) Correlation",
+            "J(&omega;<sub>N</sub>) vs J(0) Correlation",
         ):
             self.assertIn(heading, html, heading)
 
@@ -1415,3 +1415,123 @@ class TestSdmReportOmitsInapplicableSections(TestSpectralDensityApi):
         )
         self.assertIn("Global Relaxation", html)
         self.assertIn("Kinetic Model", html)
+
+
+class TestCorrelationPlotReference(TestSpectralDensityApi):
+    """J(0) on the abscissa, with both rigid-rotor references.
+
+    This is the conventional orientation: exchange contaminates J(0) alone,
+    so it displaces a residue horizontally. Two references are drawn because
+    they answer different questions -- the tau_c sweep locates the rigid-rotor
+    family in the plane, while the fixed-tau_c line is the locus residues of
+    one protein actually scatter along as S^2 varies.
+    """
+
+    OMEGA_N = -3.8226e8
+    TAU_C = 9e-9
+
+    def _rows(self, n=12):
+        slope = 1.0 / (1.0 + (abs(self.OMEGA_N) * self.TAU_C) ** 2)
+        return [
+            {"assignment": f"G{i}N", "res_num": i,
+             "j0": 3.3, "j_wn": 3.3 * slope, "j_h": 0.004,
+             "j0_err": 0.05, "j_wn_err": 0.004, "j_h_err": 0.0005,
+             "covariance": [[0.0025, 0.0, 0.0], [0.0, 1.6e-5, 0.0],
+                            [0.0, 0.0, 2.5e-7]],
+             "r1": 1.35, "r1_err": 0.03, "r2": 12.0, "r2_err": 0.3,
+             "noe": 0.78, "noe_err": 0.04, "flags": [], "excluded": False}
+            for i in range(10, 10 + n)
+        ]
+
+    def _capture(self, rows, **kwargs):
+        """Render and return the dashed reference lines, by label."""
+        import numpy as np
+        from app.services.reporting import figures
+
+        captured = {}
+        original = figures._svg
+
+        def capture(fig):
+            ax = fig.axes[0]
+            captured["lines"] = {
+                line.get_label(): (
+                    np.asarray(line.get_xdata(), dtype=float),
+                    np.asarray(line.get_ydata(), dtype=float),
+                )
+                for line in ax.get_lines()
+                if line.get_linestyle() in ("--", "dashed")
+                and not str(line.get_label()).startswith("_")
+            }
+            captured["xlabel"] = ax.get_xlabel()
+            captured["ylabel"] = ax.get_ylabel()
+            captured["xlim"] = ax.get_xlim()
+            captured["ylim"] = ax.get_ylim()
+            return original(fig)
+
+        figures._svg = capture
+        try:
+            figures.spectral_density_correlation_plot(rows, self.OMEGA_N, **kwargs)
+        finally:
+            figures._svg = original
+        return captured
+
+    def test_j0_is_on_the_abscissa(self):
+        captured = self._capture(self._rows())
+        self.assertIn("J(0)", captured["xlabel"])
+        self.assertIn("J(", captured["ylabel"])
+        self.assertNotIn("J(0)", captured["ylabel"])
+
+    def test_both_references_are_drawn(self):
+        labels = list(self._capture(self._rows())["lines"])
+        self.assertEqual(len(labels), 2, labels)
+        self.assertTrue(any("sweep" in v for v in labels), labels)
+        self.assertTrue(any("S²" in v or "τ" in v for v in labels), labels)
+
+    def test_sweep_peaks_at_omega_tau_equals_one(self):
+        import numpy as np
+
+        lines = self._capture(self._rows())["lines"]
+        x, y = next(v for k, v in lines.items() if "sweep" in k)
+        peak = int(np.argmax(y))
+        self.assertGreater(peak, 0)
+        self.assertLess(peak, len(y) - 1)
+        # J(0) = (2/5) tau, so the maximum sits at J(0) = (2/5)/omega_N.
+        self.assertAlmostEqual(
+            float(x[peak]), 0.4 / abs(self.OMEGA_N) * 1e9, places=1
+        )
+
+    def test_fixed_tau_line_is_straight_through_the_origin(self):
+        import numpy as np
+
+        lines = self._capture(self._rows(), tau_c_s=self.TAU_C)["lines"]
+        x, y = next(v for k, v in lines.items() if "sweep" not in k)
+        slope = 1.0 / (1.0 + (abs(self.OMEGA_N) * self.TAU_C) ** 2)
+
+        self.assertAlmostEqual(float(x[0]), 0.0, places=12)
+        self.assertAlmostEqual(float(y[0]), 0.0, places=12)
+        nonzero = x > 0
+        self.assertTrue(np.allclose(y[nonzero] / x[nonzero], slope, rtol=1e-9))
+        self.assertTrue(np.all(np.diff(x) > 0))
+
+    def test_origin_is_on_the_axes(self):
+        """Both references pass through it, so hiding it misleads."""
+        captured = self._capture(self._rows())
+        self.assertLessEqual(captured["xlim"][0], 0.0)
+        self.assertLessEqual(captured["ylim"][0], 0.0)
+
+    def test_tau_c_is_derived_from_trimmed_means_when_not_supplied(self):
+        """The fallback must survive the outliers the plot exists to reveal."""
+        import numpy as np
+
+        rows = self._rows(20)
+        bad = dict(rows[0])
+        # Two failed R2 fits, the kind that put J(0) in the hundreds.
+        rows += [dict(bad, assignment="X1N", res_num=90, j0=266.0, j_wn=0.28),
+                 dict(bad, assignment="X2N", res_num=91, j0=229.0, j_wn=0.28)]
+
+        lines = self._capture(rows)["lines"]
+        x, y = next(v for k, v in lines.items() if "sweep" not in k)
+        nonzero = x > 0
+        recovered = float(np.mean(y[nonzero] / x[nonzero]))
+        expected = 1.0 / (1.0 + (abs(self.OMEGA_N) * self.TAU_C) ** 2)
+        self.assertAlmostEqual(recovered, expected, delta=0.05 * expected)

@@ -129,10 +129,41 @@ If the CPMG fit is wrong about the exchange model, R₂,₀ is wrong in a way th
 
 ### Reading the correlation plot
 
-The J(0) vs J(ω_N) plot is the main interpretive tool. The dashed line is the rigid isotropic rotor locus: where a residue would sit if the molecule tumbled isotropically with no internal motion and no exchange. Residues leave that line in two characteristic directions:
+The J(ω_N) vs J(0) plot is the main interpretive tool. **J(0) is on the abscissa**, the conventional orientation: chemical exchange contaminates J(0) alone, so it displaces a residue horizontally.
 
-- **Displaced along J(0)**, to the right of the line → chemical exchange.
+Two dashed references are drawn, and they answer different questions:
+
+| Reference | What it is |
+|---|---|
+| **τ_c sweep** | Parametric in τ: J(0) = (2/5)τ and J(ω_N) = (2/5)τ/(1+(ω_Nτ)²). Rises to a maximum at ω_Nτ = 1 and decays after it. It traces where a rigid isotropic rotor of *any* size would sit — residues of one protein do not move along it, since they share a τ_c, but it locates the family in the plane. |
+| **Fixed-τ_c line** | J(ω_N) = J(0)/(1+(ω_Nτ_c)²) for this dataset's τ_c, a straight line through the origin. S² is what genuinely differs between residues of one protein, and both spectral densities scale with it, so this is the line residues actually scatter along. |
+
+Residues leave the fixed-τ_c line in two characteristic directions:
+
+- **Displaced along J(0)**, to the right → chemical exchange.
 - **Below the line** → fast internal motion on the ps–ns timescale.
+
+### The overall tumbling time
+
+τ_m is determined by the method of Lefèvre, Dayie, Peng & Wagner (1996): fit a least-squares line to the mapped residues,
+
+```
+J(ω_N) = α·J(0) + β
+```
+
+then substitute the rigid-rotor forms J(0) = (2/5)τ_m and J(ω_N) = (2/5)τ_m/(1+(ω_Nτ_m)²) into it. Clearing denominators gives a cubic,
+
+```
+2αω_N²τ_m³ + 5βω_N²τ_m² + 2(α−1)τ_m + 5β = 0
+```
+
+whose roots are all reported. The fitted line is drawn on the correlation plot, so the quality of the fit it came from can be judged by eye.
+
+**Which root.** The cubic has up to three real roots and the choice is not automatic. resoFlow takes the root whose implied J(0) = (2/5)τ_m is closest to the dataset's own trimmed-mean J(0) — the answer has to describe the data it was fitted to. That reproduces the published worked example (α = 0.0772, β = 0.2182 ns/rad at 600 MHz → roots −14.4, 0.6, 5.7 ns → τ_m = 5.7 ns), and it also rejects a spurious root that a "take the largest" rule would fall for: a slightly negative α produces a third positive root far outside the data, which on real datasets can be an order of magnitude too long. The reason for the choice is printed alongside the roots.
+
+**On the correlation coefficient.** It is routinely poor — the source paper reports 21.8% for its own data — because the residues crowd into a narrow range of J(0). A weak r does not by itself invalidate τ_m, but resoFlow reports it rather than hiding it, since τ_m is derived from that line alone. A **negative α** is called out explicitly: no rigid rotor can produce a falling J(ω_N) against J(0), so τ_m from such a fit is not well founded.
+
+When the fit cannot be made — fewer than three residues, or no spread in J(0) — resoFlow falls back to the trimmed-mean J(0)/J(ω_N) ratio, and says which method was used.
 
 Points carry **error ellipses**, not crossed error bars. J(0) and J(ω_N) are correlated by construction — they come from the same three measurements through a shared matrix — so independent bars would overstate the plausible region along one diagonal and understate it along the other. The ellipses come from the full 3×3 covariance, which is stored per residue and included in the CSV export.
 

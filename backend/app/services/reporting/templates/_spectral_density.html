@@ -144,8 +144,11 @@
     </tr>
     {% if spectral_density_data.tau_c_ns %}
     <tr>
-      <td><strong>&tau;<sub>c</sub> estimate</strong></td>
-      <td>{{ "%.2f"|format(spectral_density_data.tau_c_ns) }} ns</td>
+      <td><strong>&tau;<sub>m</sub> estimate</strong></td>
+      <td>
+        {{ "%.2f"|format(spectral_density_data.tau_c_ns) }} ns
+        <span style="font-size:7pt;color:#6B7280;">({{ spectral_density_data.tau_c_method }})</span>
+      </td>
       <td><strong>Systematic band</strong></td>
       <td>
         J(0) &plusmn;{{ "%.1f"|format(spectral_density_data.systematic_band_pct.j0) }}%,
@@ -163,6 +166,50 @@
   coherently in the same direction and is <em>not</em> included in the per-residue
   error bars, which carry statistical uncertainty only.
 </p>
+
+{% if spectral_density_data.correlation_fit %}
+{% set fit = spectral_density_data.correlation_fit %}
+<h3>Overall Tumbling Time from the J(&omega;<sub>N</sub>)&ndash;J(0) Correlation</h3>
+<p style="font-size:8pt;color:#4B5563;">
+  Following Lef&egrave;vre, Dayie, Peng &amp; Wagner (1996), a least-squares
+  line J(&omega;<sub>N</sub>) = &alpha;J(0) + &beta; is fitted to the mapped
+  residues. Substituting the rigid-rotor forms J(0) = (2/5)&tau;<sub>m</sub>
+  and J(&omega;<sub>N</sub>) = (2/5)&tau;<sub>m</sub>/(1 +
+  (&omega;<sub>N</sub>&tau;<sub>m</sub>)&sup2;) into that line and clearing
+  denominators gives
+</p>
+<p style="text-align:center;font-size:9pt;margin:6pt 0;">
+  2&alpha;&omega;<sub>N</sub>&sup2;&tau;<sub>m</sub>&sup3;
+  + 5&beta;&omega;<sub>N</sub>&sup2;&tau;<sub>m</sub>&sup2;
+  + 2(&alpha;&minus;1)&tau;<sub>m</sub> + 5&beta; = 0
+</p>
+<table class="pipeline-table">
+  <tbody>
+    <tr>
+      <td><strong>&alpha;</strong></td><td>{{ "%.4f"|format(fit.alpha) }}</td>
+      <td><strong>&beta;</strong></td><td>{{ "%.4f"|format(fit.beta_ns_rad) }} ns rad<sup>&minus;1</sup></td>
+    </tr>
+    <tr>
+      <td><strong>Correlation r</strong></td>
+      <td>{{ "%.3f"|format(fit.r) }} &nbsp;(r&sup2; = {{ "%.1f"|format(100 * fit.r * fit.r) }}%)</td>
+      <td><strong>Roots</strong></td>
+      <td>{% for t in fit.roots_ns %}{{ "%.2f"|format(t) }}{% if not loop.last %}, {% endif %}{% endfor %} ns</td>
+    </tr>
+    <tr>
+      <td><strong>Selected</strong></td>
+      <td colspan="3" style="font-size:8pt;">{{ fit.selected_reason }}</td>
+    </tr>
+  </tbody>
+</table>
+<p style="font-size:8pt;color:#4B5563;">
+  A weak correlation is normal here and does not by itself invalidate
+  &tau;<sub>m</sub>: the residues crowd into a narrow range of J(0), so r is
+  small even when the line is a fair description. The source paper reports
+  21.8% for its own data. It is shown rather than hidden because it is the
+  honest measure of how well the line describes these residues, and
+  &tau;<sub>m</sub> is derived from that line alone.
+</p>
+{% endif %}
 
 {% if spectral_density_data.j0_caveat %}
 <div class="callout" style="border-left:2.5pt solid #6B7280;padding:5pt 9pt;margin:8pt 0;background:#F9FAFB;">
@@ -218,10 +265,21 @@
 </p>
 
 <div class="page-break"></div>
-<h3>J(0) vs J(&omega;<sub>N</sub>) Correlation</h3>
+<h3>J(&omega;<sub>N</sub>) vs J(0) Correlation</h3>
 <div class="sequence-plot-container" style="margin: 10pt 0; text-align: center;">
   {{ spectral_density_data.correlation_svg|safe }}
 </div>
+<p style="font-size:8pt;color:#4B5563;">
+  J(0) is on the abscissa, so chemical exchange &mdash; which contaminates
+  J(0) alone &mdash; displaces a residue horizontally. Two references are
+  drawn: the <strong>&tau;<sub>c</sub> sweep</strong> traces where a rigid
+  isotropic rotor of any size would sit, rising to a maximum at
+  &omega;<sub>N</sub>&tau; = 1 and decaying after it; the
+  <strong>fixed-&tau;<sub>c</sub> line</strong> is the locus for this
+  dataset's &tau;<sub>c</sub> with S&sup2; varying, which is what actually
+  differs between residues of one protein, so it is the line they scatter
+  along.
+</p>
 <p style="font-size:8pt;color:#4B5563;">
   Ellipses are 1&sigma; contours from the full covariance, not independent error
   bars: J(0) and J(&omega;<sub>N</sub>) are correlated by construction, so crossed

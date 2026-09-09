@@ -25,7 +25,9 @@ import {
   R_NH_PRESETS,
   R2_PROVENANCE_OPTIONS,
   r2SourceType,
-  rigidRotorCurve,
+  rigidRotorLine,
+  rigidRotorSweep,
+  tauCFromResidues,
   sortResidues,
   validateConstants,
   type ConstantsForm,
@@ -56,6 +58,14 @@ interface SdmResults {
   physics_snapshot: Record<string, number | string>;
   summary: {
     tau_c_estimate_ns: number | null;
+    tau_c_method?: string;
+    correlation_fit?: {
+      alpha: number;
+      beta_ns_rad: number;
+      r: number;
+      roots_ns: number[];
+      selected_reason: string;
+    } | null;
     j0_trimmed_mean: number;
     jwn_trimmed_mean: number;
     jh_trimmed_mean: number;
@@ -859,9 +869,11 @@ const SummaryCard: React.FC<{ results: SdmResults; experimental: boolean }> = ({
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat
-          label="τc estimate"
+          label="τm estimate"
           value={s.tau_c_estimate_ns != null ? `${s.tau_c_estimate_ns.toFixed(2)} ns` : '—'}
-          hint="from ⟨J(0)⟩/⟨J(ωN)⟩, trimmed"
+          hint={s.tau_c_method === 'correlation'
+            ? 'from the J(ωN)–J(0) fit'
+            : 'from ⟨J(0)⟩/⟨J(ωN)⟩, trimmed'}
         />
         <Stat label="Residues mapped" value={String(s.n_residues)} />
         <Stat label="Flagged" value={String(s.n_flagged)} hint="advisory, not dropped" />
@@ -880,6 +892,31 @@ const SummaryCard: React.FC<{ results: SdmResults; experimental: boolean }> = ({
           statistical uncertainty only.
         </p>
       </div>
+
+      {s.correlation_fit && (
+        <div className="mt-4 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+            τm from the J(ω<sub>N</sub>)–J(0) correlation
+          </p>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            Least-squares fit J(ω<sub>N</sub>) = αJ(0) + β with{' '}
+            <strong>α = {s.correlation_fit.alpha.toFixed(4)}</strong>,{' '}
+            <strong>β = {s.correlation_fit.beta_ns_rad.toFixed(4)} ns rad⁻¹</strong>,{' '}
+            r = {s.correlation_fit.r.toFixed(3)} (r² ={' '}
+            {(100 * s.correlation_fit.r ** 2).toFixed(1)}%). Substituting the
+            rigid-rotor forms gives a cubic in τ<sub>m</sub> with roots{' '}
+            {s.correlation_fit.roots_ns.map((t) => t.toFixed(2)).join(', ')} ns.
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            {s.correlation_fit.selected_reason}
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            A weak r is normal — the residues crowd into a narrow range of J(0) —
+            and does not by itself invalidate τ<sub>m</sub>. It is shown because
+            τ<sub>m</sub> comes from that line alone.
+          </p>
+        </div>
+      )}
 
       <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
         {results.b0_h_mhz.toFixed(2)} MHz (¹H) · variant <code>{results.variant}</code> ·
@@ -955,18 +992,23 @@ const CorrelationPlot: React.FC<{ residues: SdmResidue[]; omegaN: number }> = ({
   if (residues.length === 0) return <NoResiduesNotice />;
   const j0 = residues.map((r) => r.j0);
   const jwn = residues.map((r) => r.j_wn);
-  const lo = Math.min(...j0) * 0.5;
-  const hi = Math.max(...j0) * 1.25;
-  const curve = rigidRotorCurve(omegaN, lo, hi);
+  // J(0) on x, J(wN) on y -- the conventional orientation, in which
+  // exchange displaces a residue horizontally along the axis it contaminates.
+  const j0Max = Math.max(...j0) * 1.2;
+  const tauC = tauCFromResidues(residues, omegaN);
+  const sweep = rigidRotorSweep(omegaN, j0Max);
+  const line = tauC ? rigidRotorLine(omegaN, tauC, j0Max) : null;
 
   // Covariance rows/columns are ordered [J(0), J(wN), J_h]; the plot puts
   // J(wN) on x and J(0) on y, so the block is picked out accordingly.
+  // Covariance is ordered [J(0), J(wN), J_h], which is already the (x, y)
+  // order now that J(0) is on the abscissa.
   const ellipses = residues.map((r) => {
     const c = r.covariance ?? [];
     const cJ0 = c?.[0]?.[0] ?? 0;
     const cJwn = c?.[1]?.[1] ?? 0;
     const cCross = c?.[0]?.[1] ?? 0;
-    return errorEllipse(r.j_wn, r.j0, cJwn, cJ0, cCross, 1, 40);
+    return errorEllipse(r.j0, r.j_wn, cJ0, cJwn, cCross, 1, 40);
   });
 
   return (
@@ -984,28 +1026,38 @@ const CorrelationPlot: React.FC<{ residues: SdmResidue[]; omegaN: number }> = ({
             showlegend: false,
           })),
           {
-            x: curve.jwn,
-            y: curve.j0,
+            x: sweep.j0,
+            y: sweep.jwn,
             type: 'scatter',
             mode: 'lines',
             line: { color: PLOT_COLORS.neutral, width: 2, dash: 'dash' },
-            name: 'Rigid isotropic rotor',
+            name: 'Rigid rotor (τc sweep)',
           },
+          ...(line
+            ? [{
+                x: line.j0,
+                y: line.jwn,
+                type: 'scatter' as const,
+                mode: 'lines' as const,
+                line: { color: PLOT_COLORS.warning, width: 2, dash: 'dash' },
+                name: `τc = ${(tauC! * 1e9).toFixed(2)} ns (S² varying)`,
+              }]
+            : []),
           {
-            x: jwn,
-            y: j0,
+            x: j0,
+            y: jwn,
             type: 'scatter',
             mode: 'markers',
             marker: { color: PLOT_COLORS.primary, size: 7 },
             text: residues.map((r) => r.assignment),
-            hovertemplate: '%{text}<br>J(ωN)=%{x:.4f}<br>J(0)=%{y:.3f}<extra></extra>',
+            hovertemplate: '%{text}<br>J(0)=%{x:.3f}<br>J(ωN)=%{y:.4f}<extra></extra>',
             name: 'Residues',
           },
         ]}
         layout={{
           margin: { l: 70, r: 20, b: 50, t: 24 },
-          xaxis: { title: { text: 'J(ω_N) (ns rad⁻¹)' } },
-          yaxis: { title: { text: 'J(0) (ns rad⁻¹)' } },
+          xaxis: { title: { text: 'J(0) (ns rad⁻¹)' }, rangemode: 'tozero' },
+          yaxis: { title: { text: 'J(ω_N) (ns rad⁻¹)' }, rangemode: 'tozero' },
           legend: { orientation: 'h', y: -0.2 },
         }}
       />

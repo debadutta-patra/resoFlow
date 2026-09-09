@@ -142,6 +142,8 @@ class DatasetDiagnostics:
     """Dataset-level summary of a mapped set of residues."""
 
     tau_c_estimate: Optional[float]
+    tau_c_method: str
+    correlation: Optional[TauMSolution]
     tau_c_j0_trimmed: float
     tau_c_jwn_trimmed: float
     j0_trimmed_mean: float
@@ -153,10 +155,25 @@ class DatasetDiagnostics:
     residues: List[ResidueDiagnostics]
 
     def to_dict(self) -> Dict[str, object]:
+        corr = self.correlation
         return {
             "tau_c_estimate_s": self.tau_c_estimate,
             "tau_c_estimate_ns": (
                 self.tau_c_estimate * 1e9 if self.tau_c_estimate is not None else None
+            ),
+            "tau_c_method": self.tau_c_method,
+            "correlation_fit": (
+                {
+                    "alpha": corr.alpha,
+                    # Reported in ns rad^-1, the unit the source paper quotes
+                    # beta in and the unit the J values are displayed in.
+                    "beta_ns_rad": corr.beta * 1e9,
+                    "r": corr.r,
+                    "roots_ns": [t * 1e9 for t in corr.roots],
+                    "positive_roots_ns": [t * 1e9 for t in corr.positive_roots],
+                    "selected_reason": corr.selected_reason,
+                }
+                if corr else None
             ),
             "j0_trimmed_mean": self.j0_trimmed_mean,
             "jwn_trimmed_mean": self.jwn_trimmed_mean,
@@ -243,10 +260,28 @@ def analyse(
             flag_counts[f] = flag_counts.get(f, 0) + 1
         residues.append(rd)
 
-    tau_global = tau_c_from_ratio(j0_ref, jwn_ref, mapping.physics.omega_n)
+    # Overall tumbling time. The correlation method of Lefevre, Dayie, Peng &
+    # Wagner (1996) uses the whole dataset -- fit J(wN) = alpha J(0) + beta,
+    # then solve the resulting cubic -- rather than a single ratio of trimmed
+    # means, so it is preferred. The ratio remains the fallback for datasets
+    # too small or too degenerate to fit a line to.
+    fit = fit_j_correlation(j0, jwn)
+    correlation = (
+        tau_m_from_correlation(fit, mapping.physics.omega_n, j0_reference=j0_ref)
+        if fit else None
+    )
+
+    if correlation is not None and correlation.tau_m is not None:
+        tau_global = correlation.tau_m
+        tau_method = "correlation"
+    else:
+        tau_global = tau_c_from_ratio(j0_ref, jwn_ref, mapping.physics.omega_n)
+        tau_method = "trimmed_ratio"
 
     return DatasetDiagnostics(
         tau_c_estimate=tau_global,
+        tau_c_method=tau_method,
+        correlation=correlation,
         tau_c_j0_trimmed=j0_ref,
         tau_c_jwn_trimmed=jwn_ref,
         j0_trimmed_mean=j0_ref,
@@ -281,3 +316,181 @@ def error_ellipse(
     unit = np.vstack([np.cos(theta), np.sin(theta)])
     scaled = (vecs * (n_sigma * np.sqrt(vals))) @ unit
     return scaled[0], scaled[1]
+
+
+@dataclass
+class JCorrelationFit:
+    """Linear least-squares fit of J(omega_N) against J(0).
+
+    Lefevre, Dayie, Peng & Wagner (1996) Biochemistry 35, 2674-2686 proposed
+    that the reduced spectral densities of a folded protein fall on a line
+
+        J(omega_N) = alpha J(0) + beta
+
+    from which the overall tumbling time follows analytically. Both spectral
+    densities are in s rad^-1 here, so beta is too and alpha is dimensionless.
+
+    Attributes:
+        alpha: slope, dimensionless.
+        beta: intercept [s rad^-1].
+        r: Pearson correlation coefficient of the fit. Routinely POOR for
+            this correlation -- the source paper reports 21.8% -- because the
+            residues crowd into a narrow range of J(0). A weak r does not by
+            itself invalidate tau_m, but it is reported rather than hidden,
+            since it is the honest measure of how well the line describes the
+            data.
+        n: number of residues in the fit.
+    """
+
+    alpha: float
+    beta: float
+    r: float
+    n: int
+
+
+def fit_j_correlation(
+    j0: Sequence[float],
+    jwn: Sequence[float],
+) -> Optional[JCorrelationFit]:
+    """Least-squares fit of J(omega_N) = alpha J(0) + beta.
+
+    Returns None when fewer than three finite pairs are available, where a
+    two-parameter line has no residual to speak of.
+    """
+    x = np.asarray(j0, dtype=np.float64)
+    y = np.asarray(jwn, dtype=np.float64)
+    good = np.isfinite(x) & np.isfinite(y)
+    x, y = x[good], y[good]
+    if x.size < 3 or np.ptp(x) <= 0:
+        return None
+
+    alpha, beta = np.polyfit(x, y, 1)
+    sx, sy = np.std(x), np.std(y)
+    r = float(np.corrcoef(x, y)[0, 1]) if sx > 0 and sy > 0 else 0.0
+    return JCorrelationFit(alpha=float(alpha), beta=float(beta), r=r, n=int(x.size))
+
+
+@dataclass
+class TauMSolution:
+    """Overall tumbling time from the J(omega_N) vs J(0) correlation.
+
+    Attributes:
+        tau_m: the selected root [s], or None when none is physical.
+        roots: every real root of the cubic [s], ascending.
+        positive_roots: the real positive subset [s].
+        selected_reason: why tau_m was chosen, for the report.
+        alpha, beta, r: the fit it came from.
+    """
+
+    tau_m: Optional[float]
+    roots: List[float]
+    positive_roots: List[float]
+    selected_reason: str
+    alpha: float
+    beta: float
+    r: float
+
+
+def tau_m_from_correlation(
+    fit: JCorrelationFit,
+    omega_n: float,
+    j0_reference: Optional[float] = None,
+) -> TauMSolution:
+    """Solve for tau_m from a fitted J(omega_N) = alpha J(0) + beta.
+
+    Substituting the rigid-rotor forms J(0) = (2/5) tau_m and
+    J(omega_N) = (2/5) tau_m / (1 + (omega_N tau_m)^2) into the fitted line
+    and clearing denominators gives
+
+        2 alpha w^2 tau^3 + 5 beta w^2 tau^2 + 2(alpha - 1) tau + 5 beta = 0
+
+    Verified against the worked example in the source: alpha = 0.0772,
+    beta = 0.2182 ns/rad at 600 MHz yields roots near -13.4, 0.63 and 5.73 ns
+    against the published -14.4, 0.6 and 5.7 ns.
+
+    ROOT SELECTION. The source chooses "the most realistic value" by eye,
+    which is not a rule that generalises: with two positive roots the larger
+    is right, but a slightly negative alpha -- a line sloping the wrong way
+    for any rigid rotor -- produces a THIRD positive root far outside the
+    data, and taking the largest then returns something like 140 ns for a
+    protein tumbling in ten.
+
+    So the root is chosen by whether it describes the data it was fitted to.
+    A rigid rotor has J(0) = (2/5) tau_m, so each root implies a J(0); the
+    root whose implied J(0) is closest to the dataset's own trimmed-mean J(0)
+    wins. That is physical rather than aesthetic, and reproduces the source's
+    choice as well as rejecting the spurious root above.
+
+    Every root is reported regardless, with the reason for the choice, so the
+    selection can be overridden by someone who disagrees with it.
+
+    Args:
+        j0_reference: trimmed-mean J(0) of the dataset [s rad^-1]. Without
+            it the slow-tumbling branch is used as a weaker fallback.
+    """
+    w = abs(float(omega_n))
+    coeffs = [
+        2.0 * fit.alpha * w ** 2,
+        5.0 * fit.beta * w ** 2,
+        2.0 * (fit.alpha - 1.0),
+        5.0 * fit.beta,
+    ]
+
+    roots: List[float] = []
+    if abs(coeffs[0]) > 0:
+        raw = np.roots(coeffs)
+        # A root is real when its imaginary part is negligible next to its
+        # own magnitude, not against an absolute floor.
+        roots = sorted(
+            float(z.real) for z in raw
+            if abs(z.imag) <= 1e-8 * max(abs(z), 1.0)
+        )
+
+    positive = [t for t in roots if t > 0]
+    boundary = 1.0 / w if w > 0 else float("inf")
+
+    if not positive:
+        tau_m = None
+        reason = (
+            "no positive real root; the fitted line is not consistent with a "
+            "rigid rotor"
+        )
+    elif j0_reference is not None and np.isfinite(j0_reference) and j0_reference > 0:
+        # Each root implies J(0) = (2/5) tau; pick the one that matches the
+        # J(0) actually observed.
+        best = min(positive, key=lambda t: abs(0.4 * t - j0_reference))
+        tau_m = best
+        implied = 0.4 * best
+        reason = (
+            f"root whose implied J(0) = (2/5)tau_m = {implied * 1e9:.2f} ns/rad "
+            f"is closest to the observed trimmed mean "
+            f"{j0_reference * 1e9:.2f} ns/rad"
+        )
+        if len(positive) > 1:
+            reason += f"; {len(positive)} positive roots were available"
+    else:
+        slow = [t for t in positive if t > boundary]
+        tau_m = min(slow) if slow else max(positive)
+        reason = (
+            "smallest positive root on the slow-tumbling branch "
+            f"(omega_N*tau > 1, boundary {boundary * 1e9:.2f} ns); "
+            "no J(0) reference was supplied to check it against"
+            if slow else
+            "largest positive root; none clears omega_N*tau = 1"
+        )
+
+    if fit.alpha < 0:
+        reason += (
+            ". NOTE: the fitted slope is negative, which no rigid rotor can "
+            "produce, so tau_m from this fit is not well founded"
+        )
+
+    return TauMSolution(
+        tau_m=tau_m,
+        roots=roots,
+        positive_roots=positive,
+        selected_reason=reason,
+        alpha=fit.alpha,
+        beta=fit.beta,
+        r=fit.r,
+    )

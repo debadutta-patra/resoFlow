@@ -10,7 +10,9 @@ import {
   r2SourceType,
   filterResidues,
   includedResidues,
-  rigidRotorCurve,
+  rigidRotorLine,
+  rigidRotorSweep,
+  tauCFromResidues,
   sortResidues,
   validateConstants,
   type SdmResidue,
@@ -286,23 +288,112 @@ describe('errorEllipse', () => {
   });
 });
 
-describe('rigidRotorCurve', () => {
+describe('rigidRotorSweep', () => {
   const omegaN = -3.8226e8; // 600 MHz 1H
 
-  it('falls monotonically in J(wN) as J(0) grows', () => {
-    const { j0, jwn } = rigidRotorCurve(omegaN, 1, 6, 50);
-    expect(j0[0]).toBeLessThan(j0[j0.length - 1]);
-    for (let i = 1; i < jwn.length; i += 1) {
-      expect(jwn[i]).toBeLessThanOrEqual(jwn[i - 1]);
+  it('rises to a maximum at omega_N tau = 1 and decays after it', () => {
+    const { j0, jwn } = rigidRotorSweep(omegaN, 12);
+    const peak = jwn.indexOf(Math.max(...jwn));
+    expect(peak).toBeGreaterThan(0);
+    expect(peak).toBeLessThan(jwn.length - 1);
+    // J(0) = (2/5)tau, so the peak sits at J(0) = (2/5)/omega_N.
+    const expectedJ0 = (0.4 / Math.abs(omegaN)) * 1e9;
+    expect(j0[peak]).toBeCloseTo(expectedJ0, 1);
+  });
+
+  it('is monotone in J(0), which is the abscissa', () => {
+    const { j0 } = rigidRotorSweep(omegaN, 8);
+    for (let i = 1; i < j0.length; i += 1) {
+      expect(j0[i]).toBeGreaterThan(j0[i - 1]);
     }
   });
 
-  it('satisfies J(0)/J(wN) = 1 + (wN tau)^2 with tau = 2.5 J(0)', () => {
-    const { j0, jwn } = rigidRotorCurve(omegaN, 2, 5, 10);
+  it('satisfies J(wN) = J(0)/(1+(wN tau)^2) with tau = 2.5 J(0)', () => {
+    const { j0, jwn } = rigidRotorSweep(omegaN, 6, 40);
     for (let i = 0; i < j0.length; i += 1) {
       const tau = 2.5 * j0[i] * 1e-9;
-      expect(j0[i] / jwn[i]).toBeCloseTo(1 + (omegaN * tau) ** 2, 6);
+      expect(jwn[i]).toBeCloseTo(j0[i] / (1 + (Math.abs(omegaN) * tau) ** 2), 9);
     }
+  });
+
+  it('stays within the requested J(0) range', () => {
+    const { j0 } = rigidRotorSweep(omegaN, 5);
+    expect(Math.max(...j0)).toBeLessThanOrEqual(5);
+  });
+
+  it('returns nothing for a degenerate request', () => {
+    expect(rigidRotorSweep(0, 5).j0).toEqual([]);
+    expect(rigidRotorSweep(omegaN, 0).j0).toEqual([]);
+  });
+});
+
+describe('rigidRotorLine', () => {
+  const omegaN = -3.8226e8;
+
+  it('passes through the origin', () => {
+    const { j0, jwn } = rigidRotorLine(omegaN, 9e-9, 4);
+    expect(j0[0]).toBe(0);
+    expect(jwn[0]).toBe(0);
+  });
+
+  it('has slope 1/(1 + (wN tau_c)^2) with J(0) on the abscissa', () => {
+    const tauC = 9e-9;
+    const { j0, jwn } = rigidRotorLine(omegaN, tauC, 4);
+    const slope = 1 / (1 + (Math.abs(omegaN) * tauC) ** 2);
+    for (let i = 1; i < j0.length; i += 1) {
+      expect(jwn[i] / j0[i]).toBeCloseTo(slope, 9);
+    }
+  });
+
+  it('is shallower for a longer correlation time', () => {
+    // A slower tumbler puts less spectral density at omega_N.
+    const short = rigidRotorLine(omegaN, 5e-9, 4);
+    const long = rigidRotorLine(omegaN, 12e-9, 4);
+    expect(long.jwn[1] / long.j0[1]).toBeLessThan(short.jwn[1] / short.j0[1]);
+  });
+
+  it('ignores the sign of omega_N', () => {
+    expect(rigidRotorLine(-3.8226e8, 9e-9, 4).jwn)
+      .toEqual(rigidRotorLine(3.8226e8, 9e-9, 4).jwn);
+  });
+});
+
+describe('tauCFromResidues', () => {
+  const omegaN = -3.8226e8;
+
+  const withRatio = (assignment: string, j0v: number, jwnv: number) =>
+    residue({ assignment, j0: j0v, j_wn: jwnv });
+
+  it('inverts J(0)/J(wN) = 1 + (wN tau_c)^2', () => {
+    const tauC = 9e-9;
+    const slope = 1 + (Math.abs(omegaN) * tauC) ** 2;
+    const rows = [1, 2, 3, 4, 5].map((i) => withRatio(`R${i}N`, 3.3, 3.3 / slope));
+    expect(tauCFromResidues(rows, omegaN)).toBeCloseTo(tauC, 12);
+  });
+
+  it('is robust to the outliers the plot exists to reveal', () => {
+    const tauC = 9e-9;
+    const slope = 1 + (Math.abs(omegaN) * tauC) ** 2;
+    const clean = Array.from({ length: 20 }, (_, i) =>
+      withRatio(`R${i}N`, 3.3, 3.3 / slope));
+    // Two residues with wildly inflated J(0), as a bad R2 fit produces.
+    const withOutliers = [
+      ...clean,
+      withRatio('X1N', 266, 0.28),
+      withRatio('X2N', 229, 0.28),
+    ];
+    const trimmed = tauCFromResidues(withOutliers, omegaN)!;
+    expect(trimmed).toBeCloseTo(tauC, 10);
+  });
+
+  it('returns null when the ratio is below 1', () => {
+    // No rigid rotor can give J(wN) > J(0).
+    const rows = [withRatio('R1N', 0.2, 0.5), withRatio('R2N', 0.2, 0.5)];
+    expect(tauCFromResidues(rows, omegaN)).toBeNull();
+  });
+
+  it('returns null for an empty set', () => {
+    expect(tauCFromResidues([], omegaN)).toBeNull();
   });
 });
 

@@ -894,7 +894,11 @@ def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
     return {
         "mode": "single_field",
         "profile_svg": figures.spectral_density_profile_plot(residues),
-        "correlation_svg": figures.spectral_density_correlation_plot(residues, omega_n),
+        "correlation_svg": figures.spectral_density_correlation_plot(
+            residues, omega_n,
+            tau_c_s=summary.get("tau_c_estimate_s"),
+            correlation_fit=summary.get("correlation_fit"),
+        ),
         "rates_svg": figures.relaxation_rates_profile_plot(residues),
         "r2_over_r1_svg": figures.r2_over_r1_plot(residues),
         "r1r2_svg": figures.r1r2_product_plot(residues),
@@ -910,6 +914,8 @@ def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
         "r_nh_angstrom": constants.get("r_nh_angstrom"),
         "delta_sigma_ppm": constants.get("delta_sigma_ppm"),
         "tau_c_ns": tau_ns,
+        "tau_c_method": summary.get("tau_c_method"),
+        "correlation_fit": summary.get("correlation_fit"),
         "n_residues": summary.get("n_residues"),
         "n_flagged": summary.get("n_flagged"),
         "n_excluded": summary.get("n_excluded"),

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -854,20 +855,59 @@ def spectral_density_profile_plot(
     return _render()
 
 
+def _trimmed_mean(values: np.ndarray, trim_fraction: float = 0.1) -> float:
+    """Symmetric trimmed mean, robust to the outliers the plot exists to show."""
+    v = np.asarray(values, dtype=float)
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return float("nan")
+    if v.size < 3 or trim_fraction <= 0:
+        return float(np.mean(v))
+    k = int(math.floor(v.size * trim_fraction))
+    ordered = np.sort(v)
+    if 2 * k >= v.size:
+        return float(np.median(v))
+    return float(np.mean(ordered[k:v.size - k]))
+
+
 def spectral_density_correlation_plot(
     residues: List[Any],
     omega_n_rad_s: float,
+    tau_c_s: Optional[float] = None,
+    correlation_fit: Optional[Dict[str, Any]] = None,
     palette: Optional[str] = None,
 ) -> str:
-    """J(0) against J(wN), with the rigid-rotor locus overlaid.
+    """J(omega_N) against J(0), in the conventional orientation for this plot.
 
-    Error ELLIPSES rather than crossed bars: J(0) and J(wN) are correlated by
-    construction, so independent bars overstate the plausible region along
-    one diagonal and understate it along the other.
+    J(0) is on the ABSCISSA and J(omega_N) on the ordinate, matching the
+    published form. Exchange then displaces a residue horizontally, along
+    J(0) -- the axis it contaminates -- which is what makes the plot legible.
 
-    Exchange displaces points along J(0); fast internal motion drops them
-    below the line. That is the whole point of the plot, so both directions
-    are annotated.
+    Two references are drawn, and they answer different questions:
+
+    * The rigid-rotor sweep (dark, dashed) is parametric in tau:
+          J(0)       = (2/5) tau
+          J(omega_N) = (2/5) tau / (1 + (omega_N tau)^2)
+      It rises to a maximum at omega_N tau = 1 and decays after it, tracing
+      where a rigid isotropic rotor of ANY size would sit. Residues of one
+      protein do not move along it -- they share a single tau_c -- but it
+      locates the family in the plane.
+
+    * The least-squares fit (coloured), J(omega_N) = alpha J(0) + beta.
+      This is the line the overall tumbling time is derived from, following
+      Lefevre, Dayie, Peng & Wagner (1996): substituting the rigid-rotor
+      forms into it gives a cubic in tau_m. Drawing the line the number came
+      from lets its quality be judged by eye, which matters here because the
+      correlation is routinely weak.
+
+    Error ELLIPSES rather than crossed bars: J(0) and J(omega_N) are
+    correlated by construction, so independent bars overstate the plausible
+    region along one diagonal and understate it along the other.
+
+    Args:
+        tau_c_s: overall correlation time in seconds. Derived from the
+            trimmed-mean J(0)/J(omega_N) ratio when omitted, which keeps the
+            reference robust to the very residues the plot exists to reveal.
     """
     def _render():
         data = _spectral_density_series(residues)
@@ -880,44 +920,87 @@ def spectral_density_correlation_plot(
         if not good.any():
             return _svg(fig)
 
-        # Covariance is stored in ns^2 rad^-2, matching the plotted units.
+        omega_n = abs(float(omega_n_rad_s))
+
+        # Covariance is stored [J(0), J(wN), J_h] in ns^2 rad^-2, which is
+        # already the (x, y) order used here.
         theta = np.linspace(0.0, 2.0 * np.pi, 48)
         unit = np.vstack([np.cos(theta), np.sin(theta)])
         for i in np.flatnonzero(good):
-            block = data["covariance"][i][np.ix_([1, 0], [1, 0])]
+            block = data["covariance"][i][np.ix_([0, 1], [0, 1])]
             vals, vecs = np.linalg.eigh(0.5 * (block + block.T))
             vals = np.clip(vals, 0.0, None)
             offs = (vecs * np.sqrt(vals)) @ unit
-            ax.plot(jwn[i] + offs[0], j0[i] + offs[1],
+            ax.plot(j0[i] + offs[0], jwn[i] + offs[1],
                     color=colors[0], linewidth=0.6, alpha=0.35, zorder=2)
 
-        ax.scatter(jwn[good], j0[good], s=18, color=colors[0],
+        ax.scatter(j0[good], jwn[good], s=18, color=colors[0],
                    edgecolor="white", linewidth=0.4, zorder=3, label="Residues")
 
-        # Rigid rotor: J(0) = (2/5)tau, J(wN) = J(0)/(1+(wN tau)^2).
-        lo = max(float(np.nanmin(j0[good])) * 0.5, 1e-6)
-        hi = float(np.nanmax(j0[good])) * 1.25
-        curve_j0 = np.linspace(lo, hi, 200)
-        tau = 2.5 * curve_j0 * 1e-9          # ns rad^-1 -> s rad^-1
-        curve_jwn = curve_j0 / (1.0 + (omega_n_rad_s * tau) ** 2)
-        ax.plot(curve_jwn, curve_j0, color="#6B7280", linestyle="--",
-                linewidth=1.3, zorder=1, label="Rigid isotropic rotor")
+        tau_c = tau_c_s
+        if tau_c is None or not np.isfinite(tau_c) or tau_c <= 0:
+            j0_ref = _trimmed_mean(j0[good])
+            jwn_ref = _trimmed_mean(jwn[good])
+            ratio = j0_ref / jwn_ref if jwn_ref > 0 else 0.0
+            tau_c = (
+                math.sqrt(ratio - 1.0) / omega_n if ratio > 1.0 and omega_n else None
+            )
 
-        ax.set_xlabel("J(ω$_N$) (ns rad⁻¹)", fontsize=9.0)
-        ax.set_ylabel("J(0) (ns rad⁻¹)", fontsize=9.0)
-        ax.set_title("J(0) vs J(ω$_N$) Correlation", fontsize=11.0,
+        x_max = float(np.nanmax(j0[good])) * 1.2
+
+        if omega_n > 0:
+            # Sampled in tau, then clipped to the plotted range, so the
+            # maximum at omega_N tau = 1 is resolved wherever it falls.
+            tau_max = max(2.5 * x_max * 1e-9, 4.0 / omega_n)
+            sweep_tau = np.linspace(1e-12, tau_max, 600)
+            sweep_j0 = 0.4 * sweep_tau * 1e9
+            sweep_jwn = sweep_j0 / (1.0 + (omega_n * sweep_tau) ** 2)
+            inside = sweep_j0 <= x_max
+            ax.plot(sweep_j0[inside], sweep_jwn[inside], color="#374151",
+                    linestyle="--", linewidth=1.3, zorder=1,
+                    label="Rigid rotor (τ$_c$ sweep)")
+
+        # The fitted line, in the plotted units (ns rad^-1).
+        fit = correlation_fit or {}
+        alpha = fit.get("alpha")
+        beta_ns = fit.get("beta_ns_rad")
+        if alpha is not None and beta_ns is not None:
+            line_x = np.linspace(0.0, x_max, 50)
+            label = f"fit: α={alpha:.4f}, β={beta_ns:.3f}"
+            if fit.get("r") is not None:
+                label += f", r={fit['r']:.2f}"
+            ax.plot(line_x, alpha * line_x + beta_ns,
+                    color=colors[1 % len(colors)], linestyle="-", linewidth=1.4,
+                    zorder=1, label=label)
+        elif tau_c:
+            # Without a fit, fall back to the theoretical fixed-tau_c locus.
+            slope = 1.0 / (1.0 + (omega_n * tau_c) ** 2)
+            line_x = np.linspace(0.0, x_max, 50)
+            ax.plot(line_x, slope * line_x,
+                    color=colors[1 % len(colors)], linestyle="--", linewidth=1.4,
+                    zorder=1, label=f"τ$_c$ = {tau_c * 1e9:.2f} ns (S² varying)")
+
+        if tau_c:
+            ax.annotate(
+                f"τ$_m$ = {tau_c * 1e9:.2f} ns",
+                xy=(0.03, 0.93), xycoords="axes fraction", fontsize=8.5,
+                color="#374151", va="top", fontweight="bold",
+            )
+
+        # Both references pass through the origin, so it belongs on the axes.
+        ax.set_xlim(left=0.0, right=x_max)
+        ax.set_ylim(bottom=0.0)
+
+        ax.set_xlabel("J(0) (ns rad⁻¹)", fontsize=9.0)
+        ax.set_ylabel("J(ω$_N$) (ns rad⁻¹)", fontsize=9.0)
+        ax.set_title("J(ω$_N$) vs J(0) Correlation", fontsize=11.0,
                      fontweight="bold", pad=10)
         ax.grid(True, linestyle=":", alpha=0.5)
-        ax.legend(fontsize=8.0, frameon=True, facecolor="white",
-                  edgecolor="#E5E7EB", loc="lower right")
+        ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                  edgecolor="#E5E7EB", loc="upper right")
         ax.annotate(
-            "exchange →\ndisplaces along J(0)",
-            xy=(0.03, 0.95), xycoords="axes fraction", fontsize=7.5,
-            color="#6B7280", va="top",
-        )
-        ax.annotate(
-            "fast internal motion →\nbelow the line",
-            xy=(0.03, 0.10), xycoords="axes fraction", fontsize=7.5,
+            "exchange → displaces along J(0)",
+            xy=(0.03, 0.05), xycoords="axes fraction", fontsize=7.5,
             color="#6B7280", va="bottom",
         )
         fig.tight_layout()
@@ -927,6 +1010,7 @@ def spectral_density_correlation_plot(
         with apply_report_style("publication", palette=palette):
             return _render()
     return _render()
+
 
 
 def _rate_series(residues: List[Any]) -> Dict[str, np.ndarray]:

@@ -286,34 +286,98 @@ export function errorEllipse(
 }
 
 /**
- * The rigid isotropic rotor locus for the correlation plot.
+ * The two references for the J(ω_N) vs J(0) correlation plot.
  *
- * J(0) = (2/5)τ and J(ω_N) = J(0)/(1 + (ω_N τ)²). Residues fall off this
- * line in two characteristic directions: exchange displaces points along
- * J(0), fast internal motion drops them below.
+ * J(0) is on the abscissa and J(ω_N) on the ordinate, the conventional
+ * orientation: exchange then displaces a residue horizontally, along the
+ * axis it contaminates.
  *
- * @param omegaN 15N Larmor angular frequency in rad/s (negative)
- * @param j0Min lower J(0) bound in ns/rad
- * @param j0Max upper J(0) bound in ns/rad
+ * `rigidRotorSweep` is parametric in τ:
+ *     J(0)   = (2/5)τ
+ *     J(ω_N) = (2/5)τ / (1 + (ω_N τ)²)
+ * rising to a maximum at ω_N τ = 1 and decaying after it. It traces where a
+ * rigid isotropic rotor of any size would sit — residues of one protein do
+ * not move along it, since they share a τ_c, but it locates the family.
+ *
+ * @param omegaN 15N Larmor angular frequency in rad/s (sign ignored)
+ * @param j0Max right-hand end of the curve, in ns/rad
  */
-export function rigidRotorCurve(
+export function rigidRotorSweep(
   omegaN: number,
-  j0Min: number,
   j0Max: number,
-  nPoints = 120,
+  nPoints = 400,
 ): { j0: number[]; jwn: number[] } {
-  const lo = Math.max(j0Min, 1e-6);
-  const hi = Math.max(j0Max, lo * 1.000001);
+  const w = Math.abs(omegaN);
   const j0: number[] = [];
   const jwn: number[] = [];
+  if (!(w > 0) || !(j0Max > 0)) return { j0, jwn };
+
+  // Sampled in tau then clipped, so the maximum at omega_N tau = 1 is
+  // resolved wherever it happens to fall in the plotted range.
+  const tauMax = Math.max((2.5 * j0Max) / 1e9, 4 / w);
   for (let i = 0; i < nPoints; i += 1) {
-    const value = lo + ((hi - lo) * i) / (nPoints - 1);
-    // ns/rad -> s/rad for the frequency product.
-    const tau = 2.5 * value * 1e-9;
-    j0.push(value);
-    jwn.push(value / (1 + (omegaN * tau) ** 2));
+    const tau = (tauMax * (i + 1)) / nPoints;
+    const x = 0.4 * tau * 1e9;
+    if (x > j0Max) break;
+    j0.push(x);
+    jwn.push(x / (1 + (w * tau) ** 2));
   }
   return { j0, jwn };
+}
+
+/**
+ * The fixed-τ_c locus: J(ω_N) = J(0)/(1 + (ω_N τ_c)²).
+ *
+ * S² is what genuinely differs between residues of one protein, and both
+ * spectral densities scale with it, so this straight line through the origin
+ * is the reference residues actually scatter along.
+ */
+export function rigidRotorLine(
+  omegaN: number,
+  tauCSeconds: number,
+  j0Max: number,
+  nPoints = 2,
+): { j0: number[]; jwn: number[] } {
+  const slope = 1 / (1 + (Math.abs(omegaN) * tauCSeconds) ** 2);
+  const j0: number[] = [];
+  const jwn: number[] = [];
+  const steps = Math.max(nPoints, 2);
+  for (let i = 0; i < steps; i += 1) {
+    const x = (j0Max * i) / (steps - 1);
+    j0.push(x);
+    jwn.push(slope * x);
+  }
+  return { j0, jwn };
+}
+
+/**
+ * τ_c from the trimmed-mean J(0)/J(ω_N) ratio, in seconds.
+ *
+ * For a rigid isotropic rotor J(0)/J(ω_N) = 1 + (ω_N τ_c)². Trimmed so the
+ * outliers the plot exists to reveal do not set the reference they are
+ * judged against. Returns null when the ratio is below 1, which no rigid
+ * rotor can produce.
+ */
+export function tauCFromResidues(
+  rows: SdmResidue[],
+  omegaN: number,
+  trimFraction = 0.1,
+): number | null {
+  const trimmed = (values: number[]): number => {
+    const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+    if (v.length === 0) return NaN;
+    if (v.length < 3) return v.reduce((a, b) => a + b, 0) / v.length;
+    const k = Math.floor(v.length * trimFraction);
+    const core = 2 * k < v.length ? v.slice(k, v.length - k) : v;
+    return core.reduce((a, b) => a + b, 0) / core.length;
+  };
+
+  const j0 = trimmed(rows.map((r) => r.j0));
+  const jwn = trimmed(rows.map((r) => r.j_wn));
+  if (!Number.isFinite(j0) || !Number.isFinite(jwn) || jwn <= 0) return null;
+  const ratio = j0 / jwn;
+  if (!(ratio > 1) || !omegaN) return null;
+  return Math.sqrt(ratio - 1) / Math.abs(omegaN);
 }
 
 export interface SdmResidue {
