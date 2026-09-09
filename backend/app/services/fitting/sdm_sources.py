@@ -47,6 +47,7 @@ REASON_MISSING_NOE = "missing hetNOE"
 REASON_NON_FINITE = "non-finite input"
 REASON_NON_POSITIVE_R1 = "R1 is zero or negative"
 REASON_MISSING_REX = "missing Rex"
+REASON_SYMBOL_CONFLICT = "residue symbol disagrees between sources"
 
 
 class SdmSourceError(ValueError):
@@ -69,6 +70,7 @@ class RateSeries:
     errors: Dict[str, float] = field(default_factory=dict)
     res_num: Dict[str, Optional[int]] = field(default_factory=dict)
     res_name: Dict[str, Optional[str]] = field(default_factory=dict)
+    raw_assignment: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -104,21 +106,47 @@ class SdmDataset:
 
 
 def canonical_residue_key(assignment: str) -> str:
-    """Normalise an assignment so the three sources can be intersected.
+    """Normalise an assignment so sources can be intersected.
 
-    R1, R2 and hetNOE in one project all inherit their assignments from the
-    same peak-fitting run, so exact matching almost always suffices. The
-    canonical form is the fallback for the case where a source was fitted
-    against a different reference spectrum and writes e.g. "GLY14N" where
-    another writes "G14N".
+    Uses the SYMBOL-FREE form ("10N"), not the canonical one ("G10N").
+    Relaxation analyses inherit assignments from peak fitting and carry the
+    amino-acid symbol; ChemEx writes its spin-system keys without one, so
+    matching on the canonical form would fail to intersect a CPMG-derived
+    R2,0 with an R1 from the same residue and silently drop every residue as
+    "missing R2". This mirrors SpinSystemKey.matches, which likewise treats
+    an absent symbol as compatible.
+
+    Symbols are not discarded: residue_symbol() keeps them so build_dataset
+    can reject a genuine disagreement rather than merging two residues.
     """
     try:
         key = SpinSystemKey.parse(assignment)
         if key.res_num:
-            return key.canonical
+            return key.short
     except Exception:
         pass
     return assignment.strip().upper()
+
+
+def residue_symbol(assignment: str) -> str:
+    """The amino-acid symbol in an assignment, or "" when it carries none."""
+    try:
+        return SpinSystemKey.parse(assignment).symbol or ""
+    except Exception:
+        return ""
+
+
+def display_assignment(*candidates: Optional[str]) -> str:
+    """Prefer the most informative spelling of a residue for display."""
+    best = ""
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if residue_symbol(candidate) and not residue_symbol(best):
+            best = candidate
+        elif not best:
+            best = candidate
+    return best
 
 
 def load_rate_series(analysis) -> RateSeries:
@@ -163,11 +191,181 @@ def load_rate_series(analysis) -> RateSeries:
         if not assignment:
             continue
         key = canonical_residue_key(assignment)
+        series.raw_assignment[key] = str(assignment)
         series.values[key] = float(peak.get("rate", float("nan")))
         series.errors[key] = float(peak.get("rate_err", 0.0) or 0.0)
         series.res_num[key] = peak.get("res_num")
         series.res_name[key] = peak.get("res_name")
     return series
+
+
+def load_cpmg_r2_series(analysis, target_b0_mhz: float,
+                        tolerance_mhz: float = B0_TOLERANCE_MHZ) -> RateSeries:
+    """Read exchange-free R2,0 (ChemEx R2_A) out of a completed CPMG fit.
+
+    ChemEx's fitted R2_A *is* the transverse rate with exchange already
+    removed by the fitted model, so using it needs no Rex subtraction and no
+    covariance bookkeeping. That makes it a production R2 provenance, not an
+    experimental exchange correction, and it is NOT gated by the Rex flag.
+
+    Field selection is the whole risk here. A multi-field CPMG fit writes one
+    R2_A block per field:
+
+        ["R2_A, B0->500.0MHZ"]
+        15N =  4.00996e+00 # +/-2.27191e-01
+        ["R2_A, B0->800.0MHZ"]
+        15N =  6.67323e+00 # +/-3.42271e-01
+
+    -- the same residue differing by two thirds. The general ChemEx parser
+    strips the B0 qualifier when it normalises parameter names, so the blocks
+    collide there and the last one silently wins. This function therefore
+    reads the raw sections and selects on the field itself, refusing to guess
+    when the requested one is absent.
+
+    Args:
+        analysis: a COMPLETED CPMG analysis in the same project.
+        target_b0_mhz: the field the mapping runs at, taken from the R1 and
+            hetNOE sources.
+        tolerance_mhz: how close a block's field must be to count as a match.
+
+    Raises:
+        SdmSourceError: if the fit is incomplete, has no R2_A, or has none at
+            the requested field.
+    """
+    from .chemex_parser import parse_fitted_toml_file
+    from .param_canonicalizer import canonicalize
+
+    name = getattr(analysis, "name", "?")
+    if (analysis.status or "").upper() != "COMPLETED":
+        raise SdmSourceError(
+            f"CPMG analysis '{name}' has status {analysis.status}; "
+            "an R2,0 source must be a COMPLETED fit."
+        )
+
+    run_dir = _cpmg_run_dir(analysis)
+    sections: Dict[str, Dict[str, Dict[str, object]]] = {}
+    for candidate in _parameter_file_candidates(run_dir):
+        if os.path.isfile(candidate):
+            parsed = parse_fitted_toml_file(candidate)
+            if parsed:
+                sections.update(parsed)
+    if not sections:
+        raise SdmSourceError(
+            f"CPMG analysis '{name}' has no fitted parameter file to read "
+            "R2,0 from. Run the fit to completion first."
+        )
+
+    # Collect every R2_A block with the field it belongs to.
+    blocks: List[Tuple[Optional[float], Dict[str, Dict[str, object]]]] = []
+    for section_name, entries in sections.items():
+        key = canonicalize(section_name)
+        if key.name != "R2_A":
+            continue
+        blocks.append((_parse_field_mhz(key.field), entries))
+
+    if not blocks:
+        raise SdmSourceError(
+            f"CPMG analysis '{name}' has no fitted R2_A parameter, so it "
+            "cannot supply an exchange-free R2. Fit R2,0 and try again."
+        )
+
+    available = [f for f, _ in blocks if f is not None]
+    matching = [
+        entries for f, entries in blocks
+        if f is None or abs(f - target_b0_mhz) <= tolerance_mhz
+    ]
+    if not matching:
+        raise SdmSourceError(
+            f"CPMG analysis '{name}' has no R2,0 at {target_b0_mhz:.2f} MHz. "
+            f"It was fitted at {', '.join(f'{f:.2f}' for f in sorted(available))} MHz. "
+            "Using an R2,0 from a different field would silently change R2 by "
+            "tens of percent and land the error on J(0).",
+            detail={
+                "requested_mhz": target_b0_mhz,
+                "available_mhz": sorted(available),
+                "tolerance_mhz": tolerance_mhz,
+            },
+        )
+    if len(matching) > 1:
+        raise SdmSourceError(
+            f"CPMG analysis '{name}' has more than one R2,0 block matching "
+            f"{target_b0_mhz:.2f} MHz; the fit is ambiguous at this field.",
+            detail={"requested_mhz": target_b0_mhz, "available_mhz": sorted(available)},
+        )
+
+    series = RateSeries(
+        analysis_uuid=analysis.analysis_uuid,
+        analysis_name=name,
+        analysis_type="CPMG_R2_0",
+        b0_mhz=target_b0_mhz,
+    )
+    for res_key, entry in matching[0].items():
+        value = entry.get("value") if isinstance(entry, dict) else None
+        if value is None:
+            continue
+        key = canonical_residue_key(str(res_key))
+        series.raw_assignment[key] = str(res_key)
+        series.values[key] = float(value)
+        err = entry.get("err") if isinstance(entry, dict) else None
+        series.errors[key] = float(err) if err is not None else 0.0
+        parsed_key = SpinSystemKey.parse(str(res_key))
+        series.res_num[key] = parsed_key.res_num or None
+        series.res_name[key] = None
+
+    if not series.values:
+        raise SdmSourceError(
+            f"CPMG analysis '{name}' has an R2_A block at "
+            f"{target_b0_mhz:.2f} MHz but no per-residue values in it."
+        )
+    return series
+
+
+def _cpmg_run_dir(analysis) -> str:
+    """Locate a CPMG analysis run directory, mirroring the analysis router."""
+    if analysis.results_path:
+        resolved = resolve_existing_path(analysis.results_path)
+        if resolved and os.path.isdir(resolved):
+            return resolved
+        if resolved:
+            return os.path.dirname(resolved)
+    project = getattr(analysis, "project", None)
+    base = getattr(project, "local_directory_path", "") or ""
+    return os.path.join(base, "cpmg_fitting", analysis.analysis_uuid)
+
+
+def _parameter_file_candidates(run_dir: str) -> List[str]:
+    """Where ChemEx may have written fitted parameters, most specific last.
+
+    Later files override earlier ones, so the final fitted values win over
+    starting parameters.
+    """
+    names = ["parameters.toml", "fitted.toml"]
+    dirs = [
+        run_dir,
+        os.path.join(run_dir, "Parameters"),
+        os.path.join(run_dir, "Output"),
+        os.path.join(run_dir, "Output", "Parameters"),
+        os.path.join(run_dir, "Output", "All", "Parameters"),
+    ]
+    if os.path.isdir(os.path.join(run_dir, "Output")):
+        output = os.path.join(run_dir, "Output")
+        for step in sorted(
+            d for d in os.listdir(output) if d.upper().startswith("STEP")
+        ):
+            dirs.append(os.path.join(output, step, "Parameters"))
+            dirs.append(os.path.join(output, step, "All", "Parameters"))
+    return [os.path.join(d, n) for d in dirs for n in names]
+
+
+def _parse_field_mhz(field: Optional[str]) -> Optional[float]:
+    """Turn a ChemEx B0 qualifier such as "600.3MHZ" into MHz."""
+    if not field:
+        return None
+    text = str(field).upper().replace("MHZ", "").strip()
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
 
 def resolve_b0_mhz(analysis) -> Optional[float]:
@@ -281,6 +479,17 @@ def build_dataset(
     excluded: List[ExcludedResidue] = []
     kept: List[str] = []
 
+    # Report residues by their most informative spelling, not the bare match
+    # key, so the table and CSV read the way the user's peak list does.
+    display = {
+        key: display_assignment(
+            r1_series.raw_assignment.get(key),
+            noe_series.raw_assignment.get(key),
+            r2_series.raw_assignment.get(key),
+        ) or key
+        for key in all_keys
+    }
+
     for key in sorted(all_keys, key=_residue_sort_key):
         res_num = (
             r1_series.res_num.get(key)
@@ -295,7 +504,24 @@ def build_dataset(
         if key not in noe_series.values:
             missing.append(REASON_MISSING_NOE)
         if missing:
-            excluded.append(ExcludedResidue(key, ", ".join(missing), res_num))
+            excluded.append(ExcludedResidue(display[key], ", ".join(missing), res_num))
+            continue
+
+        # Residues are matched on the symbol-free form so that peak-fitting
+        # assignments ("G10N") intersect ChemEx spin keys ("10N"). That makes
+        # a genuine symbol disagreement -- G10N in one source, A10N in
+        # another -- invisible unless it is checked for explicitly here.
+        symbols = {
+            residue_symbol(series.raw_assignment.get(key, ""))
+            for series in (r1_series, r2_series, noe_series)
+        }
+        symbols.discard("")
+        if len(symbols) > 1:
+            excluded.append(ExcludedResidue(
+                display[key],
+                f"{REASON_SYMBOL_CONFLICT} ({', '.join(sorted(symbols))})",
+                res_num,
+            ))
             continue
 
         values = (
@@ -304,20 +530,20 @@ def build_dataset(
             noe_series.errors.get(key, 0.0),
         )
         if not all(math.isfinite(v) for v in values):
-            excluded.append(ExcludedResidue(key, REASON_NON_FINITE, res_num))
+            excluded.append(ExcludedResidue(display[key], REASON_NON_FINITE, res_num))
             continue
         # sigma = k(NOE-1)R1 and J_h = sigma/(5d^2/4): a non-positive R1 makes
         # the NOE-to-sigma conversion meaningless rather than merely noisy.
         if r1_series.values[key] <= 0:
-            excluded.append(ExcludedResidue(key, REASON_NON_POSITIVE_R1, res_num))
+            excluded.append(ExcludedResidue(display[key], REASON_NON_POSITIVE_R1, res_num))
             continue
         if rex_by_residue is not None and key not in rex_by_residue:
-            excluded.append(ExcludedResidue(key, REASON_MISSING_REX, res_num))
+            excluded.append(ExcludedResidue(display[key], REASON_MISSING_REX, res_num))
             continue
         kept.append(key)
 
     dataset = SdmDataset(
-        assignments=kept,
+        assignments=[display[k] for k in kept],
         res_num=[r1_series.res_num.get(k) or r2_series.res_num.get(k)
                  or noe_series.res_num.get(k) for k in kept],
         res_name=[r1_series.res_name.get(k) or r2_series.res_name.get(k)

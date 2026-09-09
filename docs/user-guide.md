@@ -102,11 +102,30 @@ Three **completed** relaxation analyses in the same project — one R₁, one R�
 The setup panel asks for:
 
 - **Sources** — the three analyses. Each option shows its ¹H frequency so a mismatch is visible before you run.
+- **R₂ source type** — see below. Defaults to the direct R₂ experiment.
 - **Constants** — `r_NH` (1.02 or 1.015 Å) and `Δσ` (−160, −170 or −172 ppm), or your own values. The choice is snapshotted with the analysis, so a run from two months ago is self-describing.
 - **Variant** — which published convention fixes the 0.87 factor. Currently `farrow1995`.
 - **Error method** — analytic (the default) or Monte Carlo. The analytic propagation is *exact* for Gaussian input errors, not a first-order approximation, because the rate → density map is linear. Monte Carlo exists as a cross-check and agrees with it to within sampling error.
 
 **Fields must match.** Mapping a 600 MHz R₁ against an 800 MHz R₂ produces J values that look entirely reasonable and are entirely wrong, so a mismatch is refused outright rather than warned about. Sources without a recorded B₀ are refused too — the analysis will not silently assume 600 MHz.
+
+### Where R₂ comes from
+
+The **R₂ experiment (echo decay)** is the default and is what you want unless you have a specific reason otherwise.
+
+resoFlow can also take R₂ from a completed **CPMG fit**, using ChemEx's fitted **R₂,₀** — the transverse rate with exchange already removed by the fitted model. That needs no R_ex subtraction and no covariance bookkeeping, so it is a production option and is *not* gated by the experimental flag.
+
+The trade is worth understanding rather than assuming R₂,₀ is simply better:
+
+| | Direct R₂ experiment | R₂,₀ from a CPMG fit |
+|---|---|---|
+| Exchange | included, and lands on J(0) | removed by construction |
+| Depends on | the measurement only | the exchange model that CPMG fit assumed |
+| Use when | you want the measurement as made, or have no CPMG data | you have a trusted CPMG fit and want J(0) free of exchange |
+
+If the CPMG fit is wrong about the exchange model, R₂,₀ is wrong in a way that is much harder to notice than exchange showing up in J(0) — where at least the correlation plot displays it.
+
+**A multi-field CPMG fit stores one R₂,₀ per field**, and they differ substantially — in resoFlow's own test fixture the same residue is 4.01 s⁻¹ at 500 MHz and 6.67 s⁻¹ at 800 MHz. resoFlow selects the block matching the field of your R₁ and hetNOE sources, and refuses with a 422 naming the available fields if there is no block at that field. It will not silently substitute a different one.
 
 ### Reading the correlation plot
 

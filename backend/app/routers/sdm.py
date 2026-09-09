@@ -43,11 +43,14 @@ from ..services.fitting.sdm_runner import (
     write_results,
 )
 from ..services.fitting.sdm_sources import (
+    B0_TOLERANCE_MHZ,
     SdmSourceError,
     build_dataset,
+    load_cpmg_r2_series,
     load_rate_series,
+    validate_field_consistency,
 )
-from ..services.sdm.schemas import RexSource, SpectralDensityCreate
+from ..services.sdm.schemas import R2Provenance, RexSource, SpectralDensityCreate
 from ..services.path_utils import resolve_existing_path
 from .deps import get_project
 
@@ -156,8 +159,21 @@ def create_spectral_density(
 
     try:
         r1_series = load_rate_series(r1_analysis)
-        r2_series = load_rate_series(r2_analysis)
         noe_series = load_rate_series(noe_analysis)
+
+        if payload.r2_provenance == R2Provenance.CPMG_R2_0:
+            # ChemEx's fitted R2_A is already exchange-free, so no Rex
+            # subtraction is involved and this stays a production path.
+            # The field comes from R1 and the hetNOE, and the CPMG loader
+            # selects the R2,0 block for exactly that field rather than
+            # guessing between a multi-field fit's blocks.
+            target_b0 = validate_field_consistency(
+                [r1_series, noe_series], B0_TOLERANCE_MHZ
+            )
+            r2_series = load_cpmg_r2_series(r2_analysis, target_b0, B0_TOLERANCE_MHZ)
+        else:
+            r2_series = load_rate_series(r2_analysis)
+
         dataset = build_dataset(r1_series, r2_series, noe_series)
     except SdmSourceError as exc:
         raise HTTPException(

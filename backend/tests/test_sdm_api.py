@@ -679,3 +679,245 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
                                    headers=self._auth(self.token_a)).text
         self.assertTrue(csv_text.startswith("#"))
         self.assertIn("EXPERIMENTAL", csv_text.split("\n")[0])
+
+
+class TestCpmgR2Provenance(TestSpectralDensityApi):
+    """R2,0 from a CPMG fit as an alternative R2 provenance.
+
+    ChemEx's fitted R2_A already has exchange removed by the fitted model, so
+    this needs no Rex subtraction and is a PRODUCTION path -- it is not gated
+    by the experimental flag and does not mark the analysis experimental.
+    """
+
+    def _make_cpmg(self, project, blocks, status="COMPLETED"):
+        """Create a CPMG analysis whose fitted.toml holds R2_A blocks.
+
+        Args:
+            blocks: {field_label_or_None: {residue_key: (value, err)}}
+        """
+        analysis = models.Analysis(
+            name="CPMG run", analysis_type="CPMG",
+            project_id=project.id, status=status,
+        )
+        self.db.add(analysis)
+        self.db.commit()
+        self.db.refresh(analysis)
+
+        run_dir = os.path.join(self.tmp.name, "cpmg_fitting", analysis.analysis_uuid)
+        os.makedirs(os.path.join(run_dir, "Parameters"), exist_ok=True)
+        lines = ["[DW_AB]", '15N = 2.13116e+00 # ±2.13113e-02', ""]
+        for field, residues in blocks.items():
+            lines.append(f'["R2_A, B0->{field}"]' if field else "[R2_A]")
+            for res, (value, err) in residues.items():
+                lines.append(f"{res} = {value:.5e} # ±{err:.5e}")
+            lines.append("")
+        with open(os.path.join(run_dir, "Parameters", "fitted.toml"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("\n".join(lines))
+
+        analysis.results_path = os.path.join(run_dir, "results.json")
+        self.db.commit()
+        self.db.refresh(analysis)
+        return analysis
+
+    def test_echo_decay_is_the_default_provenance(self):
+        r1, r2, noe = self._standard_sources()
+        body = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, r2, noe),
+            headers=self._auth(self.token_a),
+        ).json()
+        self.assertEqual(body["results"]["r2_provenance"], "echo_decay")
+
+    def test_cpmg_r2_0_is_used_when_requested(self):
+        r1, _, noe = self._standard_sources()
+        cpmg = self._make_cpmg(self.project, {"600.13MHZ": {"15N": (8.4, 0.21)}})
+        # The R1/NOE sources must carry residue 15 for the intersection.
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 201, resp.text)
+        results = resp.json()["results"]
+        self.assertEqual(results["r2_provenance"], "cpmg_r2_0")
+        self.assertEqual(len(results["residues"]), 1)
+        # The exchange-free R2,0 is what reached the mapping.
+        self.assertAlmostEqual(results["residues"][0]["r2"], 8.4, places=4)
+        self.assertAlmostEqual(results["residues"][0]["r2_err"], 0.21, places=4)
+
+    def test_cpmg_r2_0_is_not_experimental(self):
+        """R2,0 is exchange-free by construction, not an Rex correction."""
+        cpmg = self._make_cpmg(self.project, {"600.13MHZ": {"15N": (8.4, 0.21)}})
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+
+        # The experimental Rex flag is off (setUp clears it) and this still works.
+        body = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        ).json()
+        self.assertFalse(body["experimental"])
+        self.assertEqual(body["results"]["rex_source"], "none")
+        self.assertIsNone(body["results"]["experimental_notice"])
+
+    def test_multi_field_cpmg_selects_the_matching_block(self):
+        """The critical case: a 500/800 fit must not hand back the wrong field.
+
+        The same residue differs by two thirds between blocks, and the general
+        ChemEx parser collapses them because it strips the B0 qualifier. This
+        asserts the field-aware selection actually selects.
+        """
+        cpmg = self._make_cpmg(self.project, {
+            "500.0MHZ": {"15N": (4.00996, 0.227191)},
+            "800.0MHZ": {"15N": (6.67323, 0.342271)},
+        })
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=800.0)
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=800.0)
+
+        body = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(body.status_code, 201, body.text)
+        row = body.json()["results"]["residues"][0]
+        self.assertAlmostEqual(row["r2"], 6.67323, places=4)
+        self.assertNotAlmostEqual(row["r2"], 4.00996, places=2)
+
+        # And the 500 MHz mapping picks the other block.
+        r1_500 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=500.0)
+        noe_500 = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=500.0)
+        row_500 = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1_500, cpmg, noe_500, name="500",
+                                   r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        ).json()["results"]["residues"][0]
+        self.assertAlmostEqual(row_500["r2"], 4.00996, places=4)
+
+    def test_missing_field_block_is_rejected_with_the_available_fields(self):
+        cpmg = self._make_cpmg(self.project, {
+            "500.0MHZ": {"15N": (4.00996, 0.227191)},
+            "800.0MHZ": {"15N": (6.67323, 0.342271)},
+        })
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=600.13)
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=600.13)
+
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 422, resp.text)
+        detail = resp.json()["detail"]
+        self.assertIn("no R2,0 at 600.13 MHz", detail["message"])
+        self.assertEqual(detail["available_mhz"], [500.0, 800.0])
+
+    def test_single_field_block_without_a_qualifier_is_accepted(self):
+        cpmg = self._make_cpmg(self.project, {None: {"15N": (8.4, 0.21)}})
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 201, resp.text)
+        self.assertAlmostEqual(resp.json()["results"]["residues"][0]["r2"], 8.4, places=4)
+
+    def test_cpmg_without_r2_a_is_rejected(self):
+        cpmg = self._make_cpmg(self.project, {})
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("no fitted R2_A", resp.json()["detail"]["message"])
+
+    def test_incomplete_cpmg_is_rejected(self):
+        cpmg = self._make_cpmg(self.project, {"600.13MHZ": {"15N": (8.4, 0.21)}},
+                               status="RUNNING")
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("COMPLETED", resp.json()["detail"]["message"])
+
+    def test_peak_assignments_intersect_chemex_spin_keys(self):
+        """"G15N" from peak fitting must match ChemEx's "15N".
+
+        Matching on the symbol-carrying canonical form would drop every
+        residue as "missing R2" while looking like a legitimate empty
+        intersection.
+        """
+        cpmg = self._make_cpmg(self.project, {
+            "600.13MHZ": {"10N": (8.4, 0.21), "11N": (9.1, 0.22)},
+        })
+        r1 = self._make_source(self.project, "R1", [1.35, 1.3], [0.03, 0.03],
+                               ["G10N", "A11N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78, 0.75], [0.04, 0.04],
+                                ["G10N", "A11N"])
+        results = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
+            headers=self._auth(self.token_a),
+        ).json()["results"]
+
+        self.assertEqual(len(results["residues"]), 2)
+        self.assertEqual(results["excluded_residues"], [])
+        # The informative spelling survives into the table, not the bare key.
+        self.assertEqual(
+            sorted(r["assignment"] for r in results["residues"]), ["A11N", "G10N"]
+        )
+
+    def test_symbol_disagreement_between_sources_is_excluded(self):
+        """Symbol-free matching must not silently merge two different residues.
+
+        Residue 10 is G in R1/hetNOE but A in R2 -- matching on the bare
+        number would fuse them. Residue 11 agrees everywhere and must still
+        map, so the conflict costs only the residue it affects.
+        """
+        r1 = self._make_source(self.project, "R1", [1.35, 1.30], [0.03, 0.03],
+                               ["G10N", "A11N"])
+        r2 = self._make_source(self.project, "R2", [12.1, 12.5], [0.30, 0.30],
+                               ["A10N", "A11N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78, 0.75], [0.04, 0.04],
+                                ["G10N", "A11N"])
+        results = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, r2, noe),
+            headers=self._auth(self.token_a),
+        ).json()["results"]
+
+        self.assertEqual([r["assignment"] for r in results["residues"]], ["A11N"])
+        self.assertEqual(len(results["excluded_residues"]), 1)
+        excluded = results["excluded_residues"][0]
+        self.assertIn("symbol disagrees", excluded["reason"])
+        self.assertIn("A", excluded["reason"])
+        self.assertIn("G", excluded["reason"])
+
+    def test_total_symbol_disagreement_leaves_nothing_to_map(self):
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G10N"])
+        r2 = self._make_source(self.project, "R2", [12.1], [0.30], ["A10N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G10N"])
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, r2, noe),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 422)
+        detail = resp.json()["detail"]
+        self.assertIn("nothing to map", detail["message"])
+        self.assertIn("symbol disagrees", detail["excluded_residues"][0]["reason"])

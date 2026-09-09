@@ -21,10 +21,13 @@ import {
   errorEllipse,
   filterResidues,
   R_NH_PRESETS,
+  R2_PROVENANCE_OPTIONS,
+  r2SourceType,
   rigidRotorCurve,
   sortResidues,
   validateConstants,
   type ConstantsForm,
+  type R2Provenance,
   type SdmResidue,
   type SortKey,
   type SourceAnalysisOption,
@@ -115,6 +118,8 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
   const [errorMethod, setErrorMethod] = useState<'analytic' | 'monte_carlo'>('analytic');
   const [nReplicates, setNReplicates] = useState('2000');
   const [rexSource, setRexSource] = useState<'none' | 'cpmg_analysis' | 'multi_field'>('none');
+  // The direct R2 experiment is the default; R2,0 from a CPMG fit is opt-in.
+  const [r2Provenance, setR2Provenance] = useState<R2Provenance>('echo_decay');
 
   const [query, setQuery] = useState('');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -122,8 +127,17 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const r1Options = useMemo(() => eligibleSources(analyses, 'R1'), [analyses]);
-  const r2Options = useMemo(() => eligibleSources(analyses, 'R2'), [analyses]);
+  const r2Options = useMemo(
+    () => eligibleSources(analyses, r2SourceType(r2Provenance)),
+    [analyses, r2Provenance],
+  );
   const noeOptions = useMemo(() => eligibleSources(analyses, 'hetNOE'), [analyses]);
+
+  // Switching provenance changes which analyses are eligible, so a stale
+  // selection must not survive into the request.
+  useEffect(() => {
+    setR2Uuid('');
+  }, [r2Provenance]);
 
   const chosen = useMemo(
     () => [
@@ -134,10 +148,23 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
     [r1Options, r2Options, noeOptions, r1Uuid, r2Uuid, noeUuid],
   );
 
-  const fieldCheck = useMemo(() => checkFieldConsistency(chosen), [chosen]);
+  // A multi-field CPMG fit legitimately spans several fields, and the backend
+  // picks the R2,0 block matching R1/hetNOE. Comparing it against an
+  // arbitrary one of its own fields here would reject a valid setup, so the
+  // CPMG source sits out of this check.
+  const fieldCheck = useMemo(
+    () =>
+      checkFieldConsistency(
+        r2Provenance === 'cpmg_r2_0'
+          ? chosen.filter((c) => c.role !== 'R2')
+          : chosen,
+      ),
+    [chosen, r2Provenance],
+  );
   const constantIssues = useMemo(() => validateConstants(constants), [constants]);
   const canRun =
     !!r1Uuid && !!r2Uuid && !!noeUuid && fieldCheck.ok && constantIssues.length === 0 && !isRunning;
+  const r2Option = R2_PROVENANCE_OPTIONS.find((o) => o.value === r2Provenance)!;
 
   useEffect(() => {
     // Absent keys mean "disabled", so an older server never enables a
@@ -175,6 +202,7 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
         variant,
         error_method: errorMethod,
         n_replicates: Number(nReplicates) || 2000,
+        r2_provenance: r2Provenance,
       };
       if (rexEnabled && rexSource !== 'none') {
         body.rex_source = rexSource;
@@ -269,10 +297,26 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
           </div>
         </div>
 
+        <div className="mb-4">
+          <label className={labelCls} htmlFor="sdm-r2-provenance">R₂ source type</label>
+          <select
+            id="sdm-r2-provenance"
+            className={inputCls}
+            value={r2Provenance}
+            onChange={(e) => setR2Provenance(e.target.value as R2Provenance)}
+          >
+            {R2_PROVENANCE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">{r2Option.hint}</p>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {([
             ['R1 source', r1Uuid, setR1Uuid, r1Options, 'sdm-r1'],
-            ['R2 source', r2Uuid, setR2Uuid, r2Options, 'sdm-r2'],
+            [r2Option.sourceType === 'CPMG' ? 'CPMG fit (R₂,₀)' : 'R2 source',
+             r2Uuid, setR2Uuid, r2Options, 'sdm-r2'],
             ['hetNOE source', noeUuid, setNoeUuid, noeOptions, 'sdm-noe'],
           ] as const).map(([label, value, setter, options, id]) => (
             <div key={id}>

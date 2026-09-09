@@ -118,15 +118,53 @@ export function constantsPayload(form: ConstantsForm): Record<string, unknown> {
   };
 }
 
-/** Completed relaxation analyses of one type, usable as a mapping source. */
+/** Completed analyses of one type, usable as a mapping source. */
 export function eligibleSources(
   analyses: SourceAnalysisOption[],
-  analysisType: 'R1' | 'R2' | 'hetNOE',
+  analysisType: 'R1' | 'R2' | 'hetNOE' | 'CPMG',
 ): SourceAnalysisOption[] {
   const wanted = analysisType.toUpperCase();
   return analyses.filter(
     (a) => (a.analysis_type || '').toUpperCase() === wanted && a.status === 'COMPLETED',
   );
+}
+
+/**
+ * Where R₂ comes from.
+ *
+ * `echo_decay` — a direct R₂ relaxation experiment. THE DEFAULT.
+ * `cpmg_r2_0`  — ChemEx's fitted R₂,₀ from a CPMG run, which already has
+ *   exchange removed by the fitted model. Not an R_ex correction and not
+ *   gated by the experimental flag, but it does inherit whatever exchange
+ *   model the CPMG fit assumed, which the direct experiment does not.
+ */
+export type R2Provenance = 'echo_decay' | 'cpmg_r2_0';
+
+export const R2_PROVENANCE_OPTIONS: Array<{
+  value: R2Provenance;
+  label: string;
+  sourceType: 'R2' | 'CPMG';
+  hint: string;
+}> = [
+  {
+    value: 'echo_decay',
+    label: 'R₂ experiment (echo decay)',
+    sourceType: 'R2',
+    hint: 'Direct measurement. Any chemical exchange it contains will land on J(0).',
+  },
+  {
+    value: 'cpmg_r2_0',
+    label: 'R₂,₀ from a CPMG fit',
+    sourceType: 'CPMG',
+    hint:
+      'ChemEx\'s fitted R₂,₀, exchange-free by construction — but conditional on ' +
+      'the exchange model that CPMG fit assumed.',
+  },
+];
+
+/** Which analysis type feeds the R₂ slot for a given provenance. */
+export function r2SourceType(provenance: R2Provenance): 'R2' | 'CPMG' {
+  return provenance === 'cpmg_r2_0' ? 'CPMG' : 'R2';
 }
 
 export interface FieldCheck {

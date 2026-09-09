@@ -6,6 +6,8 @@ import {
   defaultConstantsForm,
   eligibleSources,
   errorEllipse,
+  R2_PROVENANCE_OPTIONS,
+  r2SourceType,
   filterResidues,
   rigidRotorCurve,
   sortResidues,
@@ -198,6 +200,48 @@ describe('eligibleSources', () => {
     expect(eligibleSources(analyses, 'R1').map((a) => a.analysis_uuid)).toEqual(['a']);
     expect(eligibleSources(analyses, 'R2').map((a) => a.analysis_uuid)).toEqual(['c']);
     expect(eligibleSources(analyses, 'hetNOE').map((a) => a.analysis_uuid)).toEqual(['d']);
+  });
+});
+
+describe('R2 provenance', () => {
+  it('defaults to the direct R2 experiment', () => {
+    // The echo-decay measurement is the default choice; R2,0 from a CPMG fit
+    // is opt-in, since it inherits that fit's exchange model.
+    expect(R2_PROVENANCE_OPTIONS[0].value).toBe('echo_decay');
+    expect(R2_PROVENANCE_OPTIONS[0].sourceType).toBe('R2');
+  });
+
+  it('maps each provenance to the analysis type that feeds it', () => {
+    expect(r2SourceType('echo_decay')).toBe('R2');
+    expect(r2SourceType('cpmg_r2_0')).toBe('CPMG');
+  });
+
+  it('offers exactly the two supported provenances', () => {
+    expect(R2_PROVENANCE_OPTIONS.map((o) => o.value)).toEqual([
+      'echo_decay', 'cpmg_r2_0',
+    ]);
+  });
+
+  it('explains what each choice costs', () => {
+    const [direct, cpmg] = R2_PROVENANCE_OPTIONS;
+    expect(direct.hint).toMatch(/exchange/i);
+    expect(cpmg.hint).toMatch(/exchange-free/i);
+    // The CPMG option must not be sold as unconditionally better.
+    expect(cpmg.hint).toMatch(/conditional on/i);
+  });
+
+  it('selects CPMG analyses for the R2 slot under cpmg_r2_0', () => {
+    const analyses = [
+      source({ analysis_uuid: 'r2', analysis_type: 'R2', status: 'COMPLETED' }),
+      source({ analysis_uuid: 'cp', analysis_type: 'CPMG', status: 'COMPLETED' }),
+      source({ analysis_uuid: 'cp2', analysis_type: 'CPMG', status: 'RUNNING' }),
+    ];
+    expect(
+      eligibleSources(analyses, r2SourceType('cpmg_r2_0')).map((a) => a.analysis_uuid),
+    ).toEqual(['cp']);
+    expect(
+      eligibleSources(analyses, r2SourceType('echo_decay')).map((a) => a.analysis_uuid),
+    ).toEqual(['r2']);
   });
 });
 
