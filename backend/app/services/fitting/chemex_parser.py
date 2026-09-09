@@ -254,6 +254,68 @@ def compute_inverse_variance_stats(items: List[Dict[str, Any]]) -> Dict[str, Any
     }
 
 
+def _section_field_mhz(section_name: str) -> Optional[float]:
+    """The B0 qualifier on a parameter section, in MHz, or None.
+
+    ChemEx writes field-dependent parameters as one section per field, e.g.
+    ["R2_A, B0->500.0MHZ"] and ["R2_A, B0->800.0MHZ"]. extract_base_name
+    deliberately strips every qualifier so that DW_AB, T->25.0C normalises to
+    DW_AB; that is right for temperature but wrong for B0, because a single
+    fit legitimately holds several field-specific values of the same
+    parameter and collapsing them loses all but one.
+    """
+    try:
+        from .param_canonicalizer import canonicalize
+
+        field = canonicalize(section_name).field
+    except Exception:
+        return None
+    if not field:
+        return None
+    text = str(field).upper().replace("MHZ", "").strip()
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _merge_field_entry(existing: Optional[Dict[str, Any]],
+                       entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Accumulate a field-qualified parameter into a per-field vector.
+
+    Field-dependent rates (R1_A, R1_B, R2_A, R2_B) are genuinely several
+    values in one fit, so they are collected rather than overwritten. The
+    resulting entry keeps `value`/`err`/`is_fixed` at the top level so that
+    code reading a parameter the old way still gets a number, but those now
+    come from the LOWEST field deterministically instead of from whichever
+    section happened to appear last in the file.
+
+    `multi_field` is the flag to check: reading `value` on an entry where it
+    is True silently picks one field out of several, which for R2 across
+    500/800 MHz is a difference of tens of percent.
+    """
+    field_mhz = entry.get("field_mhz")
+    by_field: List[Dict[str, Any]] = []
+    if existing and isinstance(existing.get("by_field"), list):
+        by_field = [e for e in existing["by_field"] if e.get("field_mhz") != field_mhz]
+    elif existing and existing.get("field_mhz") is not None:
+        if existing.get("field_mhz") != field_mhz:
+            by_field = [dict(existing)]
+
+    by_field.append(dict(entry))
+    by_field.sort(key=lambda e: (e.get("field_mhz") is None, e.get("field_mhz")))
+
+    representative = by_field[0]
+    return {
+        "value": representative.get("value"),
+        "err": representative.get("err"),
+        "is_fixed": representative.get("is_fixed", False),
+        "field_mhz": representative.get("field_mhz"),
+        "multi_field": len(by_field) > 1,
+        "by_field": by_field,
+    }
+
+
 def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
     """
     Parse a completed ChemEx analysis run directory into queryable parameter dictionaries,
@@ -269,19 +331,42 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
         },
         "residues": {
           "3N": {
+            # Field-INDEPENDENT parameters: a single value, as before.
             "cs_a": { "value": float, "err": float | None },
             "dw_ab": { "value": float, "err": float | None },
-            "r1_a": { "value": float, "err": float | None },
-            "r2_a": { "value": float, "err": float | None },
             "kex_ab": { "value": float, "err": float | None }, # in individual mode
-            "pb": { "value": float, "err": float | None }       # in individual mode
+            "pb": { "value": float, "err": float | None },      # in individual mode
+
+            # Field-DEPENDENT rates (R1_A, R1_B, R2_A, R2_B) are a VECTOR:
+            # ChemEx writes one section per field, and a multi-field fit
+            # genuinely holds several values of the same parameter.
+            "r2_a": {
+              "value": float,          # the LOWEST field's value
+              "err": float | None,
+              "is_fixed": bool,
+              "field_mhz": float,      # which field `value` came from
+              "multi_field": bool,     # True when more than one was fitted
+              "by_field": [            # ascending by field
+                { "field_mhz": 500.0, "value": float, "err": float | None,
+                  "is_fixed": bool },
+                { "field_mhz": 800.0, "value": float, "err": float | None,
+                  "is_fixed": bool },
+              ],
+            },
           }
         },
+        "fields_mhz": [500.0, 800.0],   # every B0 seen while parsing
         "statistics": {
           "chi2": float | None,
           "chi2_red": float | None
         }
       }
+
+    On reading field-dependent parameters: check `multi_field` before using
+    `value`. R2,0 at 500 and 800 MHz differs by tens of percent, so silently
+    taking one of them is the kind of error that produces a plausible number
+    rather than an obvious failure. Previously `value` was whichever section
+    appeared last in the file; it is now the lowest field, deterministically.
     """
     # Detect output directory (handle whether run_dir or output_dir itself is passed)
     candidate_output = os.path.join(run_dir, "Output")
@@ -304,6 +389,7 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
         "residues": {},
         "statistics": {},
         "excluded_residues": [],
+        "fields_mhz": [],
     }
 
     # Extract excluded residues from config.json or parameters.toml if available
@@ -395,6 +481,8 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
     if residue_subdirs:
         result["fit_mode"] = "individual"
 
+    observed_fields: set = set()
+
     # Helper function to assign standard parameter keys
     def assign_parameter(target_dict: dict, section_name: str, key_name: str, item_dict: dict):
         sec_base = extract_base_name(section_name)
@@ -404,6 +492,11 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
         err = item_dict.get("err")
         is_fixed = item_dict.get("is_fixed", False)
         entry = {"value": val, "err": err, "is_fixed": is_fixed}
+
+        field_mhz = _section_field_mhz(section_name)
+        if field_mhz is not None:
+            entry["field_mhz"] = field_mhz
+            observed_fields.add(field_mhz)
 
         # Global kinetics
         if sec_base in ["GLOBAL", "POPULATIONS", "KINETICS"]:
@@ -439,10 +532,12 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
                 if sec_base == prefix:
                     matched = prefix.lower()
                     break
-            if matched:
-                target_dict[matched] = entry
+            name = matched or sec_base.lower()
+            if field_mhz is None:
+                # No field qualifier: unchanged behaviour, last write wins.
+                target_dict[name] = entry
             else:
-                target_dict[sec_base.lower()] = entry
+                target_dict[name] = _merge_field_entry(target_dict.get(name), entry)
 
     # 3. Harvest Global Parameters from ALL files in order:
     # fixed.toml -> constrained.toml -> parameters.toml -> fitted.toml
@@ -588,6 +683,7 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
     except Exception:
         result["uncertainty_statistics"] = {"has_statistics": False, "methods": {}, "steps": {}}
 
+    result["fields_mhz"] = sorted(observed_fields)
     return result
 
 
