@@ -339,6 +339,25 @@ export interface SdmResidue {
   flags: string[];
   rex?: number;
   rex_err?: number;
+  /** Set by the server from the analysis's excludedResidues list. */
+  excluded?: boolean;
+  exclusion_reason?: string | null;
+}
+
+/**
+ * The residues a plot should draw.
+ *
+ * Excluded residues stay in the TABLE, greyed out, so they can be toggled
+ * back on and so exports can account for them. They must not reach the
+ * plots: leaving them there would show points the summary no longer
+ * describes, and a single excluded outlier would go on stretching the axes.
+ *
+ * Deliberately independent of the table's search and flagged-only filters,
+ * which are browsing aids rather than statements about the data -- the same
+ * split the relaxation module uses.
+ */
+export function includedResidues(rows: SdmResidue[]): SdmResidue[] {
+  return rows.filter((r) => !r.excluded);
 }
 
 export type SortKey =

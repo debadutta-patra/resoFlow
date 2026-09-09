@@ -21,6 +21,7 @@ import {
   eligibleSources,
   errorEllipse,
   filterResidues,
+  includedResidues,
   R_NH_PRESETS,
   R2_PROVENANCE_OPTIONS,
   r2SourceType,
@@ -299,6 +300,13 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
     if (!results || isMultiField) return [];
     return sortResidues(filterResidues(results.residues, query, flaggedOnly), sortKey, sortDir);
   }, [results, isMultiField, query, flaggedOnly, sortKey, sortDir]);
+
+  // Plots draw only the included residues, so what is drawn matches the
+  // summary above it. The table keeps the excluded rows, greyed out.
+  const plottedResidues = useMemo(
+    () => (results && !isMultiField ? includedResidues(results.residues) : []),
+    [results, isMultiField],
+  );
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -621,7 +629,7 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
               </h3>
               {isExperimental && <ExperimentalBadge />}
             </div>
-            <ProfilePlots residues={results.residues} />
+            <ProfilePlots residues={plottedResidues} />
           </section>
 
           <section className={sectionCls}>
@@ -640,7 +648,7 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
               </p>
             </div>
             <CorrelationPlot
-              residues={results.residues}
+              residues={plottedResidues}
               omegaN={Number(results.physics_snapshot?.omega_n_rad_s ?? 0)}
             />
             <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
@@ -893,7 +901,15 @@ const Stat: React.FC<{ label: string; value: string; hint?: string }> = ({ label
   </div>
 );
 
+const NoResiduesNotice: React.FC = () => (
+  <div className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+    Every residue is excluded — nothing to plot. Re-include one from the table
+    below.
+  </div>
+);
+
 const ProfilePlots: React.FC<{ residues: SdmResidue[] }> = ({ residues }) => {
+  if (residues.length === 0) return <NoResiduesNotice />;
   const x = residues.map((r) => r.res_num ?? 0);
   const panels: Array<[string, number[], number[], string]> = [
     ['J(0)', residues.map((r) => r.j0), residues.map((r) => r.j0_err), PLOT_COLORS.primary],
@@ -934,6 +950,9 @@ const CorrelationPlot: React.FC<{ residues: SdmResidue[]; omegaN: number }> = ({
   residues,
   omegaN,
 }) => {
+  // Math.min of an empty list is Infinity, which would poison the axis
+  // bounds and the rigid-rotor curve.
+  if (residues.length === 0) return <NoResiduesNotice />;
   const j0 = residues.map((r) => r.j0);
   const jwn = residues.map((r) => r.j_wn);
   const lo = Math.min(...j0) * 0.5;

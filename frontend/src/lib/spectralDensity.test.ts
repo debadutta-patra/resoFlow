@@ -9,6 +9,7 @@ import {
   R2_PROVENANCE_OPTIONS,
   r2SourceType,
   filterResidues,
+  includedResidues,
   rigidRotorCurve,
   sortResidues,
   validateConstants,
@@ -384,5 +385,44 @@ describe('filterResidues', () => {
   it('combines the query and the flagged filter', () => {
     expect(filterResidues(rows, 'a11', true)).toHaveLength(1);
     expect(filterResidues(rows, 'g10', true)).toHaveLength(0);
+  });
+});
+
+describe('includedResidues', () => {
+  const rows = [
+    residue({ assignment: 'G10N', excluded: false }),
+    residue({ assignment: 'A11N', excluded: true, exclusion_reason: 'excluded by user' }),
+    residue({ assignment: 'L12N' }),
+  ];
+
+  it('drops excluded residues so plots match the summary', () => {
+    expect(includedResidues(rows).map((r) => r.assignment)).toEqual(['G10N', 'L12N']);
+  });
+
+  it('treats a missing excluded field as included', () => {
+    // Older payloads, and any row the server did not mark, must still plot.
+    expect(includedResidues([residue({ assignment: 'X1N' })])).toHaveLength(1);
+  });
+
+  it('returns an empty list when everything is excluded', () => {
+    const all = rows.map((r) => ({ ...r, excluded: true }));
+    expect(includedResidues(all)).toEqual([]);
+  });
+
+  it('is independent of the table filters', () => {
+    // The search box and flagged-only toggle are browsing aids; they must not
+    // silently change which residues the plots draw.
+    const flagged = [
+      residue({ assignment: 'G10N', flags: [] }),
+      residue({ assignment: 'A11N', flags: ['elevated_j0'] }),
+    ];
+    expect(includedResidues(flagged)).toHaveLength(2);
+    expect(filterResidues(flagged, '', true)).toHaveLength(1);
+  });
+
+  it('does not mutate the input', () => {
+    const before = rows.map((r) => r.assignment);
+    includedResidues(rows);
+    expect(rows.map((r) => r.assignment)).toEqual(before);
   });
 });
