@@ -119,6 +119,14 @@ class ConstantsInput(BaseModel):
         return v
 
 
+class FieldSourceTriple(BaseModel):
+    """One additional field's R1/R2/hetNOE trio, for multi-field analysis."""
+
+    source_r1_analysis_uuid: str
+    source_r2_analysis_uuid: str
+    source_noe_analysis_uuid: str
+
+
 class SpectralDensityCreate(BaseModel):
     """Request body for creating and running an RSDM analysis."""
 
@@ -143,6 +151,13 @@ class SpectralDensityCreate(BaseModel):
     # --- experimental, gated at the API layer -----------------------------
     rex_source: RexSource = RexSource.NONE
     rex_cpmg_analysis_uuid: Optional[str] = None
+    additional_field_sources: List[FieldSourceTriple] = Field(
+        default_factory=list,
+        description=(
+            "Extra fields for multi-field consistency. The primary three "
+            "sources are the first field; each entry here adds another."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_conditional_fields(self) -> "SpectralDensityCreate":
@@ -157,6 +172,11 @@ class SpectralDensityCreate(BaseModel):
                 "rex_cpmg_analysis_uuid is required when rex_source is "
                 "cpmg_analysis"
             )
+        # NOTE: the "multi_field needs a second field" requirement is checked
+        # in the router, not here. Schema validation runs before the feature
+        # gate, so enforcing it at this layer would answer a request made
+        # while the experimental flag is OFF with a confusing shape error
+        # instead of the 422 naming the flag that section 7 requires.
         return self
 
 

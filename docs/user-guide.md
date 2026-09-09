@@ -177,9 +177,17 @@ The bias is worst for low order parameters and long internal correlation times �
 Two corrections are offered:
 
 1. **R_ex subtraction from a CPMG run** — the fitted per-residue R_ex is subtracted from R₂ before mapping (`y₂ → R₂ − R_ex`), leaving the coefficient matrix untouched. Var(R_ex) is added to the input covariance.
-2. **Multi-field consistency** — with data at two or more fields the system becomes overdetermined and is solved by generalised least squares. Its residual χ² *is* the exchange test: the surplus degree of freedom is exactly the "one field-independent J(0)" assumption, and because R₁ and the NOE carry no R_ex, a bad χ² implicates exchange.
+2. **Multi-field consistency** — implemented. With R₁, R₂ and hetNOE at two or more fields the per-field blocks stack into one overdetermined system: **3n rows** against **1 + 2n unknowns** — a single shared, field-independent J(0), plus J(ω_N) and J(0.87ω_H) at each field. It is solved by generalised least squares, `x̂ = (MᵀWM)⁻¹MᵀWy` with `W = Cov_y⁻¹`.
 
-**On the field dependence of R_ex.** R_ex ∝ B₀² holds only in the fast-exchange limit. resoFlow does not fit R₂ against B₀² with a fixed exponent. Where a scaling analysis is offered, the exponent α = ∂ln R_ex/∂ln B₀ is fitted as a free parameter in [0, 2] and reported, because α is itself the diagnostic of the exchange timescale (Millet et al. 2000). Assuming α = 2 when exchange is not fast will misattribute the result.
+   The residual χ² **is** the exchange test. The n − 1 surplus degrees of freedom are exactly the "J(0) is the same at every field" assumption, and because R₁ and the NOE carry no R_ex, a bad χ² implicates exchange rather than the rest of the model. resoFlow reports a **p-value per residue**; small values implicate exchange.
+
+   Add the extra fields in the R_ex panel: the three primary sources are the first field, and each additional entry adds another at a *different* static field. Repeating a field is refused — each field gets its own J(ω_N) and J(0.87ω_H) columns, so a repeat would still solve, but the χ² would then be a replicate consistency check rather than a test of exchange.
+
+**What the multi-field test cannot see.** n fields leave n − 1 residual degrees of freedom, while n R_ex values would be needed to describe the exchange fully. The shortfall is exactly the **field-independent** component of R_ex — and that component is perfectly degenerate with J(0), so it is absorbed into J(0) rather than reported. A constant exchange contribution present at every field biases J(0) with no warning sign at all. The per-field R₂ residuals resoFlow shows are therefore determined only up to an additive constant: differences between fields are meaningful, absolute values are not.
+
+**On the field dependence of R_ex.** R_ex ∝ B₀² holds only in the fast-exchange limit. resoFlow does not fit R₂ against B₀² with a fixed exponent. The exponent α = ∂ln R_ex/∂ln B₀ is fitted as a free parameter in [0, 2] and reported, because α is itself the diagnostic of the exchange timescale (Millet et al. 2000). Assuming α = 2 when exchange is not fast will misattribute the result.
+
+**α needs three fields, not two.** The power law costs two parameters against n − 1 residual degrees of freedom, so two fields leave the exponent unidentifiable and resoFlow reports none — a number there would be an artefact of the parametrisation. Three fields determine α exactly; four or more overdetermine it and give it an uncertainty. Where α lands on a bound (0 or 2), the value should be read as "at most" or "at least" and no error is quoted.
 
 *Not in scope, noted as future work:* η_xy cross-correlation as an exchange-free R₂ surrogate. It would enter as an additional matrix row with nonzero entries only on J(0) and J(ω_N), but its geometric prefactor carries a P₂(cos θ) convention that must be taken carefully from the literature rather than derived.
 

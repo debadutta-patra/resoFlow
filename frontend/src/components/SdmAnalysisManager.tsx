@@ -120,6 +120,10 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
   const [rexSource, setRexSource] = useState<'none' | 'cpmg_analysis' | 'multi_field'>('none');
   // The direct R2 experiment is the default; R2,0 from a CPMG fit is opt-in.
   const [r2Provenance, setR2Provenance] = useState<R2Provenance>('echo_decay');
+  // Additional field triples, used only for multi-field consistency.
+  const [extraFields, setExtraFields] = useState<
+    Array<{ r1: string; r2: string; noe: string }>
+  >([]);
 
   const [query, setQuery] = useState('');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -206,6 +210,13 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
       };
       if (rexEnabled && rexSource !== 'none') {
         body.rex_source = rexSource;
+        if (rexSource === 'multi_field') {
+          body.additional_field_sources = extraFields.map((f) => ({
+            source_r1_analysis_uuid: f.r1,
+            source_r2_analysis_uuid: f.r2,
+            source_noe_analysis_uuid: f.noe,
+          }));
+        }
       }
       const res = await api.post(`/api/projects/${projectUuid}/spectral-density`, body);
       setSelected(res.data);
@@ -240,11 +251,13 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
 
   const results = selected?.results ?? null;
   const isExperimental = Boolean(selected?.experimental);
+  const isMultiField =
+    (results as unknown as { mode?: string } | null)?.mode === 'multi_field';
 
   const visibleResidues = useMemo(() => {
-    if (!results) return [];
+    if (!results || isMultiField) return [];
     return sortResidues(filterResidues(results.residues, query, flaggedOnly), sortKey, sortDir);
-  }, [results, query, flaggedOnly, sortKey, sortDir]);
+  }, [results, isMultiField, query, flaggedOnly, sortKey, sortDir]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -483,6 +496,61 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
               Enabled by <code>{rexFlagName}</code>. Results are marked experimental
               everywhere they appear, including exports and reports.
             </p>
+
+            {rexSource === 'multi_field' && (
+              <div className="mt-4 space-y-3">
+                <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                  The three sources above are the first field. Add at least one more
+                  at a <strong>different</strong> static field — the surplus degree of
+                  freedom is what the χ² test uses. Three or more fields are needed
+                  before a scaling exponent α can be reported at all.
+                </p>
+                {extraFields.map((entry, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    {(['r1', 'r2', 'noe'] as const).map((role) => {
+                      const options = role === 'r1' ? r1Options
+                        : role === 'r2' ? eligibleSources(analyses, 'R2') : noeOptions;
+                      return (
+                        <div key={role}>
+                          <label className={labelCls} htmlFor={`extra-${index}-${role}`}>
+                            {role === 'noe' ? 'hetNOE' : role.toUpperCase()} (field {index + 2})
+                          </label>
+                          <select
+                            id={`extra-${index}-${role}`}
+                            className={inputCls}
+                            value={entry[role]}
+                            onChange={(e) => {
+                              const next = [...extraFields];
+                              next[index] = { ...next[index], [role]: e.target.value };
+                              setExtraFields(next);
+                            }}
+                          >
+                            <option value="">Select…</option>
+                            {options.map((a) => (
+                              <option key={a.analysis_uuid} value={a.analysis_uuid}>
+                                {a.name} {a.b0 != null ? `(${a.b0.toFixed(2)} MHz)` : '(no B₀)'}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                    <button
+                      onClick={() => setExtraFields(extraFields.filter((_, i) => i !== index))}
+                      className="px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setExtraFields([...extraFields, { r1: '', r2: '', noe: '' }])}
+                  className="px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                >
+                  + Add a field
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -538,7 +606,11 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
             </div>
           )}
 
-          <SummaryCard results={results} experimental={isExperimental} />
+          {isMultiField ? (
+            <MultiFieldResults results={results as unknown as MultiFieldResultsShape} />
+          ) : (
+            <>
+              <SummaryCard results={results} experimental={isExperimental} />
 
           <section className={sectionCls}>
             <div className="flex items-center justify-between mb-2">
@@ -575,27 +647,188 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
             </p>
           </section>
 
-          <ResidueTable
-            residues={visibleResidues}
-            total={results.residues.length}
-            excluded={results.excluded_residues}
-            flagDescriptions={results.summary.flag_descriptions}
-            query={query}
-            onQuery={setQuery}
-            flaggedOnly={flaggedOnly}
-            onFlaggedOnly={setFlaggedOnly}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={toggleSort}
-            experimental={isExperimental}
-            projectUuid={projectUuid}
-            analysisUuid={selected!.analysis_uuid}
-          />
+              <ResidueTable
+                residues={visibleResidues}
+                total={results.residues.length}
+                excluded={results.excluded_residues}
+                flagDescriptions={results.summary.flag_descriptions}
+                query={query}
+                onQuery={setQuery}
+                flaggedOnly={flaggedOnly}
+                onFlaggedOnly={setFlaggedOnly}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                experimental={isExperimental}
+                projectUuid={projectUuid}
+                analysisUuid={selected!.analysis_uuid}
+              />
+            </>
+          )}
         </>
       )}
     </div>
   );
 };
+
+interface MultiFieldResultsShape {
+  fields_mhz: number[];
+  multifield_caveat: string;
+  experimental_notice: string | null;
+  summary: {
+    n_fields: number;
+    dof: number;
+    n_residues: number;
+    n_exchange_flagged: number;
+    median_chi2: number | null;
+    median_alpha: number | null;
+    scaling_available: boolean;
+    scaling_unavailable_reason: string | null;
+    n_excluded: number;
+  };
+  residues: Array<{
+    assignment: string;
+    res_num: number | null;
+    j0: number;
+    j0_err: number;
+    chi2: number;
+    p_value: number;
+    scaling_exponent: { alpha: number; alpha_err: number | null } | null;
+    per_field: Array<{ b0_h_mhz: number; r2: number; r2_residual: number }>;
+  }>;
+  excluded_residues: Array<{ residue: string; reason: string }>;
+}
+
+/**
+ * Multi-field consistency results.
+ *
+ * A different shape from a single-field run -- per-field blocks and a
+ * chi-square rather than one J triple with a covariance -- so it gets its own
+ * view rather than being forced through the single-field one.
+ */
+const MultiFieldResults: React.FC<{ results: MultiFieldResultsShape }> = ({ results }) => {
+  const s = results.summary;
+  const flagged = results.residues.filter((r) => r.p_value < 0.05);
+
+  return (
+    <>
+      <section className={sectionCls}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
+            Exchange test
+          </h3>
+          <ExperimentalBadge />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Stat label="Fields" value={results.fields_mhz.map((f) => f.toFixed(1)).join(' / ')} hint="MHz (¹H)" />
+          <Stat label="Deg. of freedom" value={String(s.dof)} hint="n_fields − 1" />
+          <Stat label="p < 0.05" value={`${s.n_exchange_flagged} / ${s.n_residues}`} hint="exchange implicated" />
+          <Stat
+            label="Median χ²"
+            value={s.median_chi2 != null ? s.median_chi2.toFixed(2) : '—'}
+          />
+        </div>
+
+        <div className="mt-5 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700">
+          <p className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase tracking-wider mb-1">
+            What this test cannot see
+          </p>
+          <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+            {results.multifield_caveat}
+          </p>
+        </div>
+
+        <div className="mt-4 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+          {s.scaling_available ? (
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              <strong>Scaling exponent.</strong> Median α ={' '}
+              {s.median_alpha != null ? s.median_alpha.toFixed(2) : '—'}. α is fitted
+              freely in [0, 2] and reported, never fixed at 2 — R<sub>ex</sub> ∝ B₀²
+              holds only in the fast-exchange limit, and α is itself the diagnostic
+              of the exchange time scale.
+            </p>
+          ) : (
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              <strong>No scaling exponent.</strong> {s.scaling_unavailable_reason}
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className={sectionCls}>
+        <div className="flex items-center gap-3 mb-4">
+          <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">
+            Per-residue
+          </h3>
+          <ExperimentalBadge />
+          <span className="text-xs text-slate-400">{flagged.length} flagged</span>
+        </div>
+        <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+          <table className="w-full text-left text-sm border-collapse">
+            <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 z-10">
+              <tr>
+                {['Residue', 'J(0)', 'χ²', 'p', 'α'].map((h) => (
+                  <th key={h} className="px-4 py-3 font-black uppercase tracking-tighter text-[10px] text-slate-400">
+                    {h}
+                  </th>
+                ))}
+                {results.fields_mhz.map((f) => (
+                  <th key={f} className="px-4 py-3 font-black uppercase tracking-tighter text-[10px] text-slate-400">
+                    R₂ resid. @{f.toFixed(0)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {results.residues.map((r) => (
+                <tr
+                  key={r.assignment}
+                  className={r.p_value < 0.05 ? 'bg-amber-50/60 dark:bg-amber-900/10' : ''}
+                >
+                  <td className="px-4 py-2.5 font-bold text-slate-900 dark:text-slate-200">{r.assignment}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs">{r.j0.toFixed(3)} ± {r.j0_err.toFixed(3)}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs">{r.chi2.toFixed(2)}</td>
+                  <td className={`px-4 py-2.5 font-mono text-xs ${r.p_value < 0.05 ? 'font-bold text-amber-700 dark:text-amber-400' : ''}`}>
+                    {r.p_value.toFixed(4)}
+                  </td>
+                  <td className="px-4 py-2.5 font-mono text-xs">
+                    {r.scaling_exponent ? r.scaling_exponent.alpha.toFixed(2) : '—'}
+                  </td>
+                  {r.per_field.map((entry) => (
+                    <td key={entry.b0_h_mhz} className="px-4 py-2.5 font-mono text-xs">
+                      {entry.r2_residual.toFixed(3)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+          J(0) in ns rad⁻¹. R₂ residuals are determined only up to a field-independent
+          constant that J(0) has absorbed — differences between fields are meaningful,
+          absolute values are not.
+        </p>
+
+        {results.excluded_residues.length > 0 && (
+          <div className="mt-5">
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+              Excluded residues ({results.excluded_residues.length})
+            </p>
+            <ul className="space-y-1">
+              {results.excluded_residues.map((item) => (
+                <li key={item.residue} className="text-xs text-slate-600 dark:text-slate-400">
+                  <strong>{item.residue}</strong> — {item.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    </>
+  );
+};
+
 
 const SummaryCard: React.FC<{ results: SdmResults; experimental: boolean }> = ({
   results,

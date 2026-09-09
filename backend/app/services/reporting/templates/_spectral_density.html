@@ -1,4 +1,108 @@
 <!-- backend/app/services/reporting/templates/_spectral_density.html -->
+{% if spectral_density_data.mode == "multi_field" %}
+<h2>Multi-Field Consistency &amp; Exchange Test</h2>
+
+<div class="callout callout-warn" style="border:1.2pt solid #B45309;background:#FEF3C7;padding:7pt 9pt;margin:8pt 0;border-radius:3pt;">
+  <strong>EXPERIMENTAL</strong> &mdash; {{ spectral_density_data.experimental_notice }}
+</div>
+
+<table class="pipeline-table">
+  <tbody>
+    <tr>
+      <td><strong>Fields</strong></td>
+      <td>{{ spectral_density_data.fields_mhz|map('round', 2)|join(' / ') }} MHz (<sup>1</sup>H)</td>
+      <td><strong>Degrees of freedom</strong></td>
+      <td>{{ spectral_density_data.dof }} &nbsp;(n<sub>fields</sub> &minus; 1)</td>
+    </tr>
+    <tr>
+      <td><strong>Residues</strong></td>
+      <td>{{ spectral_density_data.n_residues }} mapped, {{ spectral_density_data.n_excluded }} excluded</td>
+      <td><strong>p &lt; 0.05</strong></td>
+      <td>{{ spectral_density_data.n_exchange_flagged }} residues</td>
+    </tr>
+    <tr>
+      <td><strong>r<sub>NH</sub> / &Delta;&sigma;</strong></td>
+      <td>{{ "%.4g"|format(spectral_density_data.r_nh_angstrom) }} &Aring; / {{ "%.4g"|format(spectral_density_data.delta_sigma_ppm) }} ppm</td>
+      <td><strong>Median &chi;&sup2;</strong></td>
+      <td>{% if spectral_density_data.median_chi2 is not none %}{{ "%.2f"|format(spectral_density_data.median_chi2) }}{% else %}&mdash;{% endif %}</td>
+    </tr>
+  </tbody>
+</table>
+
+<p style="font-size:8pt;color:#4B5563;margin-top:4pt;">
+  The stacked system has 3n rows and 1 + 2n unknowns: one shared,
+  field-independent J(0) plus J(&omega;<sub>N</sub>) and J(0.87&omega;<sub>H</sub>)
+  at each field. The n &minus; 1 surplus degrees of freedom are exactly the
+  &ldquo;J(0) is the same at every field&rdquo; assumption. R<sub>1</sub> and the
+  NOE carry no exchange, so a small p-value implicates exchange.
+</p>
+
+<div class="callout" style="border-left:2.5pt solid #B45309;padding:5pt 9pt;margin:8pt 0;background:#FFFBEB;">
+  <strong>What this test cannot see.</strong> {{ spectral_density_data.multifield_caveat }}
+</div>
+
+{% if not spectral_density_data.scaling_available %}
+<div class="callout" style="border-left:2.5pt solid #6B7280;padding:5pt 9pt;margin:8pt 0;background:#F9FAFB;">
+  <strong>No scaling exponent.</strong> {{ spectral_density_data.scaling_unavailable_reason }}
+</div>
+{% else %}
+<p style="font-size:8pt;color:#4B5563;">
+  Median fitted exponent &alpha; =
+  {% if spectral_density_data.median_alpha is not none %}{{ "%.2f"|format(spectral_density_data.median_alpha) }}{% else %}&mdash;{% endif %}.
+  &alpha; is fitted freely in [0, 2] and reported, never fixed at 2:
+  R<sub>ex</sub> &prop; B<sub>0</sub>&sup2; holds only in the fast-exchange
+  limit, and &alpha; is itself the diagnostic of the exchange time scale.
+</p>
+{% endif %}
+
+<h3>Per-Residue Exchange Test</h3>
+<table class="residue-table">
+  <thead>
+    <tr>
+      <th>Residue</th>
+      <th class="num-right">J(0) [ns/rad]</th>
+      <th class="num-right">&chi;&sup2;</th>
+      <th class="num-right">p</th>
+      <th class="num-right">&alpha;</th>
+      {% for f in spectral_density_data.fields_mhz %}
+      <th class="num-right">R<sub>2</sub> resid. @{{ "%.0f"|format(f) }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in spectral_density_data.rows %}
+    <tr>
+      <td><strong>{{ row.assignment }}</strong></td>
+      <td class="num-right">{{ "%.3f"|format(row.j0) }} &plusmn; {{ "%.3f"|format(row.j0_err) }}</td>
+      <td class="num-right">{{ "%.2f"|format(row.chi2) }}</td>
+      <td class="num-right">{% if row.significant %}<strong>{{ "%.4f"|format(row.p_value) }}</strong>{% else %}{{ "%.3f"|format(row.p_value) }}{% endif %}</td>
+      <td class="num-right">{% if row.alpha is not none %}{{ "%.2f"|format(row.alpha) }}{% else %}&mdash;{% endif %}</td>
+      {% for entry in row.per_field %}
+      <td class="num-right">{{ "%.3f"|format(entry.r2_residual) }}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="font-size:8pt;color:#4B5563;">
+  Bold p-values are below 0.05. R<sub>2</sub> residuals are determined only up
+  to a field-independent constant that J(0) has absorbed, so differences
+  between fields are meaningful while absolute values are not.
+</p>
+
+{% if spectral_density_data.excluded_residues %}
+<h3>Excluded Residues</h3>
+<table class="residue-table">
+  <thead><tr><th style="width:25%;">Residue</th><th>Reason</th></tr></thead>
+  <tbody>
+    {% for item in spectral_density_data.excluded_residues %}
+    <tr><td><strong>{{ item.residue }}</strong></td><td>{{ item.reason }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% else %}
 <h2>Reduced Spectral Density Mapping</h2>
 
 {% if spectral_density_data.experimental %}
@@ -142,4 +246,5 @@
     {% endfor %}
   </tbody>
 </table>
+{% endif %}
 {% endif %}

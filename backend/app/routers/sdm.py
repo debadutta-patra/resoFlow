@@ -38,13 +38,16 @@ from .. import database, models
 from ..features import ENABLE_EXPERIMENTAL_SDM_REX, experimental_sdm_rex_enabled
 from ..services.fitting.sdm_runner import (
     build_csv,
+    build_multifield_csv,
     run_mapping,
+    run_multifield_mapping,
     sdm_run_dir,
     write_results,
 )
 from ..services.fitting.sdm_sources import (
     B0_TOLERANCE_MHZ,
     SdmSourceError,
+    align_datasets,
     build_dataset,
     load_cpmg_r2_series,
     load_rate_series,
@@ -153,6 +156,19 @@ def create_spectral_density(
     """
     _reject_gated_rex(payload.rex_source)
 
+    if payload.rex_source == RexSource.MULTI_FIELD and not payload.additional_field_sources:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "message": (
+                    "Multi-field consistency needs at least one entry in "
+                    "additional_field_sources. A single field gives a square "
+                    "system with no surplus degree of freedom, so there is "
+                    "nothing for the chi-square to test."
+                )
+            },
+        )
+
     r1_analysis = _load_source(project, db, payload.source_r1_analysis_uuid, "R1")
     r2_analysis = _load_source(project, db, payload.source_r2_analysis_uuid, "R2")
     noe_analysis = _load_source(project, db, payload.source_noe_analysis_uuid, "hetNOE")
@@ -175,6 +191,25 @@ def create_spectral_density(
             r2_series = load_rate_series(r2_analysis)
 
         dataset = build_dataset(r1_series, r2_series, noe_series)
+
+        extra_datasets = []
+        if payload.rex_source == RexSource.MULTI_FIELD:
+            for index, triple in enumerate(payload.additional_field_sources, start=2):
+                extra_datasets.append(build_dataset(
+                    load_rate_series(_load_source(
+                        project, db, triple.source_r1_analysis_uuid,
+                        f"R1 (field {index})")),
+                    load_rate_series(_load_source(
+                        project, db, triple.source_r2_analysis_uuid,
+                        f"R2 (field {index})")),
+                    load_rate_series(_load_source(
+                        project, db, triple.source_noe_analysis_uuid,
+                        f"hetNOE (field {index})")),
+                ))
+            # Every field must cover the same residues, since one system is
+            # solved per residue across all of them.
+            datasets = align_datasets([dataset, *extra_datasets])
+            dataset = datasets[0]
     except SdmSourceError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -194,6 +229,9 @@ def create_spectral_density(
         )
 
     params: Dict[str, Any] = {
+        "additional_field_sources": [
+            t.model_dump() for t in payload.additional_field_sources
+        ],
         "source_r1_analysis_uuid": payload.source_r1_analysis_uuid,
         "source_r2_analysis_uuid": payload.source_r2_analysis_uuid,
         "source_noe_analysis_uuid": payload.source_noe_analysis_uuid,
@@ -222,7 +260,10 @@ def create_spectral_density(
     db.refresh(analysis)
 
     try:
-        results = run_mapping(dataset, params)
+        if payload.rex_source == RexSource.MULTI_FIELD:
+            results = run_multifield_mapping(datasets, params)
+        else:
+            results = run_mapping(dataset, params)
         results_path = write_results(analysis, results)
         analysis.results_path = results_path
         analysis.status = "COMPLETED"
@@ -298,8 +339,11 @@ def export_spectral_density_csv(
         )
     clean = re.sub(r"[^A-Za-z0-9_-]", "_", (analysis.name or "sdm").strip()).lower()
     filename = f"resoflow_sdm_{clean}_{analysis.analysis_uuid[:8]}.csv"
+    writer = (
+        build_multifield_csv if results.get("mode") == "multi_field" else build_csv
+    )
     return Response(
-        content=build_csv(results),
+        content=writer(results),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

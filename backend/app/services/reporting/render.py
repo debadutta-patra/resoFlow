@@ -752,6 +752,60 @@ def build_statistics_data(model: Union[ReportModel, StepReportModel]) -> Optiona
     return None
 
 
+def _build_multifield_section(
+    payload: Dict[str, Any], residues: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Render the EXPERIMENTAL multi-field consistency section.
+
+    The payload shape differs from a single-field run -- per-field blocks, a
+    chi-square and a p-value instead of one J triple with a covariance -- so
+    it gets its own context and its own half of the template rather than
+    being forced through the single-field one.
+    """
+    summary = payload.get("summary", {})
+    fields = payload.get("fields_mhz", [])
+    constants = payload.get("constants_snapshot", {})
+
+    rows = []
+    for r in residues:
+        scaling = r.get("scaling_exponent") or {}
+        rows.append({
+            "assignment": r.get("assignment"),
+            "res_num": r.get("res_num"),
+            "j0": r.get("j0"),
+            "j0_err": r.get("j0_err"),
+            "chi2": r.get("chi2"),
+            "p_value": r.get("p_value"),
+            "alpha": scaling.get("alpha"),
+            "alpha_err": scaling.get("alpha_err"),
+            "significant": (r.get("p_value") or 1.0) < 0.05,
+            "per_field": r.get("per_field") or [],
+        })
+
+    return {
+        "mode": "multi_field",
+        "rows": rows,
+        "fields_mhz": fields,
+        "experimental": True,
+        "experimental_notice": payload.get("experimental_notice"),
+        "j0_caveat": payload.get("j0_caveat"),
+        "multifield_caveat": payload.get("multifield_caveat"),
+        "variant": payload.get("variant"),
+        "r_nh_angstrom": constants.get("r_nh_angstrom"),
+        "delta_sigma_ppm": constants.get("delta_sigma_ppm"),
+        "n_fields": summary.get("n_fields"),
+        "dof": summary.get("dof"),
+        "n_residues": summary.get("n_residues"),
+        "n_exchange_flagged": summary.get("n_exchange_flagged"),
+        "median_chi2": summary.get("median_chi2"),
+        "median_alpha": summary.get("median_alpha"),
+        "scaling_available": summary.get("scaling_available"),
+        "scaling_unavailable_reason": summary.get("scaling_unavailable_reason"),
+        "n_excluded": summary.get("n_excluded"),
+        "excluded_residues": payload.get("excluded_residues") or [],
+    }
+
+
 def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
     """Render the spectral density section: profiles, correlation plot, table.
 
@@ -765,6 +819,9 @@ def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
     residues = payload.get("residues") or []
     if not residues:
         return None
+
+    if payload.get("mode") == "multi_field":
+        return _build_multifield_section(payload, residues)
 
     omega_n = float(
         (payload.get("physics_snapshot") or {}).get("omega_n_rad_s") or 0.0
@@ -796,6 +853,7 @@ def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
 
     tau_ns = summary.get("tau_c_estimate_ns")
     return {
+        "mode": "single_field",
         "profile_svg": figures.spectral_density_profile_plot(residues),
         "correlation_svg": figures.spectral_density_correlation_plot(residues, omega_n),
         "rows": rows,

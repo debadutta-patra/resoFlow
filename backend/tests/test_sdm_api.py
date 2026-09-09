@@ -650,11 +650,31 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
         from app.services.reporting.render import render_html
 
         os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
-        r1, r2, noe = self._standard_sources()
         url = SDM_URL.format(p=self.project.project_uuid)
+
+        # A genuine two-field run, so the marker is exercised on a real
+        # experimental result rather than on a request that merely asked to be
+        # one.
+        assignments = ["G10N", "A11N"]
+        r1, r2, noe = self._standard_sources(assignments=assignments)
+        n = len(assignments)
+        b1 = self._make_source(self.project, "R1", [1.30] * n, [0.03] * n,
+                               assignments, b0=800.20)
+        b2 = self._make_source(self.project, "R2", [16.4] * n, [0.40] * n,
+                               assignments, b0=800.20)
+        b3 = self._make_source(self.project, "hetNOE", [0.80] * n, [0.04] * n,
+                               assignments, b0=800.20)
+
         created = self.client.post(
             url,
-            json=self._create_body(r1, r2, noe, rex_source="multi_field"),
+            json=self._create_body(
+                r1, r2, noe, rex_source="multi_field",
+                additional_field_sources=[{
+                    "source_r1_analysis_uuid": b1.analysis_uuid,
+                    "source_r2_analysis_uuid": b2.analysis_uuid,
+                    "source_noe_analysis_uuid": b3.analysis_uuid,
+                }],
+            ),
             headers=self._auth(self.token_a),
         )
         self.assertEqual(created.status_code, 201, created.text)
@@ -921,3 +941,171 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         detail = resp.json()["detail"]
         self.assertIn("nothing to map", detail["message"])
         self.assertIn("symbol disagrees", detail["excluded_residues"][0]["reason"])
+
+
+class TestMultiFieldConsistency(TestSpectralDensityApi):
+    """EXPERIMENTAL multi-field consistency and the chi-square exchange test."""
+
+    def _field_sources(self, mhz, assignments, r2_values=None):
+        n = len(assignments)
+        r2_values = r2_values or [12.1] * n
+        r1 = self._make_source(self.project, "R1", [1.35] * n, [0.03] * n,
+                               assignments, b0=mhz)
+        r2 = self._make_source(self.project, "R2", r2_values, [0.30] * n,
+                               assignments, b0=mhz)
+        noe = self._make_source(self.project, "hetNOE", [0.78] * n, [0.04] * n,
+                                assignments, b0=mhz)
+        return r1, r2, noe
+
+    def test_multi_field_is_gated_by_the_flag(self):
+        assignments = ["G10N", "A11N"]
+        a1, a2, a3 = self._field_sources(600.13, assignments)
+        b1, b2, b3 = self._field_sources(800.20, assignments)
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(
+                a1, a2, a3, rex_source="multi_field",
+                additional_field_sources=[{
+                    "source_r1_analysis_uuid": b1.analysis_uuid,
+                    "source_r2_analysis_uuid": b2.analysis_uuid,
+                    "source_noe_analysis_uuid": b3.analysis_uuid,
+                }],
+            ),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
+
+    def _run_multifield(self, fields, assignments, r2_by_field=None):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        triples = [
+            self._field_sources(
+                mhz, assignments,
+                (r2_by_field or {}).get(mhz),
+            )
+            for mhz in fields
+        ]
+        primary = triples[0]
+        extra = [
+            {
+                "source_r1_analysis_uuid": t[0].analysis_uuid,
+                "source_r2_analysis_uuid": t[1].analysis_uuid,
+                "source_noe_analysis_uuid": t[2].analysis_uuid,
+            }
+            for t in triples[1:]
+        ]
+        return self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(
+                *primary, rex_source="multi_field", additional_field_sources=extra
+            ),
+            headers=self._auth(self.token_a),
+        )
+
+    def test_multi_field_runs_and_reports_the_exchange_test(self):
+        resp = self._run_multifield([600.13, 800.20], ["G10N", "A11N"])
+        self.assertEqual(resp.status_code, 201, resp.text)
+        body = resp.json()
+        self.assertTrue(body["experimental"])
+
+        results = body["results"]
+        self.assertEqual(results["mode"], "multi_field")
+        self.assertEqual(results["summary"]["n_fields"], 2)
+        # dof = n - 1: the surplus IS the shared-J(0) assumption.
+        self.assertEqual(results["summary"]["dof"], 1)
+        self.assertEqual(len(results["residues"]), 2)
+
+        row = results["residues"][0]
+        for key in ("j0", "j0_err", "chi2", "p_value", "per_field"):
+            self.assertIn(key, row)
+        self.assertEqual(len(row["per_field"]), 2)
+        for actual, expected in zip(
+            [e["b0_h_mhz"] for e in row["per_field"]], [600.13, 800.20]
+        ):
+            self.assertAlmostEqual(actual, expected, places=6)
+        # The caveat about what the test cannot see travels with the result.
+        self.assertIn("does not vary", results["multifield_caveat"])
+
+    def test_two_fields_cannot_report_a_scaling_exponent(self):
+        results = self._run_multifield([600.13, 800.20], ["G10N"]).json()["results"]
+        self.assertFalse(results["summary"]["scaling_available"])
+        self.assertIn(
+            "not identifiable", results["summary"]["scaling_unavailable_reason"]
+        )
+        self.assertIsNone(results["residues"][0]["scaling_exponent"])
+
+    def test_three_fields_report_a_fitted_exponent(self):
+        results = self._run_multifield(
+            [500.10, 650.15, 800.20], ["G10N"]
+        ).json()["results"]
+        self.assertTrue(results["summary"]["scaling_available"])
+        self.assertEqual(results["summary"]["dof"], 2)
+        scaling = results["residues"][0]["scaling_exponent"]
+        self.assertIsNotNone(scaling)
+        # alpha is FITTED in [0, 2], never assumed to be 2.
+        self.assertGreaterEqual(scaling["alpha"], 0.0)
+        self.assertLessEqual(scaling["alpha"], 2.0)
+
+    def test_repeated_field_is_rejected(self):
+        resp = self._run_multifield([600.13, 600.13], ["G10N"])
+        self.assertEqual(resp.status_code, 422, resp.text)
+        self.assertIn("genuinely different fields", resp.json()["detail"]["message"])
+
+    def test_residues_missing_at_one_field_are_excluded(self):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        a1, a2, a3 = self._field_sources(600.13, ["G10N", "A11N", "L12N"])
+        b1, b2, b3 = self._field_sources(800.20, ["G10N", "A11N"])
+        results = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(
+                a1, a2, a3, rex_source="multi_field",
+                additional_field_sources=[{
+                    "source_r1_analysis_uuid": b1.analysis_uuid,
+                    "source_r2_analysis_uuid": b2.analysis_uuid,
+                    "source_noe_analysis_uuid": b3.analysis_uuid,
+                }],
+            ),
+            headers=self._auth(self.token_a),
+        ).json()["results"]
+
+        self.assertEqual(len(results["residues"]), 2)
+        reasons = [e["reason"] for e in results["excluded_residues"]]
+        self.assertIn("not measured at every field", reasons)
+
+    def test_multi_field_csv_carries_the_experimental_marker(self):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        created = self._run_multifield([600.13, 800.20], ["G10N"]).json()
+        url = SDM_URL.format(p=self.project.project_uuid)
+        text = self.client.get(f"{url}/{created['analysis_uuid']}/export.csv",
+                               headers=self._auth(self.token_a)).text
+        self.assertIn("EXPERIMENTAL", text.split("\n")[0])
+        self.assertIn("p-value", text)
+        self.assertIn("R2 residual@600", text)
+
+    def test_multi_field_requires_a_second_field(self):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        r1, r2, noe = self._standard_sources()
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, r2, noe, rex_source="multi_field"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("nothing for the chi-square to test",
+                      resp.json()["detail"]["message"])
+
+    def test_flag_gate_answers_before_the_shape_check(self):
+        """With the flag OFF, the refusal must name the flag.
+
+        Schema validation runs before the router, so putting the
+        "needs a second field" rule in the pydantic model would answer a
+        disabled-feature request with a confusing shape error instead.
+        """
+        r1, r2, noe = self._standard_sources()
+        resp = self.client.post(
+            SDM_URL.format(p=self.project.project_uuid),
+            json=self._create_body(r1, r2, noe, rex_source="multi_field"),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])

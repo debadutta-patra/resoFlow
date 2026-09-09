@@ -88,6 +88,7 @@ class SdmDataset:
     """The intersected, validated dataset handed to the mapper."""
 
     assignments: List[str]
+    keys: List[str]
     res_num: List[Optional[int]]
     res_name: List[Optional[str]]
     r1: np.ndarray
@@ -544,6 +545,7 @@ def build_dataset(
 
     dataset = SdmDataset(
         assignments=[display[k] for k in kept],
+        keys=list(kept),
         res_num=[r1_series.res_num.get(k) or r2_series.res_num.get(k)
                  or noe_series.res_num.get(k) for k in kept],
         res_name=[r1_series.res_name.get(k) or r2_series.res_name.get(k)
@@ -561,6 +563,43 @@ def build_dataset(
         dataset.rex = np.array([rex_by_residue[k][0] for k in kept], dtype=np.float64)
         dataset.rex_err = np.array([rex_by_residue[k][1] for k in kept], dtype=np.float64)
     return dataset
+
+
+def align_datasets(datasets: Sequence[SdmDataset]) -> List[SdmDataset]:
+    """Restrict several per-field datasets to their common residues.
+
+    Multi-field mapping solves one system per residue across all fields, so a
+    residue measured at only some of them cannot take part. Those are
+    recorded as exclusions on every dataset rather than dropped silently.
+    """
+    if not datasets:
+        return []
+    common = set(datasets[0].keys)
+    for dataset in datasets[1:]:
+        common &= set(dataset.keys)
+
+    aligned: List[SdmDataset] = []
+    for dataset in datasets:
+        order = [i for i, key in enumerate(dataset.keys) if key in common]
+        dropped = [
+            ExcludedResidue(
+                dataset.assignments[i], "not measured at every field",
+                dataset.res_num[i],
+            )
+            for i, key in enumerate(dataset.keys) if key not in common
+        ]
+        aligned.append(SdmDataset(
+            assignments=[dataset.assignments[i] for i in order],
+            keys=[dataset.keys[i] for i in order],
+            res_num=[dataset.res_num[i] for i in order],
+            res_name=[dataset.res_name[i] for i in order],
+            r1=dataset.r1[order], r1_err=dataset.r1_err[order],
+            r2=dataset.r2[order], r2_err=dataset.r2_err[order],
+            noe=dataset.noe[order], noe_err=dataset.noe_err[order],
+            excluded=list(dataset.excluded) + dropped,
+            b0_mhz=dataset.b0_mhz,
+        ))
+    return aligned
 
 
 def _residue_sort_key(assignment: str):

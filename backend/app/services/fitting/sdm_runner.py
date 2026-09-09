@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -41,6 +41,12 @@ from ...services.sdm import (
     map_dataset,
     monte_carlo_covariance,
     systematic_band,
+)
+from ...services.sdm.multifield import (
+    MIN_FIELDS_FOR_SCALING,
+    FieldObservation,
+    fit_rex_scaling_exponent,
+    map_multifield_dataset,
 )
 from ...services.sdm.schemas import ErrorMethod, R2Provenance, RexSource
 from .sdm_sources import SdmDataset
@@ -206,6 +212,174 @@ def run_mapping(
         "excluded_residues": [e.to_dict() for e in dataset.excluded],
         "j_units": "ns/rad",
     }
+
+
+MULTIFIELD_CAVEAT = (
+    "The chi-square tests one thing: whether a single field-independent J(0) "
+    "explains R2 at every field. R1 and the NOE carry no exchange, so a small "
+    "p-value implicates exchange. It cannot see exchange that does not vary "
+    "with field -- that component is perfectly degenerate with J(0) and is "
+    "absorbed into it, biasing J(0) with no warning sign."
+)
+
+
+def run_multifield_mapping(
+    datasets: Sequence[SdmDataset],
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """EXPERIMENTAL multi-field consistency analysis with the exchange test.
+
+    Args:
+        datasets: one per field, already aligned to common residues.
+        params: stored analysis parameters.
+
+    Returns:
+        The results payload, in display units.
+    """
+    constants = build_constants(params)
+    variant = SdmVariant(params.get("variant", SdmVariant.FARROW1995.value))
+
+    observations = [
+        FieldObservation(
+            physics=field_physics(dataset.b0_mhz * 1e6, constants, variant),
+            r1=dataset.r1, r1_err=dataset.r1_err,
+            r2=dataset.r2, r2_err=dataset.r2_err,
+            noe=dataset.noe, noe_err=dataset.noe_err,
+        )
+        for dataset in datasets
+    ]
+    result = map_multifield_dataset(observations)
+
+    primary = datasets[0]
+    fields_mhz = [d.b0_mhz for d in datasets]
+    j0_ns = result.j0 * S_RAD_TO_NS_RAD
+    j0_err_ns = result.j0_err * S_RAD_TO_NS_RAD
+    j_wn_ns = result.j_wn * S_RAD_TO_NS_RAD
+    j_h_ns = result.j_h * S_RAD_TO_NS_RAD
+
+    residues: List[Dict[str, Any]] = []
+    alphas: List[Optional[float]] = []
+    for i, assignment in enumerate(primary.assignments):
+        scaling = fit_rex_scaling_exponent(
+            [d.b0_mhz * 1e6 for d in datasets],
+            result.r2_residual[i],
+            [max(d.r2_err[i], 1e-9) for d in datasets],
+        )
+        alphas.append(scaling.alpha if scaling else None)
+        residues.append({
+            "assignment": assignment,
+            "res_num": primary.res_num[i],
+            "res_name": primary.res_name[i],
+            "j0": float(j0_ns[i]),
+            "j0_err": float(j0_err_ns[i]),
+            "chi2": float(result.chi2[i]),
+            "p_value": float(result.p_value[i]),
+            "per_field": [
+                {
+                    "b0_h_mhz": fields_mhz[k],
+                    "j_wn": float(j_wn_ns[i, k]),
+                    "j_h": float(j_h_ns[i, k]),
+                    "r1": float(datasets[k].r1[i]),
+                    "r2": float(datasets[k].r2[i]),
+                    "noe": float(datasets[k].noe[i]),
+                    "r2_residual": float(result.r2_residual[i, k]),
+                }
+                for k in range(len(datasets))
+            ],
+            "scaling_exponent": (
+                {
+                    "alpha": scaling.alpha,
+                    "alpha_err": scaling.alpha_err,
+                    "exactly_determined": scaling.exactly_determined,
+                    "at_bound": scaling.at_bound,
+                }
+                if scaling else None
+            ),
+        })
+
+    significant = [r for r in residues if r["p_value"] < 0.05]
+    reported_alphas = [a for a in alphas if a is not None]
+
+    return {
+        "analysis_type": "SDM",
+        "mode": "multi_field",
+        "timestamp": datetime.now().isoformat(),
+        "experimental": True,
+        "experimental_notice": EXPERIMENTAL_NOTICE,
+        "j0_caveat": J0_EXCHANGE_CAVEAT,
+        "multifield_caveat": MULTIFIELD_CAVEAT,
+        "b0_h_mhz": primary.b0_mhz,
+        "fields_mhz": fields_mhz,
+        "variant": variant.value,
+        "error_method": params.get("error_method", ErrorMethod.ANALYTIC.value),
+        "rex_source": RexSource.MULTI_FIELD.value,
+        "r2_provenance": params.get("r2_provenance", R2Provenance.ECHO_DECAY.value),
+        "constants_snapshot": constants.to_snapshot(),
+        "physics_snapshot": observations[0].physics.to_snapshot(),
+        "source_analyses": {
+            "r1": params.get("source_r1_analysis_uuid"),
+            "r2": params.get("source_r2_analysis_uuid"),
+            "noe": params.get("source_noe_analysis_uuid"),
+            "additional_fields": params.get("additional_field_sources"),
+        },
+        "summary": {
+            "n_fields": len(datasets),
+            "dof": result.dof,
+            "n_residues": len(residues),
+            "n_exchange_flagged": len(significant),
+            "median_chi2": float(np.median(result.chi2)) if len(residues) else None,
+            "median_alpha": (
+                float(np.median(reported_alphas)) if reported_alphas else None
+            ),
+            "scaling_available": len(datasets) >= MIN_FIELDS_FOR_SCALING,
+            "scaling_unavailable_reason": (
+                None if len(datasets) >= MIN_FIELDS_FOR_SCALING else
+                f"The exponent needs at least {MIN_FIELDS_FOR_SCALING} fields: "
+                f"{len(datasets)} fields leave {len(datasets) - 1} residual "
+                "degrees of freedom against a two-parameter power law, so "
+                "alpha is not identifiable."
+            ),
+            "n_excluded": len(primary.excluded),
+        },
+        "residues": residues,
+        "excluded_residues": [e.to_dict() for e in primary.excluded],
+        "j_units": "ns/rad",
+    }
+
+
+def build_multifield_csv(payload: Dict[str, Any]) -> str:
+    """Per-residue CSV for a multi-field run, with the experimental marker."""
+    lines = [f"# {payload.get('experimental_notice', EXPERIMENTAL_NOTICE)}"]
+    fields = payload.get("fields_mhz", [])
+    lines.append(
+        f"# resoFlow multi-field spectral density | fields="
+        f"{'/'.join(f'{f:.2f}' for f in fields)} MHz "
+        f"| dof={payload.get('summary', {}).get('dof')} "
+        f"| variant={payload.get('variant')}"
+    )
+    lines.append("# J values in ns/rad; small p-values implicate exchange")
+
+    header = ["Res #", "Assignment", "J(0) [ns/rad]", "J(0) err", "chi2", "p-value", "alpha"]
+    for f in fields:
+        header.extend([f"J(wN)@{f:.0f}", f"J(0.87wH)@{f:.0f}",
+                       f"R2@{f:.0f}", f"R2 residual@{f:.0f}"])
+    lines.append(",".join(header))
+
+    for row in payload.get("residues", []):
+        scaling = row.get("scaling_exponent") or {}
+        record = [
+            _csv_cell(row.get("res_num")), _csv_cell(row.get("assignment")),
+            _num(row.get("j0")), _num(row.get("j0_err")),
+            _num(row.get("chi2")), _num(row.get("p_value")),
+            _num(scaling.get("alpha")),
+        ]
+        for entry in row.get("per_field", []):
+            record.extend([
+                _num(entry.get("j_wn")), _num(entry.get("j_h")),
+                _num(entry.get("r2")), _num(entry.get("r2_residual")),
+            ])
+        lines.append(",".join(record))
+    return "\n".join(lines) + "\n"
 
 
 def sdm_run_dir(analysis) -> str:
