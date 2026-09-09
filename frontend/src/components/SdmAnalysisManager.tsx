@@ -3,11 +3,12 @@ import {
   AlertCircle,
   AlertTriangle,
   Database,
+  Eye,
+  EyeOff,
   FileText,
   FlaskConical,
   Info,
   Play,
-  Trash2,
   X,
 } from 'lucide-react';
 import api from '../services/api';
@@ -34,9 +35,12 @@ import {
 } from '../lib/spectralDensity';
 
 interface SdmAnalysisManagerProps {
+  /** The SDM analysis row, created the standard way via POST /analysis. */
+  analysis: { analysis_uuid: string; name: string; status: string; parameters?: string | null; experimental?: boolean };
   projectUuid: string;
+  /** Every analysis in the project; sources are filtered out of this. */
   analyses: SourceAnalysisOption[];
-  onCreated?: () => void;
+  onUpdate?: () => void;
 }
 
 interface SdmResults {
@@ -98,18 +102,18 @@ const ExperimentalBadge: React.FC<{ className?: string }> = ({ className = '' })
 );
 
 export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
+  analysis,
   projectUuid,
   analyses,
-  onCreated,
+  onUpdate,
 }) => {
-  const [runs, setRuns] = useState<SdmAnalysis[]>([]);
   const [selected, setSelected] = useState<SdmAnalysis | null>(null);
+  const [excludedResidues, setExcludedResidues] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState('');
   const [rexEnabled, setRexEnabled] = useState(false);
   const [rexFlagName, setRexFlagName] = useState('');
 
-  const [name, setName] = useState('Spectral density mapping');
   const [r1Uuid, setR1Uuid] = useState('');
   const [r2Uuid, setR2Uuid] = useState('');
   const [noeUuid, setNoeUuid] = useState('');
@@ -182,23 +186,77 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
       .catch(() => setRexEnabled(false));
   }, []);
 
-  const fetchRuns = React.useCallback(() => {
+  // Restore the saved configuration and exclusions, the way every other
+  // analysis module reads its own analysis.parameters.
+  useEffect(() => {
+    if (!analysis.parameters) return;
+    try {
+      const params = JSON.parse(analysis.parameters);
+      setExcludedResidues(params.excludedResidues || []);
+      if (params.source_r1_analysis_uuid) setR1Uuid(params.source_r1_analysis_uuid);
+      if (params.source_r2_analysis_uuid) setR2Uuid(params.source_r2_analysis_uuid);
+      if (params.source_noe_analysis_uuid) setNoeUuid(params.source_noe_analysis_uuid);
+      if (params.variant) setVariant(params.variant);
+      if (params.error_method) setErrorMethod(params.error_method);
+      if (params.r2_provenance) setR2Provenance(params.r2_provenance);
+      if (params.rex_source) setRexSource(params.rex_source);
+      if (params.constants) {
+        const c = params.constants;
+        setConstants({
+          mode: c.r_nh_angstrom != null ? 'custom' : 'preset',
+          rNhPreset: c.r_nh_preset ?? '1.02',
+          deltaSigmaPreset: c.delta_sigma_preset ?? '-160',
+          rNhAngstrom: String(c.r_nh_angstrom ?? '1.02'),
+          deltaSigmaPpm: String(c.delta_sigma_ppm ?? '-160'),
+        });
+      }
+    } catch {
+      // A malformed parameters blob should not stop the panel rendering.
+    }
+  }, [analysis.parameters]);
+
+  const fetchResults = React.useCallback(() => {
+    if (analysis.status !== 'COMPLETED') return;
     api
-      .get(`/api/projects/${projectUuid}/spectral-density`)
-      .then((res) => setRuns(res.data ?? []))
-      .catch(() => setRuns([]));
-  }, [projectUuid]);
+      .get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/sdm/results`)
+      .then((res) => setSelected(res.data))
+      .catch(() => undefined);
+  }, [projectUuid, analysis.analysis_uuid, analysis.status]);
 
   useEffect(() => {
-    fetchRuns();
-  }, [fetchRuns]);
+    fetchResults();
+  }, [fetchResults]);
+
+  const handleToggleResidueExclusion = async (assignment: string) => {
+    try {
+      const params = JSON.parse(analysis.parameters || '{}');
+      const current: string[] = params.excludedResidues || [];
+      const next = current.includes(assignment)
+        ? current.filter((a) => a !== assignment)
+        : [...current, assignment];
+      params.excludedResidues = next;
+      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}`, {
+        parameters: JSON.stringify(params),
+      });
+      setExcludedResidues(next);
+      // Exclusions are applied server-side on read, so refetching brings back
+      // a summary that matches the residues now shown.
+      const res = await api.get(
+        `/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/sdm/results`,
+      );
+      setSelected(res.data);
+      onUpdate?.();
+    } catch (err) {
+      setError('Could not update the excluded residues');
+    }
+  };
 
   const handleRun = async () => {
     setIsRunning(true);
     setError('');
     try {
       const body: Record<string, unknown> = {
-        name,
+        name: analysis.name,
         source_r1_analysis_uuid: r1Uuid,
         source_r2_analysis_uuid: r2Uuid,
         source_noe_analysis_uuid: noeUuid,
@@ -218,34 +276,17 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
           }));
         }
       }
-      const res = await api.post(`/api/projects/${projectUuid}/spectral-density`, body);
+      const res = await api.post(
+        `/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/sdm/run`,
+        body,
+      );
       setSelected(res.data);
-      fetchRuns();
-      onCreated?.();
+      onUpdate?.();
     } catch (err: any) {
       const detail = err.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : detail?.message || 'Mapping failed');
     } finally {
       setIsRunning(false);
-    }
-  };
-
-  const openRun = async (uuid: string) => {
-    try {
-      const res = await api.get(`/api/projects/${projectUuid}/spectral-density/${uuid}`);
-      setSelected(res.data);
-    } catch {
-      setError('Could not load that analysis');
-    }
-  };
-
-  const deleteRun = async (uuid: string) => {
-    try {
-      await api.delete(`/api/projects/${projectUuid}/spectral-density/${uuid}`);
-      if (selected?.analysis_uuid === uuid) setSelected(null);
-      fetchRuns();
-    } catch {
-      setError('Could not delete that analysis');
     }
   };
 
@@ -288,15 +329,6 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className={labelCls} htmlFor="sdm-name">Analysis name</label>
-            <input
-              id="sdm-name"
-              className={inputCls}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
           <div>
             <label className={labelCls} htmlFor="sdm-variant">Variant</label>
             <select
@@ -564,36 +596,6 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
         </button>
       </section>
 
-      {/* ---------------- Existing runs ---------------- */}
-      {runs.length > 0 && (
-        <section className={sectionCls}>
-          <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest mb-3">
-            Mappings
-          </h3>
-          <ul className="divide-y divide-slate-200 dark:divide-slate-700">
-            {runs.map((run) => (
-              <li key={run.analysis_uuid} className="py-2 flex items-center justify-between gap-3">
-                <button
-                  onClick={() => openRun(run.analysis_uuid)}
-                  className="text-sm text-left text-slate-800 dark:text-slate-200 hover:text-indigo-600 flex items-center gap-2"
-                >
-                  {run.name}
-                  {run.experimental && <ExperimentalBadge />}
-                  <span className="text-xs text-slate-400">{run.status}</span>
-                </button>
-                <button
-                  onClick={() => deleteRun(run.analysis_uuid)}
-                  aria-label={`Delete ${run.name}`}
-                  className="p-1.5 text-slate-400 hover:text-rose-500"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {/* ---------------- Results ---------------- */}
       {results && (
         <>
@@ -661,7 +663,9 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
                 onSort={toggleSort}
                 experimental={isExperimental}
                 projectUuid={projectUuid}
-                analysisUuid={selected!.analysis_uuid}
+                analysisUuid={analysis.analysis_uuid}
+                excludedResidues={excludedResidues}
+                onToggleExclusion={handleToggleResidueExclusion}
               />
             </>
           )}
@@ -1005,6 +1009,8 @@ interface ResidueTableProps {
   experimental: boolean;
   projectUuid: string;
   analysisUuid: string;
+  excludedResidues: string[];
+  onToggleExclusion: (assignment: string) => void;
 }
 
 const COLUMNS: Array<[SortKey, string]> = [
@@ -1022,7 +1028,7 @@ const COLUMNS: Array<[SortKey, string]> = [
 const ResidueTable: React.FC<ResidueTableProps> = ({
   residues, total, excluded, flagDescriptions, query, onQuery,
   flaggedOnly, onFlaggedOnly, sortKey, sortDir, onSort, experimental,
-  projectUuid, analysisUuid,
+  projectUuid, analysisUuid, excludedResidues, onToggleExclusion,
 }) => (
   <section className={sectionCls}>
     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -1070,6 +1076,7 @@ const ResidueTable: React.FC<ResidueTableProps> = ({
       <table className="w-full text-left text-sm border-collapse">
         <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 z-10">
           <tr>
+            <th className="px-4 py-3 w-12" />
             {COLUMNS.map(([key, label]) => (
               <th key={key} className="px-4 py-3">
                 <button
@@ -1086,8 +1093,26 @@ const ResidueTable: React.FC<ResidueTableProps> = ({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {residues.map((r) => (
-            <tr key={r.assignment} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+          {residues.map((r) => {
+            const isExcluded = excludedResidues.includes(r.assignment);
+            return (
+            <tr
+              key={r.assignment}
+              className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 ${isExcluded ? 'opacity-40' : ''}`}
+            >
+              <td className="px-4 py-2.5">
+                <button
+                  onClick={() => onToggleExclusion(r.assignment)}
+                  aria-label={`${isExcluded ? 'Include' : 'Exclude'} ${r.assignment}`}
+                  title={isExcluded
+                    ? 'Excluded — omitted from the summary and the τc estimate'
+                    : 'Included'}
+                >
+                  {isExcluded
+                    ? <EyeOff className="w-4 h-4 text-slate-400" />
+                    : <Eye className="w-4 h-4 text-emerald-500" />}
+                </button>
+              </td>
               <td className="px-4 py-2.5 text-slate-500">{r.res_num ?? '—'}</td>
               <td className="px-4 py-2.5 font-bold text-slate-900 dark:text-slate-200">{r.assignment}</td>
               <td className="px-4 py-2.5 font-mono text-xs">{r.j0.toFixed(3)} ± {r.j0_err.toFixed(3)}</td>
@@ -1103,7 +1128,8 @@ const ResidueTable: React.FC<ResidueTableProps> = ({
                 {(r.flags ?? []).join(', ')}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

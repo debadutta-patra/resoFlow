@@ -26,9 +26,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import uuid as uuid_lib
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
@@ -37,6 +36,7 @@ from sqlalchemy.orm import Session
 from .. import database, models
 from ..features import ENABLE_EXPERIMENTAL_SDM_REX, experimental_sdm_rex_enabled
 from ..services.fitting.sdm_runner import (
+    apply_exclusions,
     build_csv,
     build_multifield_csv,
     run_mapping,
@@ -55,13 +55,18 @@ from ..services.fitting.sdm_sources import (
 )
 from ..services.sdm.schemas import R2Provenance, RexSource, SpectralDensityCreate
 from ..services.path_utils import resolve_existing_path
-from .deps import get_project
+from .deps import get_analysis, get_project
 
 router = APIRouter(
-    prefix="/api/projects/{project_uuid}/spectral-density", tags=["spectral-density"]
+    prefix="/api/projects/{project_uuid}/analysis", tags=["spectral-density"]
 )
 
 ANALYSIS_TYPE = "SDM"
+
+# There is deliberately no list endpoint: spectral density analyses are rows
+# in `analyses` like every other type, so they arrive with the project and
+# the client filters on analysis_type. A /analysis/sdm path would also be
+# shadowed by the shared /analysis/{analysis_uuid} route.
 
 
 def _get_sdm_analysis(
@@ -112,14 +117,33 @@ def _load_source(project: models.Project, db: Session, source_uuid: str, role: s
     return analysis
 
 
+def _excluded_residues(analysis: models.Analysis) -> List[str]:
+    """The user's excluded residues, stored the same way every module does."""
+    if not analysis.parameters:
+        return []
+    try:
+        params = json.loads(analysis.parameters)
+    except (TypeError, ValueError):
+        return []
+    return list(params.get("excludedResidues") or params.get("excluded_residues") or [])
+
+
 def _read_results(analysis: models.Analysis) -> Optional[Dict[str, Any]]:
+    """Load results.json and apply the current exclusion list.
+
+    Exclusions are applied on read rather than baked in at run time, so
+    toggling a residue updates the summary immediately without a re-run.
+    Per-residue J values are independent solves and never change; only the
+    aggregates that are defined across residues do.
+    """
     path = resolve_existing_path(analysis.results_path) if analysis.results_path else None
     if not path or not os.path.exists(path):
         path = os.path.join(sdm_run_dir(analysis), "results.json")
     if not os.path.exists(path):
         return None
     with open(path, "r", encoding="utf-8") as handle:
-        return json.load(handle)
+        payload = json.load(handle)
+    return apply_exclusions(payload, _excluded_residues(analysis))
 
 
 def _reject_gated_rex(rex_source: RexSource) -> None:
@@ -143,17 +167,30 @@ def _reject_gated_rex(rex_source: RexSource) -> None:
     )
 
 
-@router.post("", response_model=None, status_code=status.HTTP_201_CREATED)
-def create_spectral_density(
+@router.post("/{analysis_uuid}/sdm/run", response_model=None)
+def run_spectral_density(
     payload: SpectralDensityCreate,
+    analysis: models.Analysis = Depends(get_analysis),
     project: models.Project = Depends(get_project),
     db: Session = Depends(database.get_db),
 ):
-    """Create and run a spectral density mapping.
+    """Run a spectral density mapping on an existing analysis.
+
+    Follows the same create-then-run lifecycle as every other analysis type:
+    the analysis row is created by POST /analysis with analysis_type "SDM",
+    configured, then run here. Re-running overwrites the previous results.
 
     The analytic path is milliseconds for a few hundred residues, so it runs
     synchronously in the request rather than round-tripping through Celery.
     """
+    if (analysis.analysis_type or "").upper() != ANALYSIS_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Analysis '{analysis.name}' is of type {analysis.analysis_type}, "
+                "not a spectral density mapping"
+            ),
+        )
     _reject_gated_rex(payload.rex_source)
 
     if payload.rex_source == RexSource.MULTI_FIELD and not payload.additional_field_sources:
@@ -246,18 +283,21 @@ def create_spectral_density(
         "rex_cpmg_analysis_uuid": payload.rex_cpmg_analysis_uuid,
     }
 
-    analysis = models.Analysis(
-        analysis_uuid=str(uuid_lib.uuid4()),
-        name=payload.name,
-        analysis_type=ANALYSIS_TYPE,
-        project_id=project.id,
-        status="RUNNING",
-        parameters=json.dumps(params),
-        experimental=payload.rex_source != RexSource.NONE,
-    )
-    db.add(analysis)
+    # Preserve settings the run does not own -- above all the exclusion list,
+    # which the user edits from the results table between runs.
+    try:
+        existing = json.loads(analysis.parameters) if analysis.parameters else {}
+    except (TypeError, ValueError):
+        existing = {}
+    existing.update(params)
+
+    if payload.name:
+        analysis.name = payload.name
+    analysis.parameters = json.dumps(existing)
+    analysis.experimental = payload.rex_source != RexSource.NONE
+    analysis.status = "RUNNING"
+    analysis.error_message = None
     db.commit()
-    db.refresh(analysis)
 
     try:
         if payload.rex_source == RexSource.MULTI_FIELD:
@@ -283,36 +323,7 @@ def create_spectral_density(
     return _detail_payload(analysis, results)
 
 
-@router.get("")
-def list_spectral_density(
-    project: models.Project = Depends(get_project),
-    db: Session = Depends(database.get_db),
-):
-    """List the spectral density analyses in a project."""
-    rows = (
-        db.query(models.Analysis)
-        .filter(
-            models.Analysis.project_id == project.id,
-            models.Analysis.analysis_type == ANALYSIS_TYPE,
-        )
-        .order_by(models.Analysis.created_at.desc())
-        .all()
-    )
-    return [
-        {
-            "analysis_uuid": a.analysis_uuid,
-            "name": a.name,
-            "status": a.status,
-            "experimental": bool(a.experimental),
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-            "completed_at": a.completed_at.isoformat() if a.completed_at else None,
-            "error_message": a.error_message,
-        }
-        for a in rows
-    ]
-
-
-@router.get("/{analysis_uuid}")
+@router.get("/{analysis_uuid}/sdm/results")
 def get_spectral_density(
     analysis_uuid: str,
     project: models.Project = Depends(get_project),
@@ -323,7 +334,7 @@ def get_spectral_density(
     return _detail_payload(analysis, _read_results(analysis))
 
 
-@router.get("/{analysis_uuid}/export.csv")
+@router.get("/{analysis_uuid}/sdm/export.csv")
 def export_spectral_density_csv(
     analysis_uuid: str,
     project: models.Project = Depends(get_project),
@@ -349,7 +360,7 @@ def export_spectral_density_csv(
     )
 
 
-@router.post("/{analysis_uuid}/report")
+@router.post("/{analysis_uuid}/sdm/report")
 def generate_spectral_density_report(
     analysis_uuid: str,
     style: str = "publication",
@@ -386,30 +397,6 @@ def generate_spectral_density_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-@router.delete("/{analysis_uuid}")
-def delete_spectral_density(
-    analysis_uuid: str,
-    project: models.Project = Depends(get_project),
-    db: Session = Depends(database.get_db),
-):
-    """Delete the analysis and its run directory."""
-    analysis = _get_sdm_analysis(analysis_uuid, project, db)
-    run_dir = sdm_run_dir(analysis)
-    db.delete(analysis)
-    db.commit()
-
-    if os.path.isdir(run_dir):
-        from ..services.cleanup import delete_directory_safely
-
-        try:
-            delete_directory_safely(run_dir)
-        except Exception:
-            # The row is already gone; a stale directory is not worth
-            # failing the request over.
-            pass
-    return {"message": "Spectral density analysis deleted"}
 
 
 def _detail_payload(

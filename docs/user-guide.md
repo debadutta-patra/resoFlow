@@ -93,7 +93,7 @@ Use **Run Analysis** to start it (or **Rerun Analysis** once it has already comp
 
 Reduced spectral density mapping converts per-residue R₁, R₂ and heteronuclear NOE measured **at a single field** into the spectral density values J(0), J(ω_N) and J(0.87ω_H). It is a post-processing step on results resoFlow already produces — no ChemEx, no container, and no fitting.
 
-Open it from **Spectral Density** in the project navbar.
+Create it like any other analysis: **New Analysis** in the project view, pick **SDM**, then open it from the analysis list. It follows the same create → configure → run lifecycle as R₁/R₂/hetNOE and CPMG, and appears alongside them everywhere analyses are listed.
 
 ### What it needs
 
@@ -138,9 +138,20 @@ Points carry **error ellipses**, not crossed error bars. J(0) and J(ω_N) are co
 
 > **Interpreting J(0).** Base RSDM assumes no chemical exchange. R₁ and the NOE carry no R_ex, so any exchange contribution lands *entirely* on J(0). An elevated J(0) is as consistent with microsecond–millisecond exchange as with slow overall tumbling, and the mapping alone cannot tell you which. This is the single easiest thing to over-interpret in an RSDM result.
 
+### Excluding residues
+
+Each row in the results table has an eye toggle, the same as the relaxation analyses. Excluding a residue **omits it from the summary** — the trimmed means, the τ_c estimate and the flag counts all recompute — and marks it in the CSV export and the PDF report.
+
+Two things worth knowing:
+
+- **Per-residue J values never change.** Each residue is an independent 3×3 solve, so excluding one cannot alter another's spectral densities. Excluded residues keep their values and stay in the table, greyed out, rather than disappearing.
+- **The J(0) outlier flags do change**, because `elevated_j0` and `reduced_j0` are defined relative to the other residues. Exclude an outlier and the remaining residues are re-judged against the narrower spread. Flags derived from a residue's own inputs — `negative_noe`, `low_noe_precision`, `negative_j` — are unaffected.
+
+Exclusions apply on read, so toggling updates the numbers immediately without a re-run, and they survive a re-run.
+
 ### Exclusion flags
 
-A residue is **excluded** when it is not present in all three sources. The reason is specific (`missing hetNOE`, `missing R2`, …) and appears in the results table, the CSV export and the PDF report, so the dataset never shrinks silently.
+A residue is **automatically excluded** when it is not present in all three sources. The reason is specific (`missing hetNOE`, `missing R2`, …) and appears in the results table, the CSV export and the PDF report, so the dataset never shrinks silently.
 
 A residue that *is* mapped may still be **flagged**. Flags are advisory — nothing is dropped on their account:
 

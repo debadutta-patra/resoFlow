@@ -627,6 +627,14 @@ const ProjectDetails: React.FC = () => {
                       </button>
                       <button
                         type="button"
+                        onClick={() => setNewAnalysisData({...newAnalysisData, type: 'SDM'})}
+                        className={`px-3 py-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center ${newAnalysisData.type === 'SDM' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-slate-100 dark:border-slate-700 text-slate-500 hover:border-slate-300 dark:hover:border-slate-600'}`}
+                      >
+                        <span className="font-bold text-base">SDM</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">Spectral Density</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setNewAnalysisData({...newAnalysisData, type: '15N-CEST'})}
                         className={`px-3 py-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center ${newAnalysisData.type === '15N-CEST' || newAnalysisData.type === 'CEST' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'border-slate-100 dark:border-slate-700 text-slate-500 hover:border-slate-300 dark:hover:border-slate-600'}`}
                       >

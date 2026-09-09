@@ -32,6 +32,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 import numpy as np
 
 from ...services.sdm import (
+    FLAG_DESCRIPTIONS,
     S_RAD_TO_NS_RAD,
     SdmVariant,
     analyse,
@@ -41,6 +42,8 @@ from ...services.sdm import (
     map_dataset,
     monte_carlo_covariance,
     systematic_band,
+    tau_c_from_ratio,
+    trimmed_mean,
 )
 from ...services.sdm.multifield import (
     MIN_FIELDS_FOR_SCALING,
@@ -180,6 +183,12 @@ def run_mapping(
 
     experimental = rex_source != RexSource.NONE
     summary = diagnostics.to_dict()
+    # diagnostics works in s/rad; the payload declares ns/rad and every
+    # residue row is converted, so the summary must be too or the two
+    # disagree by nine orders of magnitude.
+    for key in ("j0_trimmed_mean", "jwn_trimmed_mean", "jh_trimmed_mean"):
+        if summary.get(key) is not None:
+            summary[key] = float(summary[key]) * S_RAD_TO_NS_RAD
     summary["n_excluded"] = len(dataset.excluded)
     summary["systematic_band"] = {
         "description": band.description,
@@ -382,6 +391,122 @@ def build_multifield_csv(payload: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+EXCLUDED_BY_USER = "excluded by user"
+
+# Flags derived from a residue's own inputs. These stand whatever else is in
+# the dataset, unlike the J(0) outlier flags, which are relative to the rest
+# of the residues and therefore change when the kept set changes.
+_INPUT_DERIVED_FLAGS = ("negative_noe", "low_noe_precision", "negative_j")
+
+
+def apply_exclusions(
+    payload: Dict[str, Any],
+    excluded: Optional[Sequence[str]],
+) -> Dict[str, Any]:
+    """Mark excluded residues and recompute everything that depends on the set.
+
+    Per-residue J values are NOT recomputed: each residue is an independent
+    solve, so excluding one cannot change another's spectral densities, and
+    the stored values stay valid. What does change is everything aggregate --
+    the trimmed means, the tau_c estimate, and the J(0) outlier flags, which
+    are defined relative to the other residues. Leaving those computed over
+    the full set would put a tau_c on the summary card that does not match
+    the residues shown underneath it.
+
+    Excluded rows are kept in the payload rather than dropped, flagged with
+    `excluded` and a reason, so the table can show them greyed out and the
+    export can account for them.
+
+    Returns a new payload; the input is not modified.
+    """
+    from .sdm_sources import canonical_residue_key
+
+    residues = payload.get("residues") or []
+    if not residues:
+        return payload
+
+    wanted = {canonical_residue_key(str(r)) for r in (excluded or []) if str(r).strip()}
+    result = dict(payload)
+    rows = [dict(r) for r in residues]
+
+    for row in rows:
+        is_excluded = canonical_residue_key(str(row.get("assignment", ""))) in wanted
+        row["excluded"] = is_excluded
+        row["exclusion_reason"] = EXCLUDED_BY_USER if is_excluded else None
+
+    kept = [r for r in rows if not r["excluded"]]
+    if payload.get("mode") == "multi_field":
+        # The multi-field payload has no J triple or outlier flags to
+        # recompute; only the counts depend on the kept set.
+        summary = dict(payload.get("summary", {}))
+        summary["n_residues"] = len(kept)
+        summary["n_excluded_by_user"] = len(rows) - len(kept)
+        summary["n_exchange_flagged"] = sum(
+            1 for r in kept if (r.get("p_value") or 1.0) < 0.05
+        )
+        chi2 = [r["chi2"] for r in kept if r.get("chi2") is not None]
+        summary["median_chi2"] = float(np.median(chi2)) if chi2 else None
+        result["summary"] = summary
+        result["residues"] = rows
+        return result
+
+    j0 = np.array([r.get("j0", np.nan) for r in kept], dtype=np.float64)
+    jwn = np.array([r.get("j_wn", np.nan) for r in kept], dtype=np.float64)
+    jh = np.array([r.get("j_h", np.nan) for r in kept], dtype=np.float64)
+
+    j0_ref = trimmed_mean(j0) if j0.size else float("nan")
+    jwn_ref = trimmed_mean(jwn) if jwn.size else float("nan")
+    jh_ref = trimmed_mean(jh) if jh.size else float("nan")
+
+    finite = j0[np.isfinite(j0)]
+    if finite.size:
+        mad = float(np.median(np.abs(finite - np.median(finite))))
+        scale = mad * 1.4826 if mad > 0 else float(np.std(finite))
+    else:
+        scale = 0.0
+
+    # Recompute only the relative flags; input-derived ones are untouched.
+    for row in rows:
+        flags = [f for f in (row.get("flags") or []) if f in _INPUT_DERIVED_FLAGS]
+        if not row["excluded"] and scale > 0 and np.isfinite(row.get("j0", np.nan)):
+            z = (row["j0"] - j0_ref) / scale
+            if z > 2.5:
+                flags.append("elevated_j0")
+            elif z < -2.5:
+                flags.append("reduced_j0")
+        row["flags"] = flags
+
+    flag_counts: Dict[str, int] = {}
+    for row in kept:
+        for flag in row["flags"]:
+            flag_counts[flag] = flag_counts.get(flag, 0) + 1
+
+    # J is stored in ns/rad; tau_c_from_ratio works on the ratio, which is
+    # unit-free, so the scale cancels and only omega_N sets the time unit.
+    omega_n = float((payload.get("physics_snapshot") or {}).get("omega_n_rad_s") or 0.0)
+    tau_c = tau_c_from_ratio(j0_ref, jwn_ref, omega_n) if omega_n else None
+
+    summary = dict(payload.get("summary", {}))
+    summary.update({
+        "j0_trimmed_mean": j0_ref,
+        "jwn_trimmed_mean": jwn_ref,
+        "jh_trimmed_mean": jh_ref,
+        "tau_c_estimate_s": tau_c,
+        "tau_c_estimate_ns": tau_c * 1e9 if tau_c is not None else None,
+        "n_residues": len(kept),
+        "n_flagged": sum(1 for r in kept if r["flags"]),
+        "n_excluded_by_user": len(rows) - len(kept),
+        "flag_counts": flag_counts,
+        "flag_descriptions": {
+            k: FLAG_DESCRIPTIONS[k] for k in flag_counts if k in FLAG_DESCRIPTIONS
+        },
+    })
+    result["summary"] = summary
+    result["residues"] = rows
+    result["excluded_by_user"] = sorted(wanted)
+    return result
+
+
 def sdm_run_dir(analysis) -> str:
     """Run directory for a spectral density analysis.
 
@@ -437,7 +562,7 @@ def build_csv(payload: Dict[str, Any]) -> str:
     lines.append("# J values in ns/rad; covariance entries in ns^2/rad^2")
 
     header = [
-        "Res #", "Res Name", "Assignment",
+        "Res #", "Res Name", "Assignment", "Excluded",
         "J(0) [ns/rad]", "J(0) err",
         "J(wN) [ns/rad]", "J(wN) err",
         "J(0.87wH) [ns/rad]", "J(0.87wH) err",
@@ -457,6 +582,7 @@ def build_csv(payload: Dict[str, Any]) -> str:
             _csv_cell(row.get("res_num")),
             _csv_cell(row.get("res_name")),
             _csv_cell(row.get("assignment")),
+            _csv_cell("yes" if row.get("excluded") else ""),
             _num(row.get("j0")), _num(row.get("j0_err")),
             _num(row.get("j_wn")), _num(row.get("j_wn_err")),
             _num(row.get("j_h")), _num(row.get("j_h_err")),
@@ -472,16 +598,21 @@ def build_csv(payload: Dict[str, Any]) -> str:
             record.extend([_num(row.get("rex")), _num(row.get("rex_err"))])
         lines.append(",".join(record))
 
-    excluded = payload.get("excluded_residues") or []
+    excluded = [
+        (item.get("residue"), item.get("res_num"), item.get("reason"))
+        for item in (payload.get("excluded_residues") or [])
+    ] + [
+        (row.get("assignment"), row.get("res_num"),
+         row.get("exclusion_reason") or EXCLUDED_BY_USER)
+        for row in payload.get("residues", []) if row.get("excluded")
+    ]
     if excluded:
         lines.append("")
         lines.append("# Excluded residues")
         lines.append("Residue,Res #,Reason")
-        for item in excluded:
+        for residue, res_num, reason in excluded:
             lines.append(",".join([
-                _csv_cell(item.get("residue")),
-                _csv_cell(item.get("res_num")),
-                _csv_cell(item.get("reason")),
+                _csv_cell(residue), _csv_cell(res_num), _csv_cell(reason),
             ]))
     return "\n".join(lines) + "\n"
 

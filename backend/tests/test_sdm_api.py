@@ -38,7 +38,7 @@ from app import database, models, security
 from app.features import ENABLE_EXPERIMENTAL_SDM_REX
 from app.main import app
 
-SDM_URL = "/api/projects/{p}/spectral-density"
+ANALYSIS_URL = "/api/projects/{p}/analysis"
 
 
 def _peak_results(rates, errs, assignments):
@@ -176,16 +176,33 @@ class TestSpectralDensityApi(unittest.TestCase):
         body.update(overrides)
         return body
 
+    def _new_sdm_analysis(self, project=None, name="SDM run"):
+        """Create an SDM analysis the standard way, as the UI does."""
+        project = project or self.project
+        resp = self.client.post(
+            ANALYSIS_URL.format(p=project.project_uuid),
+            json={"name": name, "analysis_type": "SDM"},
+            headers=self._auth(self.token_a),
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["analysis_uuid"]
+
+    def _run(self, body, project=None, token=None, analysis_uuid=None):
+        """Create-then-run, returning the run response."""
+        project = project or self.project
+        token = token or self.token_a
+        uuid = analysis_uuid or self._new_sdm_analysis(project, body.get("name", "SDM run"))
+        return self.client.post(
+            f"{ANALYSIS_URL.format(p=project.project_uuid)}/{uuid}/sdm/run",
+            json=body, headers=self._auth(token),
+        )
+
     # -- happy path ------------------------------------------------------
 
     def test_create_and_fetch_spectral_density(self):
         r1, r2, noe = self._standard_sources()
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(resp.status_code, 201, resp.text)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
         body = resp.json()
         self.assertEqual(body["status"], "COMPLETED")
         self.assertFalse(body["experimental"])
@@ -208,7 +225,7 @@ class TestSpectralDensityApi(unittest.TestCase):
 
         uuid = body["analysis_uuid"]
         detail = self.client.get(
-            f"{SDM_URL.format(p=self.project.project_uuid)}/{uuid}",
+            f"{ANALYSIS_URL.format(p=self.project.project_uuid)}/{uuid}/sdm/results",
             headers=self._auth(self.token_a),
         )
         self.assertEqual(detail.status_code, 200)
@@ -217,19 +234,10 @@ class TestSpectralDensityApi(unittest.TestCase):
     def test_constants_snapshot_distinguishes_runs(self):
         """Re-running with a different CSA must be self-describing."""
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
 
-        first = self.client.post(
-            url, json=self._create_body(r1, r2, noe), headers=self._auth(self.token_a)
-        ).json()
-        second = self.client.post(
-            url,
-            json=self._create_body(
-                r1, r2, noe, name="other CSA",
-                constants={"r_nh_preset": "1.02", "delta_sigma_preset": "-172"},
-            ),
-            headers=self._auth(self.token_a),
-        ).json()
+        first = self._run(self._create_body(r1, r2, noe)).json()
+        second = self._run(self._create_body( r1, r2, noe, name="other CSA", constants={"r_nh_preset": "1.02", "delta_sigma_preset": "-172"}, )).json()
 
         snap_a = first["results"]["constants_snapshot"]
         snap_b = second["results"]["constants_snapshot"]
@@ -242,37 +250,44 @@ class TestSpectralDensityApi(unittest.TestCase):
             second["results"]["residues"][0]["j0"],
         )
 
-    def test_list_endpoint_returns_created_analyses(self):
+    def test_sdm_appears_in_the_projects_analysis_list(self):
+        """SDM is an ordinary analysis row, so it needs no list endpoint."""
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        self.client.post(url, json=self._create_body(r1, r2, noe),
-                         headers=self._auth(self.token_a))
-        listing = self.client.get(url, headers=self._auth(self.token_a))
+        self._run(self._create_body(r1, r2, noe))
+
+        listing = self.client.get(
+            ANALYSIS_URL.format(p=self.project.project_uuid),
+            headers=self._auth(self.token_a),
+        )
         self.assertEqual(listing.status_code, 200)
-        self.assertEqual(len(listing.json()), 1)
-        self.assertEqual(listing.json()[0]["name"], "SDM run")
+        sdm = [a for a in listing.json() if a["analysis_type"] == "SDM"]
+        self.assertEqual(len(sdm), 1)
+        self.assertEqual(sdm[0]["name"], "SDM run")
+        self.assertEqual(sdm[0]["status"], "COMPLETED")
+        # And it sits alongside the R1/R2/hetNOE sources in the same list.
+        self.assertEqual(
+            sorted(a["analysis_type"] for a in listing.json()),
+            ["R1", "R2", "SDM", "hetNOE"],
+        )
 
     def test_delete_removes_analysis(self):
+        """Deletion goes through the shared DELETE /analysis/{uuid}."""
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
         resp = self.client.delete(f"{url}/{uuid}", headers=self._auth(self.token_a))
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(
-            self.client.get(url, headers=self._auth(self.token_a)).json(), []
-        )
+
+        remaining = self.client.get(url, headers=self._auth(self.token_a)).json()
+        self.assertEqual([a for a in remaining if a["analysis_type"] == "SDM"], [])
 
     # -- 5.1.1 field consistency ----------------------------------------
 
     def test_field_mismatch_is_rejected_not_warned(self):
         """A 600/800 mix produces plausible nonsense, so it must hard-fail."""
         r1, r2, noe = self._standard_sources(b0_r2=800.2)
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe))
         self.assertEqual(resp.status_code, 422, resp.text)
         detail = resp.json()["detail"]
         self.assertIn("different static fields", detail["message"])
@@ -284,12 +299,8 @@ class TestSpectralDensityApi(unittest.TestCase):
     def test_small_field_difference_is_tolerated(self):
         """Two '600 MHz' instruments rarely report identical frequencies."""
         r1, r2, noe = self._standard_sources(b0_r2=600.42)
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(resp.status_code, 201, resp.text)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
 
     def test_missing_b0_is_rejected_rather_than_defaulted(self):
         assignments = ["G10N", "A11N"]
@@ -299,11 +310,7 @@ class TestSpectralDensityApi(unittest.TestCase):
                                assignments)
         noe = self._make_source(self.project, "hetNOE", [0.8, 0.8], [0.04, 0.04],
                                 assignments)
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe))
         self.assertEqual(resp.status_code, 422)
         self.assertIn("static field", resp.json()["detail"]["message"])
 
@@ -316,12 +323,8 @@ class TestSpectralDensityApi(unittest.TestCase):
                                ["G10N", "A11N", "L12N"])
         noe = self._make_source(self.project, "hetNOE", [0.8] * 2, [0.04] * 2,
                                 ["G10N", "A11N"])
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(resp.status_code, 201, resp.text)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
         results = resp.json()["results"]
 
         self.assertEqual(len(results["residues"]), 2)
@@ -336,11 +339,7 @@ class TestSpectralDensityApi(unittest.TestCase):
         r1 = self._make_source(self.project, "R1", [1.3], [0.03], ["G10N"])
         r2 = self._make_source(self.project, "R2", [12.0], [0.3], ["A11N"])
         noe = self._make_source(self.project, "hetNOE", [0.8], [0.04], ["L12N"])
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe))
         self.assertEqual(resp.status_code, 422)
         self.assertIn("nothing to map", resp.json()["detail"]["message"])
 
@@ -354,12 +353,8 @@ class TestSpectralDensityApi(unittest.TestCase):
                                assignments)
         noe = self._make_source(self.project, "hetNOE", [0.78, -0.55],
                                 [0.04, 0.08], assignments)
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(resp.status_code, 201, resp.text)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
         results = resp.json()["results"]
         self.assertEqual(len(results["residues"]), 2)
 
@@ -375,38 +370,28 @@ class TestSpectralDensityApi(unittest.TestCase):
         r1, r2, noe = self._standard_sources()
         r1.status = "RUNNING"
         self.db.commit()
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe))
         self.assertEqual(resp.status_code, 422)
         self.assertIn("COMPLETED", resp.json()["detail"]["message"])
 
     def test_unknown_source_uuid_is_404(self):
         r1, r2, noe = self._standard_sources()
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe,
-                                   source_r1_analysis_uuid="does-not-exist"),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe, source_r1_analysis_uuid="does-not-exist"))
         self.assertEqual(resp.status_code, 404)
 
     # -- scoping ----------------------------------------------------------
 
     def test_cross_user_isolation(self):
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
 
         # User B owns a different project and must not reach A's analysis.
         self.assertEqual(
             self.client.get(url, headers=self._auth(self.token_b)).status_code, 403
         )
         self.assertEqual(
-            self.client.get(f"{url}/{uuid}",
+            self.client.get(f"{url}/{uuid}/sdm/results",
                             headers=self._auth(self.token_b)).status_code, 403
         )
         self.assertEqual(
@@ -414,44 +399,65 @@ class TestSpectralDensityApi(unittest.TestCase):
                                headers=self._auth(self.token_b)).status_code, 403
         )
         self.assertEqual(
-            self.client.get(f"{url}/{uuid}/export.csv",
+            self.client.get(f"{url}/{uuid}/sdm/export.csv",
                             headers=self._auth(self.token_b)).status_code, 403
         )
 
     def test_unauthenticated_access_is_rejected(self):
-        url = SDM_URL.format(p=self.project.project_uuid)
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
         self.assertEqual(self.client.get(url).status_code, 401)
         self.assertEqual(self.client.post(url, json={}).status_code, 401)
 
     def test_analysis_from_another_project_is_not_reachable(self):
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
-        other = SDM_URL.format(p=self.project_b.project_uuid)
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        other = ANALYSIS_URL.format(p=self.project_b.project_uuid)
         # User B owns project_b, so this is a 404 on the analysis rather than
         # a 403 on the project -- the analysis simply is not in that project.
         self.assertEqual(
-            self.client.get(f"{other}/{uuid}",
+            self.client.get(f"{other}/{uuid}/sdm/results",
                             headers=self._auth(self.token_b)).status_code, 404
         )
 
-    def test_non_sdm_analysis_uuid_is_not_served_by_this_router(self):
+    def test_sdm_endpoints_refuse_a_non_sdm_analysis(self):
+        """The shared routes serve any analysis; the SDM ones must not.
+
+        An R1 analysis is a perfectly valid analysis, so GET /analysis/{uuid}
+        returns it. Asking the SDM endpoints for it is a different matter --
+        they would otherwise try to read a spectral density payload out of a
+        relaxation run.
+        """
         r1, _, _ = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        resp = self.client.get(f"{url}/{r1.analysis_uuid}",
-                               headers=self._auth(self.token_a))
-        self.assertEqual(resp.status_code, 404)
-        self.assertIn("not a spectral density", resp.json()["detail"])
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        # The shared detail route serves it, as it should.
+        self.assertEqual(
+            self.client.get(f"{url}/{r1.analysis_uuid}",
+                            headers=self._auth(self.token_a)).status_code, 200
+        )
+
+        for path in ("sdm/results", "sdm/export.csv"):
+            resp = self.client.get(f"{url}/{r1.analysis_uuid}/{path}",
+                                   headers=self._auth(self.token_a))
+            self.assertEqual(resp.status_code, 404, path)
+            self.assertIn("not a spectral density", resp.json()["detail"])
+
+        run = self.client.post(
+            f"{url}/{r1.analysis_uuid}/sdm/run",
+            json=self._create_body(r1, r1, r1),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(run.status_code, 400)
+        self.assertIn("not a spectral density", run.json()["detail"])
 
     # -- CSV export -------------------------------------------------------
 
     def test_csv_export_contains_values_and_provenance(self):
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
-        resp = self.client.get(f"{url}/{uuid}/export.csv",
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        resp = self.client.get(f"{url}/{uuid}/sdm/export.csv",
                                headers=self._auth(self.token_a))
         self.assertEqual(resp.status_code, 200)
         self.assertIn("text/csv", resp.headers["content-type"])
@@ -469,10 +475,9 @@ class TestSpectralDensityApi(unittest.TestCase):
                                ["G10N", "A11N"])
         r2 = self._make_source(self.project, "R2", [12.0], [0.3], ["G10N"])
         noe = self._make_source(self.project, "hetNOE", [0.8], [0.04], ["G10N"])
-        url = SDM_URL.format(p=self.project.project_uuid)
-        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
-        text = self.client.get(f"{url}/{uuid}/export.csv",
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        text = self.client.get(f"{url}/{uuid}/sdm/export.csv",
                                headers=self._auth(self.token_a)).text
         self.assertIn("# Excluded residues", text)
         self.assertIn("A11N", text)
@@ -481,26 +486,14 @@ class TestSpectralDensityApi(unittest.TestCase):
 
     def test_rex_request_is_rejected_when_flag_is_disabled(self):
         r1, r2, noe = self._standard_sources()
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(
-                r1, r2, noe,
-                rex_source="cpmg_analysis",
-                rex_cpmg_analysis_uuid="some-cpmg-uuid",
-            ),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body( r1, r2, noe, rex_source="cpmg_analysis", rex_cpmg_analysis_uuid="some-cpmg-uuid", ))
         self.assertEqual(resp.status_code, 422, resp.text)
         # The refusal names the flag, so the operator knows what to set.
         self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
 
     def test_multi_field_rex_source_is_also_gated(self):
         r1, r2, noe = self._standard_sources()
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe, rex_source="multi_field"),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe, rex_source="multi_field"))
         self.assertEqual(resp.status_code, 422)
         self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
 
@@ -517,11 +510,7 @@ class TestSpectralDensityApi(unittest.TestCase):
 
     def test_default_request_is_not_experimental(self):
         r1, r2, noe = self._standard_sources()
-        body = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        ).json()
+        body = self._run(self._create_body(r1, r2, noe)).json()
         self.assertFalse(body["experimental"])
         self.assertIsNone(body["results"]["experimental_notice"])
 
@@ -551,19 +540,9 @@ class TestSpectralDensityApi(unittest.TestCase):
 
     def test_monte_carlo_error_method_produces_comparable_errors(self):
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        analytic = self.client.post(
-            url, json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        ).json()["results"]
-        mc = self.client.post(
-            url,
-            json=self._create_body(
-                r1, r2, noe, name="mc", error_method="monte_carlo",
-                n_replicates=20000, seed=11,
-            ),
-            headers=self._auth(self.token_a),
-        ).json()["results"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        analytic = self._run(self._create_body(r1, r2, noe)).json()["results"]
+        mc = self._run(self._create_body( r1, r2, noe, name="mc", error_method="monte_carlo", n_replicates=20000, seed=11, )).json()["results"]
 
         self.assertEqual(mc["error_method"], "monte_carlo")
         for key in ("j0_err", "j_wn_err", "j_h_err"):
@@ -585,10 +564,9 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
 
     def test_report_renders_a_pdf_with_the_section(self):
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
-        resp = self.client.post(f"{url}/{uuid}/report",
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        resp = self.client.post(f"{url}/{uuid}/sdm/report",
                                 headers=self._auth(self.token_a))
         self.assertEqual(resp.status_code, 200, resp.text)
         self.assertEqual(resp.headers["content-type"], "application/pdf")
@@ -601,9 +579,8 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
         from app.services.reporting.render import render_html
 
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        created = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                   headers=self._auth(self.token_a)).json()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        created = self._run(self._create_body(r1, r2, noe)).json()
 
         analysis = (
             self.db.query(models.Analysis)
@@ -627,16 +604,15 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
 
     def test_report_is_refused_for_an_incomplete_analysis(self):
         r1, r2, noe = self._standard_sources()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        uuid = self.client.post(url, json=self._create_body(r1, r2, noe),
-                                headers=self._auth(self.token_a)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
         analysis = (
             self.db.query(models.Analysis)
             .filter(models.Analysis.analysis_uuid == uuid).first()
         )
         analysis.status = "RUNNING"
         self.db.commit()
-        resp = self.client.post(f"{url}/{uuid}/report",
+        resp = self.client.post(f"{url}/{uuid}/sdm/report",
                                 headers=self._auth(self.token_a))
         self.assertEqual(resp.status_code, 400)
 
@@ -650,7 +626,7 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
         from app.services.reporting.render import render_html
 
         os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
-        url = SDM_URL.format(p=self.project.project_uuid)
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
 
         # A genuine two-field run, so the marker is exercised on a real
         # experimental result rather than on a request that merely asked to be
@@ -665,19 +641,8 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
         b3 = self._make_source(self.project, "hetNOE", [0.80] * n, [0.04] * n,
                                assignments, b0=800.20)
 
-        created = self.client.post(
-            url,
-            json=self._create_body(
-                r1, r2, noe, rex_source="multi_field",
-                additional_field_sources=[{
-                    "source_r1_analysis_uuid": b1.analysis_uuid,
-                    "source_r2_analysis_uuid": b2.analysis_uuid,
-                    "source_noe_analysis_uuid": b3.analysis_uuid,
-                }],
-            ),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(created.status_code, 201, created.text)
+        created = self._run(self._create_body( r1, r2, noe, rex_source="multi_field", additional_field_sources=[{ "source_r1_analysis_uuid": b1.analysis_uuid, "source_r2_analysis_uuid": b2.analysis_uuid, "source_noe_analysis_uuid": b3.analysis_uuid, }], ))
+        self.assertEqual(created.status_code, 200, created.text)
         body = created.json()
         self.assertTrue(body["experimental"])
         self.assertIn("EXPERIMENTAL", body["experimental_notice"])
@@ -695,7 +660,7 @@ class TestSpectralDensityReport(TestSpectralDensityApi):
         self.assertIn("experimental-marker", html)
         self.assertIn("EXPERIMENTAL", html)
 
-        csv_text = self.client.get(f"{url}/{body['analysis_uuid']}/export.csv",
+        csv_text = self.client.get(f"{url}/{body['analysis_uuid']}/sdm/export.csv",
                                    headers=self._auth(self.token_a)).text
         self.assertTrue(csv_text.startswith("#"))
         self.assertIn("EXPERIMENTAL", csv_text.split("\n")[0])
@@ -742,11 +707,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
 
     def test_echo_decay_is_the_default_provenance(self):
         r1, r2, noe = self._standard_sources()
-        body = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        ).json()
+        body = self._run(self._create_body(r1, r2, noe)).json()
         self.assertEqual(body["results"]["r2_provenance"], "echo_decay")
 
     def test_cpmg_r2_0_is_used_when_requested(self):
@@ -756,12 +717,8 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
 
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(resp.status_code, 201, resp.text)
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(resp.status_code, 200, resp.text)
         results = resp.json()["results"]
         self.assertEqual(results["r2_provenance"], "cpmg_r2_0")
         self.assertEqual(len(results["residues"]), 1)
@@ -776,11 +733,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
 
         # The experimental Rex flag is off (setUp clears it) and this still works.
-        body = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        ).json()
+        body = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0")).json()
         self.assertFalse(body["experimental"])
         self.assertEqual(body["results"]["rex_source"], "none")
         self.assertIsNone(body["results"]["experimental_notice"])
@@ -799,12 +752,8 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=800.0)
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=800.0)
 
-        body = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(body.status_code, 201, body.text)
+        body = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(body.status_code, 200, body.text)
         row = body.json()["results"]["residues"][0]
         self.assertAlmostEqual(row["r2"], 6.67323, places=4)
         self.assertNotAlmostEqual(row["r2"], 4.00996, places=2)
@@ -812,12 +761,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         # And the 500 MHz mapping picks the other block.
         r1_500 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=500.0)
         noe_500 = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=500.0)
-        row_500 = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1_500, cpmg, noe_500, name="500",
-                                   r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        ).json()["results"]["residues"][0]
+        row_500 = self._run(self._create_body(r1_500, cpmg, noe_500, name="500", r2_provenance="cpmg_r2_0")).json()["results"]["residues"][0]
         self.assertAlmostEqual(row_500["r2"], 4.00996, places=4)
 
     def test_missing_field_block_is_rejected_with_the_available_fields(self):
@@ -828,11 +772,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=600.13)
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=600.13)
 
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
         self.assertEqual(resp.status_code, 422, resp.text)
         detail = resp.json()["detail"]
         self.assertIn("no R2,0 at 600.13 MHz", detail["message"])
@@ -842,23 +782,15 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         cpmg = self._make_cpmg(self.project, {None: {"15N": (8.4, 0.21)}})
         r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        )
-        self.assertEqual(resp.status_code, 201, resp.text)
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(resp.status_code, 200, resp.text)
         self.assertAlmostEqual(resp.json()["results"]["residues"][0]["r2"], 8.4, places=4)
 
     def test_cpmg_without_r2_a_is_rejected(self):
         cpmg = self._make_cpmg(self.project, {})
         r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
         self.assertEqual(resp.status_code, 422)
         self.assertIn("no fitted R2_A", resp.json()["detail"]["message"])
 
@@ -867,11 +799,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
                                status="RUNNING")
         r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
         self.assertEqual(resp.status_code, 422)
         self.assertIn("COMPLETED", resp.json()["detail"]["message"])
 
@@ -889,11 +817,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
                                ["G10N", "A11N"])
         noe = self._make_source(self.project, "hetNOE", [0.78, 0.75], [0.04, 0.04],
                                 ["G10N", "A11N"])
-        results = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"),
-            headers=self._auth(self.token_a),
-        ).json()["results"]
+        results = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0")).json()["results"]
 
         self.assertEqual(len(results["residues"]), 2)
         self.assertEqual(results["excluded_residues"], [])
@@ -915,11 +839,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
                                ["A10N", "A11N"])
         noe = self._make_source(self.project, "hetNOE", [0.78, 0.75], [0.04, 0.04],
                                 ["G10N", "A11N"])
-        results = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        ).json()["results"]
+        results = self._run(self._create_body(r1, r2, noe)).json()["results"]
 
         self.assertEqual([r["assignment"] for r in results["residues"]], ["A11N"])
         self.assertEqual(len(results["excluded_residues"]), 1)
@@ -932,11 +852,7 @@ class TestCpmgR2Provenance(TestSpectralDensityApi):
         r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G10N"])
         r2 = self._make_source(self.project, "R2", [12.1], [0.30], ["A10N"])
         noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G10N"])
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe))
         self.assertEqual(resp.status_code, 422)
         detail = resp.json()["detail"]
         self.assertIn("nothing to map", detail["message"])
@@ -961,18 +877,7 @@ class TestMultiFieldConsistency(TestSpectralDensityApi):
         assignments = ["G10N", "A11N"]
         a1, a2, a3 = self._field_sources(600.13, assignments)
         b1, b2, b3 = self._field_sources(800.20, assignments)
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(
-                a1, a2, a3, rex_source="multi_field",
-                additional_field_sources=[{
-                    "source_r1_analysis_uuid": b1.analysis_uuid,
-                    "source_r2_analysis_uuid": b2.analysis_uuid,
-                    "source_noe_analysis_uuid": b3.analysis_uuid,
-                }],
-            ),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body( a1, a2, a3, rex_source="multi_field", additional_field_sources=[{ "source_r1_analysis_uuid": b1.analysis_uuid, "source_r2_analysis_uuid": b2.analysis_uuid, "source_noe_analysis_uuid": b3.analysis_uuid, }], ))
         self.assertEqual(resp.status_code, 422)
         self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
 
@@ -994,17 +899,11 @@ class TestMultiFieldConsistency(TestSpectralDensityApi):
             }
             for t in triples[1:]
         ]
-        return self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(
-                *primary, rex_source="multi_field", additional_field_sources=extra
-            ),
-            headers=self._auth(self.token_a),
-        )
+        return self._run(self._create_body( *primary, rex_source="multi_field", additional_field_sources=extra ))
 
     def test_multi_field_runs_and_reports_the_exchange_test(self):
         resp = self._run_multifield([600.13, 800.20], ["G10N", "A11N"])
-        self.assertEqual(resp.status_code, 201, resp.text)
+        self.assertEqual(resp.status_code, 200, resp.text)
         body = resp.json()
         self.assertTrue(body["experimental"])
 
@@ -1055,18 +954,7 @@ class TestMultiFieldConsistency(TestSpectralDensityApi):
         os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
         a1, a2, a3 = self._field_sources(600.13, ["G10N", "A11N", "L12N"])
         b1, b2, b3 = self._field_sources(800.20, ["G10N", "A11N"])
-        results = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(
-                a1, a2, a3, rex_source="multi_field",
-                additional_field_sources=[{
-                    "source_r1_analysis_uuid": b1.analysis_uuid,
-                    "source_r2_analysis_uuid": b2.analysis_uuid,
-                    "source_noe_analysis_uuid": b3.analysis_uuid,
-                }],
-            ),
-            headers=self._auth(self.token_a),
-        ).json()["results"]
+        results = self._run(self._create_body( a1, a2, a3, rex_source="multi_field", additional_field_sources=[{ "source_r1_analysis_uuid": b1.analysis_uuid, "source_r2_analysis_uuid": b2.analysis_uuid, "source_noe_analysis_uuid": b3.analysis_uuid, }], )).json()["results"]
 
         self.assertEqual(len(results["residues"]), 2)
         reasons = [e["reason"] for e in results["excluded_residues"]]
@@ -1075,8 +963,8 @@ class TestMultiFieldConsistency(TestSpectralDensityApi):
     def test_multi_field_csv_carries_the_experimental_marker(self):
         os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
         created = self._run_multifield([600.13, 800.20], ["G10N"]).json()
-        url = SDM_URL.format(p=self.project.project_uuid)
-        text = self.client.get(f"{url}/{created['analysis_uuid']}/export.csv",
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        text = self.client.get(f"{url}/{created['analysis_uuid']}/sdm/export.csv",
                                headers=self._auth(self.token_a)).text
         self.assertIn("EXPERIMENTAL", text.split("\n")[0])
         self.assertIn("p-value", text)
@@ -1085,11 +973,7 @@ class TestMultiFieldConsistency(TestSpectralDensityApi):
     def test_multi_field_requires_a_second_field(self):
         os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
         r1, r2, noe = self._standard_sources()
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe, rex_source="multi_field"),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe, rex_source="multi_field"))
         self.assertEqual(resp.status_code, 422)
         self.assertIn("nothing for the chi-square to test",
                       resp.json()["detail"]["message"])
@@ -1102,10 +986,174 @@ class TestMultiFieldConsistency(TestSpectralDensityApi):
         disabled-feature request with a confusing shape error instead.
         """
         r1, r2, noe = self._standard_sources()
-        resp = self.client.post(
-            SDM_URL.format(p=self.project.project_uuid),
-            json=self._create_body(r1, r2, noe, rex_source="multi_field"),
-            headers=self._auth(self.token_a),
-        )
+        resp = self._run(self._create_body(r1, r2, noe, rex_source="multi_field"))
         self.assertEqual(resp.status_code, 422)
         self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
+
+
+class TestResidueExclusion(TestSpectralDensityApi):
+    """Residue exclusion, stored and toggled the way every module does it."""
+
+    def _exclude(self, analysis_uuid, residues):
+        """Set the exclusion list through the shared analysis PUT."""
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.put(
+            f"{url}/{analysis_uuid}",
+            json={"parameters": json.dumps({"excludedResidues": residues})},
+            headers=self._auth(self.token_a),
+        )
+
+    def _results(self, analysis_uuid):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.get(f"{url}/{analysis_uuid}/sdm/results",
+                               headers=self._auth(self.token_a)).json()["results"]
+
+    def _spread_dataset(self):
+        """Four residues, one with a markedly elevated R2 and so J(0)."""
+        assignments = ["G10N", "A11N", "L12N", "V13N"]
+        r1 = self._make_source(self.project, "R1", [1.35] * 4, [0.03] * 4, assignments)
+        r2 = self._make_source(self.project, "R2", [12.1, 12.3, 12.0, 28.0],
+                               [0.30] * 4, assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.78] * 4, [0.04] * 4,
+                                assignments)
+        return r1, r2, noe
+
+    def test_excluded_residue_is_marked_not_dropped(self):
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self.assertEqual(self._exclude(uuid, ["A11N"]).status_code, 200)
+
+        results = self._results(uuid)
+        # Still present, so the table can grey it out and the export account
+        # for it -- excluding is not the same as never having measured it.
+        self.assertEqual(len(results["residues"]), 4)
+        by_res = {r["assignment"]: r for r in results["residues"]}
+        self.assertTrue(by_res["A11N"]["excluded"])
+        self.assertEqual(by_res["A11N"]["exclusion_reason"], "excluded by user")
+        self.assertFalse(by_res["G10N"]["excluded"])
+        self.assertIsNone(by_res["G10N"]["exclusion_reason"])
+
+    def test_exclusion_updates_the_summary_counts(self):
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 4)
+
+        self._exclude(uuid, ["A11N", "L12N"])
+        summary = self._results(uuid)["summary"]
+        self.assertEqual(summary["n_residues"], 2)
+        self.assertEqual(summary["n_excluded_by_user"], 2)
+
+    def test_exclusion_changes_the_tau_c_estimate(self):
+        """The summary must describe the residues actually shown.
+
+        tau_c comes from the trimmed means across residues, so leaving an
+        excluded outlier in the aggregate would put a number on the summary
+        card that does not match the table underneath it.
+        """
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        before = self._results(uuid)["summary"]
+
+        self._exclude(uuid, ["V13N"])
+        after = self._results(uuid)["summary"]
+
+        self.assertNotAlmostEqual(
+            before["j0_trimmed_mean"], after["j0_trimmed_mean"], places=6
+        )
+        self.assertIsNotNone(after["tau_c_estimate_ns"])
+
+    def test_per_residue_values_are_untouched_by_exclusion(self):
+        """Each residue is an independent solve; excluding one cannot move another."""
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        before = {r["assignment"]: r["j0"] for r in self._results(uuid)["residues"]}
+
+        self._exclude(uuid, ["V13N"])
+        after = {r["assignment"]: r["j0"] for r in self._results(uuid)["residues"]}
+
+        for assignment, value in before.items():
+            self.assertAlmostEqual(value, after[assignment], places=12, msg=assignment)
+
+    def test_outlier_flags_are_relative_to_the_kept_set(self):
+        """J(0) outlier flags are defined against the other residues.
+
+        Excluding the outlier must not leave the remaining residues flagged
+        against a scale the excluded one set.
+        """
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["V13N"])
+
+        results = self._results(uuid)
+        kept = [r for r in results["residues"] if not r["excluded"]]
+        # The excluded outlier carries no flags of its own any more.
+        excluded_row = next(r for r in results["residues"] if r["excluded"])
+        self.assertEqual(excluded_row["flags"], [])
+        # And the flag counts only describe kept residues.
+        self.assertEqual(
+            results["summary"]["n_flagged"], sum(1 for r in kept if r["flags"])
+        )
+
+    def test_input_derived_flags_survive_exclusion(self):
+        """negative_noe is a property of the residue, not of the cohort."""
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03], assignments)
+        r2 = self._make_source(self.project, "R2", [12.0, 4.0], [0.3, 0.2], assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.78, -0.55],
+                                [0.04, 0.08], assignments)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._exclude(uuid, ["G10N"])
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertIn("negative_noe", by_res["A11N"]["flags"])
+
+    def test_exclusion_needs_no_rerun(self):
+        """Toggling applies on read, so the numbers update immediately."""
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._exclude(uuid, ["V13N"])
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 3)
+        self._exclude(uuid, [])
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 4)
+
+    def test_exclusion_matches_across_assignment_spellings(self):
+        """"10N" must exclude "G10N", as residue matching does elsewhere."""
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["10N"])
+
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertTrue(by_res["G10N"]["excluded"])
+
+    def test_exclusion_survives_a_rerun(self):
+        """Running again must not silently clear the user's exclusions."""
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["A11N"])
+
+        self._run(self._create_body(r1, r2, noe), analysis_uuid=uuid)
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertTrue(by_res["A11N"]["excluded"])
+
+    def test_csv_export_reflects_exclusions(self):
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["A11N"])
+
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        text = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                               headers=self._auth(self.token_a)).text
+        self.assertIn("# Excluded residues", text)
+        self.assertIn("excluded by user", text)
+
+    def test_report_reflects_exclusions(self):
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["V13N"])
+
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.post(f"{url}/{uuid}/sdm/report",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertTrue(resp.content.startswith(b"%PDF"))
