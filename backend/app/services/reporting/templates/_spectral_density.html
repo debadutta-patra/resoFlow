@@ -133,13 +133,24 @@
       <td>{{ spectral_density_data.r2_provenance }}</td>
     </tr>
     <tr>
-      <td><strong>R<sub>ex</sub> correction</strong></td>
-      <td>{{ spectral_density_data.rex_source }}</td>
+      <td><strong>hetNOE cutoff</strong></td>
+      <td>
+        {% if spectral_density_data.noe_threshold is not none %}
+        &ge; {{ "%g"|format(spectral_density_data.noe_threshold) }}
+        {% else %}disabled{% endif %}
+        &nbsp;|&nbsp; R<sub>ex</sub>: {{ spectral_density_data.rex_source }}
+      </td>
       <td><strong>Residues</strong></td>
       <td>
         {{ spectral_density_data.n_residues }} mapped,
         {{ spectral_density_data.n_flagged }} flagged,
         {{ spectral_density_data.n_excluded }} excluded
+        {%- if spectral_density_data.n_excluded_by_noe %},
+        {{ spectral_density_data.n_excluded_by_noe }} below the hetNOE cutoff
+        {%- endif %}
+        {%- if spectral_density_data.n_excluded_by_user %},
+        {{ spectral_density_data.n_excluded_by_user }} by hand
+        {%- endif %}
       </td>
     </tr>
     {% if spectral_density_data.tau_c_ns %}

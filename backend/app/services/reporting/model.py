@@ -448,6 +448,7 @@ def build_report_model(
     chemex_image_digest: Optional[str] = None,
     fixed_timestamp: Optional[str] = None,
     excluded_residues: Optional[Sequence[str]] = None,
+    noe_threshold: Optional[float] = None,
 ) -> ReportModel:
     """
     Build the canonical ReportModel from an analysis output directory.
@@ -517,7 +518,14 @@ def build_report_model(
         # user turned off is greyed out of every output rather than only some.
         from ..fitting.sdm_runner import apply_exclusions
 
-        spectral_density = apply_exclusions(results_data, excluded_residues)
+        # None here means "use the mapper's default"; the router passes the
+        # analysis's own setting, including an explicit null to disable.
+        from ..fitting.sdm_runner import DEFAULT_NOE_THRESHOLD
+
+        spectral_density = apply_exclusions(
+            results_data, excluded_residues,
+            DEFAULT_NOE_THRESHOLD if noe_threshold is None else noe_threshold,
+        )
 
         not_in_mod_tpl = dict(value=None, status=ParameterStatus.NOT_IN_MODEL)
         for row in spectral_density.get("residues", []):

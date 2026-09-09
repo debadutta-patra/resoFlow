@@ -1535,3 +1535,243 @@ class TestCorrelationPlotReference(TestSpectralDensityApi):
         recovered = float(np.mean(y[nonzero] / x[nonzero]))
         expected = 1.0 / (1.0 + (abs(self.OMEGA_N) * self.TAU_C) ** 2)
         self.assertAlmostEqual(recovered, expected, delta=0.05 * expected)
+
+
+class TestHetNoeFilter(TestSpectralDensityApi):
+    """Residues below a hetNOE threshold are excluded.
+
+    A low hetNOE marks a flexible tail or loop. Those residues carry enormous
+    relative error in J(0.87 wH), because the NOE error propagates into it
+    almost entirely, and they should not be setting an overall tumbling time
+    that describes the folded core.
+
+    The filter is applied on read like the manual exclusion list, so the
+    threshold can be changed without re-running, and excluded residues stay
+    in the payload with a reason naming the cutoff -- "measured and set
+    aside" has to be distinguishable from "never measured".
+    """
+
+    def _mixed_dataset(self):
+        """Four residues: two above 0.65, one below, one well below."""
+        assignments = ["G10N", "A11N", "L12N", "V13N"]
+        noes = [0.78, 0.71, 0.55, 0.20]
+        r1 = self._make_source(self.project, "R1", [1.35] * 4, [0.03] * 4, assignments)
+        r2 = self._make_source(self.project, "R2", [12.1] * 4, [0.30] * 4, assignments)
+        noe = self._make_source(self.project, "hetNOE", noes, [0.04] * 4, assignments)
+        return r1, r2, noe
+
+    def _results(self, uuid):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.get(f"{url}/{uuid}/sdm/results",
+                               headers=self._auth(self.token_a)).json()["results"]
+
+    def _set_threshold(self, uuid, value):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.put(
+            f"{url}/{uuid}",
+            json={"parameters": json.dumps({"noeThreshold": value})},
+            headers=self._auth(self.token_a),
+        )
+
+    def test_default_threshold_excludes_low_noe_residues(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        results = self._results(uuid)
+
+        by_res = {r["assignment"]: r for r in results["residues"]}
+        self.assertFalse(by_res["G10N"]["excluded"])
+        self.assertFalse(by_res["A11N"]["excluded"])
+        self.assertTrue(by_res["L12N"]["excluded"])
+        self.assertTrue(by_res["V13N"]["excluded"])
+
+        self.assertEqual(results["summary"]["n_residues"], 2)
+        self.assertEqual(results["summary"]["n_excluded_by_noe"], 2)
+        self.assertEqual(results["summary"]["noe_threshold"], 0.65)
+
+    def test_the_reason_names_the_value_and_the_threshold(self):
+        """A reader must be able to see why, not just that."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+
+        reason = by_res["L12N"]["exclusion_reason"]
+        self.assertIn("0.550", reason)
+        self.assertIn("0.65", reason)
+        self.assertIn("below threshold", reason)
+
+    def test_excluded_residues_keep_their_values(self):
+        """Filtered is not the same as unmeasured."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+
+        self.assertEqual(len(by_res), 4)
+        for key in ("j0", "j_wn", "j_h", "r1", "r2", "noe"):
+            self.assertIsNotNone(by_res["V13N"][key])
+
+    def test_threshold_is_adjustable_without_a_rerun(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 2)
+
+        self._set_threshold(uuid, 0.5)
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 3)
+
+        self._set_threshold(uuid, 0.75)
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 1)
+
+    def test_null_threshold_disables_the_filter(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._set_threshold(uuid, None)
+
+        results = self._results(uuid)
+        self.assertEqual(results["summary"]["n_residues"], 4)
+        self.assertEqual(results["summary"]["n_excluded_by_noe"], 0)
+        self.assertIsNone(results["summary"]["noe_threshold"])
+        self.assertTrue(all(not r["excluded"] for r in results["residues"]))
+
+    def test_manual_and_threshold_exclusions_are_both_reported(self):
+        """Picking one reason and hiding the other would misinform."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        self.client.put(
+            f"{url}/{uuid}",
+            json={"parameters": json.dumps(
+                {"noeThreshold": 0.65, "excludedResidues": ["G10N", "L12N"]}
+            )},
+            headers=self._auth(self.token_a),
+        )
+
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertEqual(by_res["G10N"]["exclusion_reason"], "excluded by user")
+        self.assertIn("below threshold", by_res["V13N"]["exclusion_reason"])
+        # L12N is both: manual, and under the cutoff.
+        both = by_res["L12N"]["exclusion_reason"]
+        self.assertIn("excluded by user", both)
+        self.assertIn("below threshold", both)
+
+    def test_the_filter_moves_tau_m(self):
+        """Which is the point: flexible tails should not set the tumbling time."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        filtered = self._results(uuid)["summary"]
+
+        self._set_threshold(uuid, None)
+        unfiltered = self._results(uuid)["summary"]
+
+        self.assertNotEqual(unfiltered["n_residues"], filtered["n_residues"])
+        self.assertNotAlmostEqual(
+            unfiltered["j0_trimmed_mean"], filtered["j0_trimmed_mean"], places=6
+        )
+
+    def test_threshold_reaches_the_csv_and_the_report(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        csv_text = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                                   headers=self._auth(self.token_a)).text
+        self.assertIn("below threshold", csv_text)
+        self.assertIn("# Excluded residues", csv_text)
+
+        pdf = self.client.post(f"{url}/{uuid}/sdm/report",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(pdf.status_code, 200, pdf.text[:300])
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+
+    def test_negative_noe_is_caught_by_the_default_threshold(self):
+        """The spec kept negative NOE unfiltered; this filter is opt-out.
+
+        Negative hetNOE is physically valid, and the mapping still produces
+        values for it -- the row keeps them. But it is far below any sensible
+        cutoff, so the default threshold sets it aside, and the reason says
+        so rather than the residue silently vanishing.
+        """
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03], assignments)
+        r2 = self._make_source(self.project, "R2", [12.0, 4.0], [0.3, 0.2], assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.78, -0.55],
+                                [0.04, 0.08], assignments)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertTrue(by_res["A11N"]["excluded"])
+        self.assertIn("below threshold", by_res["A11N"]["exclusion_reason"])
+        self.assertIsNotNone(by_res["A11N"]["j0"])
+        self.assertIn("negative_noe", by_res["A11N"]["flags"])
+
+
+class TestEverythingExcluded(TestSpectralDensityApi):
+    """Excluding every residue must not crash the endpoint.
+
+    The hetNOE filter has a default, so an all-flexible dataset can empty the
+    kept set without anyone asking for it. The trimmed means are then
+    undefined, and NaN is not JSON -- returning it 500s the request.
+    """
+
+    def _all_low_noe(self):
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03], assignments)
+        r2 = self._make_source(self.project, "R2", [12.0, 4.0], [0.3, 0.2], assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.30, -0.55],
+                                [0.04, 0.08], assignments)
+        return r1, r2, noe
+
+    def test_results_still_serialise(self):
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        resp = self.client.get(f"{url}/{uuid}/sdm/results",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:300])
+
+        summary = resp.json()["results"]["summary"]
+        self.assertEqual(summary["n_residues"], 0)
+        # None, not NaN: there is no value, rather than an unrepresentable one.
+        self.assertIsNone(summary["j0_trimmed_mean"])
+        self.assertIsNone(summary["tau_c_estimate_ns"])
+
+    def test_rows_and_reasons_survive(self):
+        """The residues are still there, with why they were set aside."""
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        results = self.client.get(f"{url}/{uuid}/sdm/results",
+                                  headers=self._auth(self.token_a)).json()["results"]
+
+        self.assertEqual(len(results["residues"]), 2)
+        for row in results["residues"]:
+            self.assertTrue(row["excluded"])
+            self.assertIn("below threshold", row["exclusion_reason"])
+
+    def test_csv_and_report_still_render(self):
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        csv_resp = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                                   headers=self._auth(self.token_a))
+        self.assertEqual(csv_resp.status_code, 200)
+        self.assertIn("below threshold", csv_resp.text)
+
+        pdf = self.client.post(f"{url}/{uuid}/sdm/report",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(pdf.status_code, 200, pdf.text[:300])
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+
+    def test_lowering_the_threshold_brings_them_back(self):
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        self.client.put(
+            f"{url}/{uuid}",
+            json={"parameters": json.dumps({"noeThreshold": None})},
+            headers=self._auth(self.token_a),
+        )
+        results = self.client.get(f"{url}/{uuid}/sdm/results",
+                                  headers=self._auth(self.token_a)).json()["results"]
+        self.assertEqual(results["summary"]["n_residues"], 2)
+        self.assertIsNotNone(results["summary"]["j0_trimmed_mean"])

@@ -72,6 +72,9 @@ interface SdmResults {
     n_residues: number;
     n_flagged: number;
     n_excluded: number;
+    n_excluded_by_noe?: number;
+    n_excluded_by_user?: number;
+    noe_threshold?: number | null;
     flag_counts: Record<string, number>;
     flag_descriptions: Record<string, string>;
     systematic_band: {
@@ -120,6 +123,8 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
 }) => {
   const [selected, setSelected] = useState<SdmAnalysis | null>(null);
   const [excludedResidues, setExcludedResidues] = useState<string[]>([]);
+  // Applied server-side on read, so changing it needs no re-run.
+  const [noeThreshold, setNoeThreshold] = useState<string>('0.65');
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState('');
   const [rexEnabled, setRexEnabled] = useState(false);
@@ -204,6 +209,9 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
     try {
       const params = JSON.parse(analysis.parameters);
       setExcludedResidues(params.excludedResidues || []);
+      if ('noeThreshold' in params) {
+        setNoeThreshold(params.noeThreshold == null ? '' : String(params.noeThreshold));
+      }
       if (params.source_r1_analysis_uuid) setR1Uuid(params.source_r1_analysis_uuid);
       if (params.source_r2_analysis_uuid) setR2Uuid(params.source_r2_analysis_uuid);
       if (params.source_noe_analysis_uuid) setNoeUuid(params.source_noe_analysis_uuid);
@@ -262,6 +270,27 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
     }
   };
 
+  const applyNoeThreshold = async (raw: string) => {
+    setNoeThreshold(raw);
+    const trimmed = raw.trim();
+    const value = trimmed === '' ? null : Number(trimmed);
+    if (value !== null && !Number.isFinite(value)) return;
+    try {
+      const params = JSON.parse(analysis.parameters || '{}');
+      params.noeThreshold = value;
+      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}`, {
+        parameters: JSON.stringify(params),
+      });
+      const res = await api.get(
+        `/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/sdm/results`,
+      );
+      setSelected(res.data);
+      onUpdate?.();
+    } catch {
+      setError('Could not update the hetNOE threshold');
+    }
+  };
+
   const handleRun = async () => {
     setIsRunning(true);
     setError('');
@@ -272,6 +301,7 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
         source_r2_analysis_uuid: r2Uuid,
         source_noe_analysis_uuid: noeUuid,
         constants: constantsPayload(constants),
+        noe_threshold: noeThreshold.trim() === '' ? null : Number(noeThreshold),
         variant,
         error_method: errorMethod,
         n_replicates: Number(nReplicates) || 2000,
@@ -686,6 +716,8 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
                 analysisUuid={analysis.analysis_uuid}
                 excludedResidues={excludedResidues}
                 onToggleExclusion={handleToggleResidueExclusion}
+                noeThreshold={noeThreshold}
+                onNoeThreshold={applyNoeThreshold}
               />
             </>
           )}
@@ -879,7 +911,19 @@ const SummaryCard: React.FC<{ results: SdmResults; experimental: boolean }> = ({
         />
         <Stat label="Residues mapped" value={String(s.n_residues)} />
         <Stat label="Flagged" value={String(s.n_flagged)} hint="advisory, not dropped" />
-        <Stat label="Excluded" value={String(s.n_excluded)} hint="not in all three sources" />
+        <Stat
+          label="Excluded"
+          value={String(
+            s.n_excluded + (s.n_excluded_by_noe ?? 0) + (s.n_excluded_by_user ?? 0),
+          )}
+          hint={[
+            s.n_excluded ? `${s.n_excluded} missing a source` : null,
+            s.n_excluded_by_noe
+              ? `${s.n_excluded_by_noe} hetNOE < ${s.noe_threshold}`
+              : null,
+            s.n_excluded_by_user ? `${s.n_excluded_by_user} by hand` : null,
+          ].filter(Boolean).join(', ') || 'none'}
+        />
       </div>
 
       <div className="mt-5 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
@@ -1105,6 +1149,8 @@ interface ResidueTableProps {
   analysisUuid: string;
   excludedResidues: string[];
   onToggleExclusion: (assignment: string) => void;
+  noeThreshold: string;
+  onNoeThreshold: (value: string) => void;
 }
 
 const COLUMNS: Array<[SortKey, string]> = [
@@ -1123,6 +1169,7 @@ const ResidueTable: React.FC<ResidueTableProps> = ({
   residues, total, excluded, flagDescriptions, query, onQuery,
   flaggedOnly, onFlaggedOnly, sortKey, sortDir, onSort, experimental,
   projectUuid, analysisUuid, excludedResidues, onToggleExclusion,
+  noeThreshold, onNoeThreshold,
 }) => (
   <section className={sectionCls}>
     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -1134,6 +1181,16 @@ const ResidueTable: React.FC<ResidueTableProps> = ({
         <span className="text-xs text-slate-400">{residues.length} of {total}</span>
       </div>
       <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
+          hetNOE ≥
+          <input
+            className={`${inputCls} w-20`}
+            value={noeThreshold}
+            onChange={(e) => onNoeThreshold(e.target.value)}
+            aria-label="hetNOE exclusion threshold"
+            title="Residues below this are excluded. Leave blank to disable."
+          />
+        </label>
         <input
           className={`${inputCls} w-48`}
           placeholder="Filter residues…"

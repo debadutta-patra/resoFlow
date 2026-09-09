@@ -188,6 +188,18 @@ The trimmed mean and ±2σ band on the product plot are an orientation aid, not 
 
 Excluded residues are omitted from every plot and from the results table, and listed separately with their reason.
 
+### The hetNOE filter
+
+Residues whose hetNOE falls below a threshold are excluded. **The default cutoff is 0.65.**
+
+A low hetNOE marks a flexible tail or loop. Two things follow: J(0.87ω_H) for such a residue carries enormous relative error, because the NOE uncertainty propagates into it almost entirely; and its dynamics are not those of the folded core, so it should not be helping to set an overall tumbling time that describes the core.
+
+Set the cutoff in the **hetNOE ≥** box above the residue table. Leave it blank to switch the filter off entirely. Like manual exclusions it is applied on read, so changing it updates τ_m, the trimmed means and the plots immediately without a re-run.
+
+Filtered residues are **not** discarded. They stay in the table and the CSV with their J values and a reason naming both the measured hetNOE and the cutoff — "measured and set aside" needs to be distinguishable from "never measured". A residue excluded both by hand and by the cutoff reports both reasons.
+
+Note that a negative hetNOE, which the mapping computes and flags rather than refusing, falls below any sensible cutoff and so is excluded by default. The value is still there if you want it: set the threshold below it, or blank.
+
 ### Excluding residues
 
 Each row in the results table has an eye toggle, the same as the relaxation analyses. Excluding a residue **omits it from the summary** — the trimmed means, the τ_c estimate and the flag counts all recompute — and marks it in the CSV export and the PDF report.

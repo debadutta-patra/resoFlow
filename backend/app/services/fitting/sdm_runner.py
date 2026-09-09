@@ -393,6 +393,23 @@ def build_multifield_csv(payload: Dict[str, Any]) -> str:
 
 EXCLUDED_BY_USER = "excluded by user"
 
+DEFAULT_NOE_THRESHOLD = 0.65
+"""hetNOE below which a residue is excluded by default.
+
+Residues in flexible tails and loops carry a low hetNOE, and their
+J(0.87 wH) carries enormous relative error because the NOE error propagates
+into it almost entirely. They also should not be setting the overall
+tumbling time, which is a property of the folded core. Excluding them is
+therefore the usual practice.
+
+This is a FILTER, not a flag, and it is applied on read like the manual
+exclusion list -- so changing the threshold updates the summary immediately,
+and setting it to None turns the filter off entirely. The excluded residues
+stay in the payload with their values and a reason naming the threshold,
+because "measured and set aside" is a different statement from "never
+measured", and a reader must be able to tell which.
+"""
+
 # Flags derived from a residue's own inputs. These stand whatever else is in
 # the dataset, unlike the J(0) outlier flags, which are relative to the rest
 # of the residues and therefore change when the kept set changes.
@@ -402,6 +419,7 @@ _INPUT_DERIVED_FLAGS = ("negative_noe", "low_noe_precision", "negative_j")
 def apply_exclusions(
     payload: Dict[str, Any],
     excluded: Optional[Sequence[str]],
+    noe_threshold: Optional[float] = DEFAULT_NOE_THRESHOLD,
 ) -> Dict[str, Any]:
     """Mark excluded residues and recompute everything that depends on the set.
 
@@ -429,10 +447,31 @@ def apply_exclusions(
     result = dict(payload)
     rows = [dict(r) for r in residues]
 
+    threshold = noe_threshold if noe_threshold is not None else None
     for row in rows:
-        is_excluded = canonical_residue_key(str(row.get("assignment", ""))) in wanted
-        row["excluded"] = is_excluded
-        row["exclusion_reason"] = EXCLUDED_BY_USER if is_excluded else None
+        by_user = canonical_residue_key(str(row.get("assignment", ""))) in wanted
+        noe = row.get("noe")
+        below = (
+            threshold is not None
+            and isinstance(noe, (int, float))
+            and np.isfinite(noe)
+            and noe < threshold
+        )
+
+        row["excluded"] = bool(by_user or below)
+        if by_user and below:
+            # Both apply; say so rather than picking one and hiding the other.
+            row["exclusion_reason"] = (
+                f"{EXCLUDED_BY_USER}; hetNOE {noe:.3f} below threshold {threshold:g}"
+            )
+        elif by_user:
+            row["exclusion_reason"] = EXCLUDED_BY_USER
+        elif below:
+            row["exclusion_reason"] = (
+                f"hetNOE {noe:.3f} below threshold {threshold:g}"
+            )
+        else:
+            row["exclusion_reason"] = None
 
     kept = [r for r in rows if not r["excluded"]]
     if payload.get("mode") == "multi_field":
@@ -440,7 +479,13 @@ def apply_exclusions(
         # recompute; only the counts depend on the kept set.
         summary = dict(payload.get("summary", {}))
         summary["n_residues"] = len(kept)
-        summary["n_excluded_by_user"] = len(rows) - len(kept)
+        summary["n_excluded_by_user"] = sum(
+            1 for r in rows if r["excluded"] and EXCLUDED_BY_USER in (r["exclusion_reason"] or "")
+        )
+        summary["n_excluded_by_noe"] = sum(
+            1 for r in rows if r["excluded"] and "below threshold" in (r["exclusion_reason"] or "")
+        )
+        summary["noe_threshold"] = threshold
         summary["n_exchange_flagged"] = sum(
             1 for r in kept if (r.get("p_value") or 1.0) < 0.05
         )
@@ -457,6 +502,17 @@ def apply_exclusions(
     j0_ref = trimmed_mean(j0) if j0.size else float("nan")
     jwn_ref = trimmed_mean(jwn) if jwn.size else float("nan")
     jh_ref = trimmed_mean(jh) if jh.size else float("nan")
+
+    def _finite(value: float) -> Optional[float]:
+        """None rather than NaN for a statistic with nothing to compute from.
+
+        Excluding every residue -- easy to do now that the hetNOE filter has
+        a default -- leaves the trimmed means undefined. NaN is not JSON, so
+        returning it crashes the endpoint; None is both serialisable and the
+        honest answer, since there is no value rather than an unrepresentable
+        one.
+        """
+        return float(value) if np.isfinite(value) else None
 
     finite = j0[np.isfinite(j0)]
     if finite.size:
@@ -488,14 +544,22 @@ def apply_exclusions(
 
     summary = dict(payload.get("summary", {}))
     summary.update({
-        "j0_trimmed_mean": j0_ref,
-        "jwn_trimmed_mean": jwn_ref,
-        "jh_trimmed_mean": jh_ref,
+        "j0_trimmed_mean": _finite(j0_ref),
+        "jwn_trimmed_mean": _finite(jwn_ref),
+        "jh_trimmed_mean": _finite(jh_ref),
         "tau_c_estimate_s": tau_c,
         "tau_c_estimate_ns": tau_c * 1e9 if tau_c is not None else None,
         "n_residues": len(kept),
         "n_flagged": sum(1 for r in kept if r["flags"]),
-        "n_excluded_by_user": len(rows) - len(kept),
+        "n_excluded_by_user": sum(
+            1 for r in rows if r["excluded"]
+            and EXCLUDED_BY_USER in (r["exclusion_reason"] or "")
+        ),
+        "n_excluded_by_noe": sum(
+            1 for r in rows if r["excluded"]
+            and "below threshold" in (r["exclusion_reason"] or "")
+        ),
+        "noe_threshold": threshold,
         "flag_counts": flag_counts,
         "flag_descriptions": {
             k: FLAG_DESCRIPTIONS[k] for k in flag_counts if k in FLAG_DESCRIPTIONS

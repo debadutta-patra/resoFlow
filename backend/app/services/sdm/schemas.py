@@ -142,6 +142,14 @@ class SpectralDensityCreate(BaseModel):
         description="Monte Carlo replicates; ignored for the analytic path.",
     )
     seed: Optional[int] = None
+    noe_threshold: Optional[float] = Field(
+        default=0.65,
+        description=(
+            "Residues with a hetNOE below this are excluded. Null disables "
+            "the filter. Applied on read, so it can be changed without "
+            "re-running."
+        ),
+    )
     r2_provenance: R2Provenance = R2Provenance.ECHO_DECAY
     r1rho_tilt_angle_deg: Optional[float] = Field(
         default=None,
