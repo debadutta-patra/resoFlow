@@ -552,10 +552,36 @@ class UncertaintyResolver:
 
         return None
 
+    def available_fields(self, param_name: str, scope: str) -> List[str]:
+        """Static fields for which this residue parameter was fitted.
+
+        ChemEx writes one section per field for the field-dependent rates
+        (R1_A, R1_B, R2_A, R2_B), and the typed parser keeps them under their
+        full section names. Returns them ascending, or [] when the parameter
+        carries no field qualifier -- which is the single-field case and
+        needs no special handling.
+        """
+        from ..fitting.param_canonicalizer import canonicalize, parse_field_mhz
+
+        if not self.primary_step or scope not in self.primary_step.residues:
+            return []
+        res_obj = self.primary_step.residues[scope]
+
+        found: Dict[float, str] = {}
+        for section in getattr(res_obj, "parameters", {}):
+            key = canonicalize(section)
+            if key.name != param_name.upper() or key.field is None:
+                continue
+            mhz = parse_field_mhz(key.field)
+            if mhz is not None:
+                found[mhz] = key.field
+        return [found[mhz] for mhz in sorted(found)]
+
     def resolve(
         self,
         param_name: str,
         scope: str = "global",
+        field: Optional[str] = None,
     ) -> ResolvedParameter:
         """
         Main query interface: resolve uncertainty and status for (param_name, scope).
@@ -607,8 +633,24 @@ class UncertaintyResolver:
             # Residue parameter lookup
             if self.primary_step and scope_clean in self.primary_step.residues:
                 res_obj = self.primary_step.residues[scope_clean]
+
+                # When a field is requested, the full section name is the only
+                # reliable source: the convenience attributes (res_obj.r2_a
+                # and friends) hold whichever B0 block was seen last, so
+                # reading them for a multi-field fit silently picks a field.
+                attr_val = None
+                if field is not None:
+                    from ..fitting.param_canonicalizer import canonicalize
+
+                    for section, param in getattr(res_obj, "parameters", {}).items():
+                        key = canonicalize(section)
+                        if key.name == p_clean.upper() and key.matches_field(field):
+                            attr_val = param
+                            break
+
                 # Check specific attributes
-                attr_val = getattr(res_obj, p_clean, None)
+                if attr_val is None:
+                    attr_val = getattr(res_obj, p_clean, None)
                 if attr_val is not None and hasattr(attr_val, "value"):
                     value = attr_val.value
                     cov_stderr = attr_val.stderr if attr_val.has_stderr else None

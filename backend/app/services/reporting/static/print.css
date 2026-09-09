@@ -442,3 +442,19 @@ a.xref::after {
   margin: 0;
   padding: 0;
 }
+
+/* Field-labelled rates.
+   A multi-field fit carries one R1/R2 per static field; each is shown on its
+   own line with the field in MHz, since an unlabelled number would both hide
+   the other value and misattribute the one shown. */
+.rate-field {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.field-tag {
+  font-size: 6.5pt;
+  color: #6B7280;
+  margin-left: 2.5pt;
+  vertical-align: 0.35em;
+}

@@ -267,6 +267,30 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
     }
 
 
+def _rate_html(record: Any, attr: str, param_name: str) -> str:
+    """Render a field-dependent rate, labelled by field when there are several.
+
+    A multi-field fit has one R2,0 per static field -- in this repo's own
+    fixtures 5.83 s^-1 at 500 MHz against 7.94 at 800 -- so showing a single
+    unlabelled number is wrong twice over: it hides one value and misattributes
+    the other. Each field gets its own line with the field as a label.
+    """
+    entries = getattr(record, "rates_by_field", {}).get(param_name) or []
+    if len(entries) <= 1:
+        return format_with_error(getattr(record, attr), style="html",
+                                 include_unit=False)
+
+    parts = []
+    for field_label, resolved in entries:
+        mhz = field_label.upper().replace("MHZ", "").strip()
+        value = format_with_error(resolved, style="html", include_unit=False)
+        parts.append(
+            f'<span class="rate-field">{value}'
+            f'<span class="field-tag">{mhz}</span></span>'
+        )
+    return "<br>".join(parts)
+
+
 def build_index_data(
     model: ReportModel,
     front_pages: int = 2,
@@ -292,9 +316,9 @@ def build_index_data(
     for idx, r in enumerate(model.residues):
         chi2_red_str = f"{r.chi2_red:.2f}" if r.chi2_red is not None else "—"
         dw_html = format_with_error(r.dw, style="html", include_unit=False)
-        r2a_html = format_with_error(r.r2a, style="html", include_unit=False)
-        r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
-        r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
+        r2a_html = _rate_html(r, "r2a", "r2_a")
+        r2b_html = _rate_html(r, "r2b", "r2_b")
+        r1a_html = _rate_html(r, "r1a", "r1_a")
 
         rate_html = format_with_error(r.rate, style="html", include_unit=False) if r.rate else "—"
         amplitude_html = format_with_error(r.amplitude, style="html", include_unit=False) if r.amplitude else "—"
@@ -992,9 +1016,9 @@ def build_step_context(
     index_rows = []
     for r in step.residues:
         dw_html = format_with_error(r.dw, style="html", include_unit=False)
-        r2a_html = format_with_error(r.r2a, style="html", include_unit=False)
-        r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
-        r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
+        r2a_html = _rate_html(r, "r2a", "r2_a")
+        r2b_html = _rate_html(r, "r2b", "r2_b")
+        r1a_html = _rate_html(r, "r1a", "r1_a")
         rate_html = format_with_error(r.rate, style="html", include_unit=False) if r.rate else "—"
         amplitude_html = format_with_error(r.amplitude, style="html", include_unit=False) if r.amplitude else "—"
         rmse_str = f"{r.rmse:.4f}" if r.rmse is not None else "—"

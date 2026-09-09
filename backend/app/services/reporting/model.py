@@ -275,6 +275,17 @@ class ResidueRecord:
     res_num: Optional[int] = None
     res_name: Optional[str] = None
     rmse: Optional[float] = None
+    # Field-dependent rates, when the fit spanned more than one static field.
+    # {"r2_a": [("500.0MHZ", ResolvedParameter), ("800.0MHZ", ...)], ...}
+    # The scalar r2a/r2b/r1a attributes hold a single field's value, so for a
+    # multi-field fit they cannot be shown unlabelled.
+    rates_by_field: dict[str, list[tuple[str, ResolvedParameter]]] = field(
+        default_factory=dict
+    )
+
+    @property
+    def is_multi_field(self) -> bool:
+        return any(len(v) > 1 for v in self.rates_by_field.values())
 
     @property
     def has_flags(self) -> bool:
@@ -325,6 +336,13 @@ class ResidueRecord:
             d["res_name"] = self.res_name
         if self.rmse is not None:
             d["rmse"] = self.rmse
+        if self.rates_by_field:
+            d["rates_by_field"] = {
+                name: [
+                    {"field": f, **resolved_param_to_dict(p)} for f, p in entries
+                ]
+                for name, entries in self.rates_by_field.items()
+            }
         if self.decay_curve_data is not None:
             d["decay_curve_data"] = to_json_serializable(self.decay_curve_data)
         return d
@@ -697,6 +715,15 @@ def build_report_model(
 
             # Resolve parameters with uncertainties
             dw_res = resolver.resolve("dw_ab", raw_key)
+            rates_by_field: dict[str, list[tuple[str, ResolvedParameter]]] = {}
+            for rate_name in ("r1_a", "r2_a", "r2_b"):
+                fields = resolver.available_fields(rate_name, raw_key)
+                if len(fields) > 1:
+                    rates_by_field[rate_name] = [
+                        (f, resolver.resolve(rate_name, raw_key, field=f))
+                        for f in fields
+                    ]
+
             r1a_res = resolver.resolve("r1_a", raw_key)
             r2a_res = resolver.resolve("r2_a", raw_key)
             r2b_res = resolver.resolve("r2_b", raw_key)
@@ -733,6 +760,7 @@ def build_report_model(
                 csb=csb_res,
                 flags=flags,
                 experiments=r_data.get("experiments", []),
+                rates_by_field=rates_by_field,
             )
             residue_records.append(record)
 
