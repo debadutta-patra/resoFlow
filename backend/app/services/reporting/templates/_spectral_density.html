@@ -170,9 +170,52 @@
 </div>
 {% endif %}
 
+<h3>Spectral Densities</h3>
 <div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
   {{ spectral_density_data.profile_svg|safe }}
 </div>
+
+<div class="page-break"></div>
+<h3>Measured Relaxation Rates</h3>
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.rates_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  The three measurements the mapping consumes, on a shared residue axis so a
+  feature in a spectral density can be traced back to the rate that produced
+  it. A negative hetNOE is physically valid and marks flexible regions; it is
+  mapped rather than filtered, though J(0.87&omega;<sub>H</sub>) then carries
+  very large relative error.
+</p>
+
+<div class="page-break"></div>
+<h3>R<sub>2</sub>/R<sub>1</sub></h3>
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.r2_over_r1_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  The classic route to an overall correlation time without the NOE, but
+  <em>not</em> exchange-free: R<sub>ex</sub> inflates R<sub>2</sub> and so
+  inflates the ratio. An elevated point is ambiguous between slow tumbling,
+  diffusion anisotropy and chemical exchange, which is why the
+  R<sub>1</sub>&middot;R<sub>2</sub> product follows.
+</p>
+
+<div class="page-break"></div>
+<h3>R<sub>1</sub>&middot;R<sub>2</sub></h3>
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.r1r2_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  The product is far less sensitive to diffusion anisotropy than
+  R<sub>2</sub>/R<sub>1</sub>, because the anisotropy dependences of
+  R<sub>1</sub> and R<sub>2</sub> largely cancel in it. A residue standing
+  above the trimmed mean therefore points at chemical exchange rather than at
+  an orientation effect (Kneller, Lu &amp; Bracken, <em>JACS</em> 2002). The
+  trimmed mean and &plusmn;2&sigma; band are an orientation aid, not a
+  hypothesis test &mdash; the multi-field &chi;&sup2; is the test this module
+  offers.
+</p>
 
 <div class="page-break"></div>
 <h3>J(0) vs J(&omega;<sub>N</sub>) Correlation</h3>

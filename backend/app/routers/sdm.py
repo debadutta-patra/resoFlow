@@ -389,6 +389,7 @@ def generate_spectral_density_report(
         analysis_type=ANALYSIS_TYPE,
         style=style,
         palette=palette,
+        excluded_residues=_excluded_residues(analysis),
     )
     clean = re.sub(r"[^A-Za-z0-9_-]", "_", (analysis.name or "sdm").strip()).lower()
     filename = f"resoflow_sdm_{clean}_{analysis.analysis_uuid[:8]}.pdf"

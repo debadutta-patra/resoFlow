@@ -855,8 +855,21 @@ def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
     band = summary.get("systematic_band") or {}
     constants = payload.get("constants_snapshot", {})
 
+    # Excluded residues are listed in their own section, as they are in the
+    # CSV, rather than sitting in the main table where a reader would take
+    # them for part of the result.
+    included = [r for r in residues if not r.get("excluded")]
+    user_excluded = [
+        {
+            "residue": r.get("assignment"),
+            "res_num": r.get("res_num"),
+            "reason": r.get("exclusion_reason") or "excluded by user",
+        }
+        for r in residues if r.get("excluded")
+    ]
+
     rows = []
-    for r in residues:
+    for r in included:
         cov = r.get("covariance") or [[0.0] * 3 for _ in range(3)]
         rows.append({
             "assignment": r.get("assignment"),
@@ -876,10 +889,15 @@ def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
         })
 
     tau_ns = summary.get("tau_c_estimate_ns")
+    # Excluded residues are already marked on the payload; each figure drops
+    # them, so every plot agrees with the summary and with the table.
     return {
         "mode": "single_field",
         "profile_svg": figures.spectral_density_profile_plot(residues),
         "correlation_svg": figures.spectral_density_correlation_plot(residues, omega_n),
+        "rates_svg": figures.relaxation_rates_profile_plot(residues),
+        "r2_over_r1_svg": figures.r2_over_r1_plot(residues),
+        "r1r2_svg": figures.r1r2_product_plot(residues),
         "rows": rows,
         "experimental": bool(payload.get("experimental")),
         "experimental_notice": payload.get("experimental_notice"),
@@ -897,7 +915,7 @@ def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
         "n_excluded": summary.get("n_excluded"),
         "flag_counts": summary.get("flag_counts") or {},
         "flag_descriptions": summary.get("flag_descriptions") or {},
-        "excluded_residues": payload.get("excluded_residues") or [],
+        "excluded_residues": (payload.get("excluded_residues") or []) + user_excluded,
         "systematic_band": band,
         "systematic_band_pct": {
             "j0": (band.get("j0_fractional") or 0.0) * 100.0,

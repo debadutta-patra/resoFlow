@@ -774,9 +774,13 @@ def sequence_rate_plot(
 
 
 def _spectral_density_series(residues: List[Any]) -> Dict[str, np.ndarray]:
-    """Pull the J arrays out of SDM result rows, sorted along the sequence."""
+    """Pull the J arrays out of SDM result rows, sorted along the sequence.
+
+    Excluded residues are dropped, so the figures show the same set the
+    summary describes.
+    """
     nums, j0, jwn, jh, e0, ewn, eh, cov = [], [], [], [], [], [], [], []
-    for i, r in enumerate(residues):
+    for i, r in enumerate([r for r in residues if not r.get("excluded")]):
         num = r.get("res_num")
         if num is None:
             digits = re.findall(r"\d+", str(r.get("assignment", "")))
@@ -916,6 +920,207 @@ def spectral_density_correlation_plot(
             xy=(0.03, 0.10), xycoords="axes fraction", fontsize=7.5,
             color="#6B7280", va="bottom",
         )
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+def _rate_series(residues: List[Any]) -> Dict[str, np.ndarray]:
+    """Pull the measured rates out of SDM result rows, sorted along the sequence.
+
+    Excluded residues are dropped here rather than by the caller, so every
+    rate figure agrees with the spectral density ones and with the summary.
+    """
+    kept = [r for r in residues if not r.get("excluded")]
+    nums, r1, r1e, r2, r2e, noe, noee = [], [], [], [], [], [], []
+    for i, r in enumerate(kept):
+        num = r.get("res_num")
+        if num is None:
+            digits = re.findall(r"\d+", str(r.get("assignment", "")))
+            num = int(digits[0]) if digits else i + 1
+        nums.append(num)
+        r1.append(r.get("r1", np.nan))
+        r1e.append(r.get("r1_err", 0.0))
+        r2.append(r.get("r2", np.nan))
+        r2e.append(r.get("r2_err", 0.0))
+        noe.append(r.get("noe", np.nan))
+        noee.append(r.get("noe_err", 0.0))
+
+    order = np.argsort(np.asarray(nums)) if nums else np.array([], dtype=int)
+    take = lambda v: np.asarray(v, dtype=float)[order] if nums else np.array([])
+    return {
+        "res_num": np.asarray(nums)[order] if nums else np.array([]),
+        "r1": take(r1), "r1_err": take(r1e),
+        "r2": take(r2), "r2_err": take(r2e),
+        "noe": take(noe), "noe_err": take(noee),
+    }
+
+
+def _draw_sequence_panel(ax, x, y, yerr, ylabel, color, mean_label=True):
+    """One residue-number panel with error bars and a trimmed-mean line."""
+    ax.errorbar(
+        x, y, yerr=yerr, fmt="o-", color=color, markersize=4.0, linewidth=1.1,
+        capsize=2.0, alpha=0.9, zorder=3,
+    )
+    finite = y[np.isfinite(y)]
+    if finite.size and mean_label:
+        mean_v = float(np.mean(finite))
+        ax.axhline(mean_v, color="#6B7280", linestyle="--", linewidth=1.0,
+                   zorder=2, label=f"mean {mean_v:.3g}")
+        ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                  edgecolor="#E5E7EB", loc="upper right")
+    ax.set_ylabel(ylabel, fontsize=8.5)
+    ax.grid(True, linestyle=":", alpha=0.5)
+
+
+def relaxation_rates_profile_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """Three stacked panels: R1, R2 and the hetNOE against residue number.
+
+    These are the measured inputs to the mapping, plotted on a shared residue
+    axis so a feature in a spectral density can be traced back to whichever
+    rate produced it.
+    """
+    def _render():
+        data = _rate_series(residues)
+        if data["res_num"].size == 0:
+            return _svg(plt.subplots(figsize=(7.2, 1.0))[0])
+        colors = get_current_palette()
+        fig, axes = plt.subplots(3, 1, figsize=(7.2, 6.6), sharex=True)
+
+        panels = [
+            (axes[0], data["r1"], data["r1_err"], "R$_1$\n(s$^{-1}$)", colors[0]),
+            (axes[1], data["r2"], data["r2_err"], "R$_2$\n(s$^{-1}$)",
+             colors[1 % len(colors)]),
+            (axes[2], data["noe"], data["noe_err"], "hetNOE\n(I$_{sat}$/I$_{ref}$)",
+             colors[2 % len(colors)]),
+        ]
+        for ax, values, errors, label, color in panels:
+            _draw_sequence_panel(ax, data["res_num"], values, errors, label, color)
+
+        # The NOE is a ratio, and zero is a meaningful line on it: negative
+        # values are physically valid and mark flexible regions.
+        if np.any(data["noe"] < 0):
+            axes[2].axhline(0.0, color="#B45309", linestyle="-", linewidth=0.9,
+                            alpha=0.7, zorder=1)
+
+        axes[0].set_title("Measured Relaxation Rates vs Residue Number",
+                          fontsize=11.0, fontweight="bold", pad=10)
+        axes[-1].set_xlabel("Residue Number", fontsize=9.0)
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+def r2_over_r1_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """R2/R1 against residue number.
+
+    The ratio is the classic route to an overall correlation time without
+    needing the NOE, but it is NOT exchange-free: R_ex inflates R2 and so
+    inflates the ratio. Elevated points are therefore ambiguous between slow
+    tumbling, anisotropy and exchange -- which is exactly why the R1*R2
+    product is plotted alongside it.
+    """
+    def _render():
+        data = _rate_series(residues)
+        if data["res_num"].size == 0:
+            return _svg(plt.subplots(figsize=(7.2, 1.0))[0])
+        colors = get_current_palette()
+        fig, ax = plt.subplots(figsize=(7.2, 3.2))
+
+        r1, r2 = data["r1"], data["r2"]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = r2 / r1
+            # R1 and R2 are separate experiments, so their errors combine in
+            # quadrature on the relative scale.
+            rel = np.sqrt((data["r2_err"] / r2) ** 2 + (data["r1_err"] / r1) ** 2)
+            err = np.abs(ratio) * rel
+        ratio = np.where(np.isfinite(ratio), ratio, np.nan)
+        err = np.nan_to_num(err, nan=0.0, posinf=0.0)
+
+        _draw_sequence_panel(ax, data["res_num"], ratio, err,
+                             "R$_2$/R$_1$", colors[0])
+        ax.set_title("R$_2$/R$_1$ vs Residue Number", fontsize=11.0,
+                     fontweight="bold", pad=10)
+        ax.set_xlabel("Residue Number", fontsize=9.0)
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+def r1r2_product_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """R1*R2 against residue number.
+
+    The product is used as an exchange indicator because it is far less
+    sensitive to diffusion anisotropy than R2/R1 is: the anisotropy
+    dependences of R1 and R2 largely cancel in the product, so a residue
+    standing above the trimmed mean points at chemical exchange rather than
+    at an orientation effect. See Kneller, Lu & Bracken, JACS 2002.
+
+    A trimmed mean and a +2 sigma band are drawn as an orientation aid. They
+    are descriptive, not a hypothesis test -- the multi-field chi-square is
+    the test this package offers.
+    """
+    def _render():
+        data = _rate_series(residues)
+        if data["res_num"].size == 0:
+            return _svg(plt.subplots(figsize=(7.2, 1.0))[0])
+        colors = get_current_palette()
+        fig, ax = plt.subplots(figsize=(7.2, 3.2))
+
+        r1, r2 = data["r1"], data["r2"]
+        product = r1 * r2
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rel = np.sqrt((data["r1_err"] / r1) ** 2 + (data["r2_err"] / r2) ** 2)
+            err = np.abs(product) * rel
+        err = np.nan_to_num(err, nan=0.0, posinf=0.0)
+
+        _draw_sequence_panel(ax, data["res_num"], product, err,
+                             "R$_1$·R$_2$ (s$^{-2}$)", colors[0],
+                             mean_label=False)
+
+        finite = product[np.isfinite(product)]
+        if finite.size:
+            # Trimmed mean and a robust sigma, so the very residues being
+            # looked for do not set the reference they are judged against.
+            ordered = np.sort(finite)
+            k = int(np.floor(finite.size * 0.1))
+            core = ordered[k:finite.size - k] if 2 * k < finite.size else ordered
+            centre = float(np.mean(core))
+            mad = float(np.median(np.abs(finite - np.median(finite))))
+            sigma = mad * 1.4826 if mad > 0 else float(np.std(finite))
+
+            ax.axhline(centre, color="#6B7280", linestyle="--", linewidth=1.0,
+                       zorder=2, label=f"trimmed mean {centre:.3g}")
+            if sigma > 0:
+                ax.axhline(centre + 2 * sigma, color="#B45309", linestyle=":",
+                           linewidth=1.0, zorder=2, label="+2σ")
+            ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                      edgecolor="#E5E7EB", loc="upper right")
+
+        ax.set_title("R$_1$·R$_2$ vs Residue Number", fontsize=11.0,
+                     fontweight="bold", pad=10)
+        ax.set_xlabel("Residue Number", fontsize=9.0)
         fig.tight_layout()
         return _svg(fig)
 

@@ -138,6 +138,25 @@ Points carry **error ellipses**, not crossed error bars. J(0) and J(ω_N) are co
 
 > **Interpreting J(0).** Base RSDM assumes no chemical exchange. R₁ and the NOE carry no R_ex, so any exchange contribution lands *entirely* on J(0). An elevated J(0) is as consistent with microsecond–millisecond exchange as with slow overall tumbling, and the mapping alone cannot tell you which. This is the single easiest thing to over-interpret in an RSDM result.
 
+### The PDF report
+
+**Report** on the analysis produces a PDF containing, each on its own page:
+
+| Section | Contents |
+|---|---|
+| Spectral densities | J(0), J(ω_N) and J(0.87ω_H) vs residue, stacked on a shared axis |
+| Measured relaxation rates | R₁, R₂ and hetNOE vs residue, stacked the same way |
+| R₂/R₁ | the ratio, with its trimmed mean |
+| R₁·R₂ | the product, with a trimmed mean and ±2σ band |
+| J(0) vs J(ω_N) | the correlation plot with the rigid-rotor line and error ellipses |
+| Per-residue table | every mapped residue, plus flag meanings and exclusions |
+
+The two derived plots are there to be read together. **R₂/R₁** is the classic route to an overall correlation time without needing the NOE, but it is *not* exchange-free: R_ex inflates R₂ and so inflates the ratio, leaving an elevated point ambiguous between slow tumbling, diffusion anisotropy and exchange. **R₁·R₂** resolves part of that ambiguity, because the anisotropy dependences of R₁ and R₂ largely cancel in the product — so a residue standing above the trimmed mean points at chemical exchange rather than at an orientation effect (Kneller, Lu & Bracken, *JACS* 2002).
+
+The trimmed mean and ±2σ band on the product plot are an orientation aid, not a hypothesis test. The multi-field χ² is the test this module offers.
+
+Excluded residues are omitted from every plot and from the results table, and listed separately with their reason.
+
 ### Excluding residues
 
 Each row in the results table has an eye toggle, the same as the relaxation analyses. Excluding a residue **omits it from the summary** — the trimmed means, the τ_c estimate and the flag counts all recompute — and marks it in the CSV export and the PDF report.

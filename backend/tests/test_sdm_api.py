@@ -1148,12 +1148,100 @@ class TestResidueExclusion(TestSpectralDensityApi):
         self.assertIn("excluded by user", text)
 
     def test_report_reflects_exclusions(self):
+        """The PDF must drop excluded residues, not merely render.
+
+        Asserting only that a PDF came back is what let the report ignore the
+        exclusion list in the first place, so this checks the rendered
+        content.
+        """
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
         r1, r2, noe = self._spread_dataset()
         uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
-        self._exclude(uuid, ["V13N"])
-
         url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        run_dir = os.path.dirname(analysis.results_path)
+
+        before = render_html(
+            build_report_model(run_dir, analysis.name, analysis_type="SDM"),
+            style="screen",
+        )
+        self.assertIn("V13N", before)
+
+        self._exclude(uuid, ["V13N"])
+        self.db.expire_all()
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        after = render_html(
+            build_report_model(
+                run_dir, analysis.name, analysis_type="SDM",
+                excluded_residues=["V13N"],
+            ),
+            style="screen",
+        )
+        # It must leave the results table but be named in the excluded list,
+        # so a reader can see it was dropped rather than never measured.
+        head, _, tail = after.partition("Excluded Residues")
+        self.assertNotIn("V13N", head)
+        self.assertIn("V13N", tail)
+        self.assertIn("excluded by user", tail)
+
         resp = self.client.post(f"{url}/{uuid}/sdm/report",
                                 headers=self._auth(self.token_a))
         self.assertEqual(resp.status_code, 200, resp.text)
         self.assertTrue(resp.content.startswith(b"%PDF"))
+
+    def test_report_contains_every_plot_section(self):
+        """J(w), the rates, R2/R1 and R1*R2 all reach the report."""
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        html = render_html(
+            build_report_model(os.path.dirname(analysis.results_path),
+                               analysis.name, analysis_type="SDM"),
+            style="screen",
+        )
+
+        for heading in (
+            "Spectral Densities",
+            "Measured Relaxation Rates",
+            "R<sub>2</sub>/R<sub>1</sub>",
+            "R<sub>1</sub>&middot;R<sub>2</sub>",
+            "J(0) vs J(&omega;<sub>N</sub>) Correlation",
+        ):
+            self.assertIn(heading, html, heading)
+
+        # Five distinct figures, not one repeated. Asserted on the section's
+        # own context rather than by counting <svg> in the whole document,
+        # which also picks up the shared report furniture.
+        from app.services.reporting.render import build_spectral_density_data
+
+        section = build_spectral_density_data(
+            build_report_model(os.path.dirname(analysis.results_path),
+                               analysis.name, analysis_type="SDM")
+        )
+        figures = [
+            section["profile_svg"], section["rates_svg"],
+            section["r2_over_r1_svg"], section["r1r2_svg"],
+            section["correlation_svg"],
+        ]
+        self.assertTrue(all(f.startswith("<svg") for f in figures))
+        self.assertEqual(len(set(figures)), 5)
+
+        # The derived plots carry their interpretation, since R2/R1 is not
+        # exchange-free and the product is what discriminates.
+        self.assertIn("not</em> exchange-free", html)
+        self.assertIn("less sensitive to diffusion anisotropy", html)

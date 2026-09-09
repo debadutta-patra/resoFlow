@@ -512,10 +512,15 @@ def build_report_model(
         global_params: list[tuple[str, ResolvedParameter]] = []
         derived_kinetics: dict[str, DerivedKineticResult] = {}
         residue_records: list[ResidueRecord] = []
-        spectral_density = results_data
+
+        # Reuse the same exclusion pass the API and CSV use, so a residue the
+        # user turned off is greyed out of every output rather than only some.
+        from ..fitting.sdm_runner import apply_exclusions
+
+        spectral_density = apply_exclusions(results_data, excluded_residues)
 
         not_in_mod_tpl = dict(value=None, status=ParameterStatus.NOT_IN_MODEL)
-        for row in results_data.get("residues", []):
+        for row in spectral_density.get("residues", []):
             raw_key = str(row.get("assignment", ""))
             if is_residue_excluded(raw_key, excluded_residues, res_num=row.get("res_num")):
                 continue
