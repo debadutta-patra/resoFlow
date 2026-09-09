@@ -465,3 +465,58 @@ export function filterResidues(
     );
   });
 }
+
+
+export interface CorrelationFit {
+  alpha: number;
+  beta_ns_rad: number;
+  r: number;
+  roots_ns: number[];
+  selected_reason: string;
+}
+
+export interface CorrelationReference {
+  /** The least-squares fit the server derived τ_m from, when it made one. */
+  fit: { j0: number[]; jwn: number[]; label: string } | null;
+  /** The theoretical fixed-τ_c locus, used only when there is no fit. */
+  fallback: { j0: number[]; jwn: number[]; label: string } | null;
+}
+
+/**
+ * Choose which reference line the correlation plot draws.
+ *
+ * The server's least-squares fit wins whenever it exists, because that is
+ * the line τ_m was actually derived from — drawing a different line beside
+ * a τ_m taken from this one would misrepresent where the number came from.
+ * The theoretical fixed-τ_c locus is the fallback for a dataset too small
+ * to fit, which is also where the server falls back to the ratio method.
+ *
+ * Deliberately does NOT recompute τ_c: two derivations of one quantity in
+ * the same app will disagree, and the server's is the one the report, the
+ * CSV and the summary card all carry.
+ */
+export function correlationReference(
+  residues: SdmResidue[],
+  omegaN: number,
+  fit: CorrelationFit | null,
+  j0Max: number,
+): CorrelationReference {
+  if (fit) {
+    return {
+      fit: {
+        j0: [0, j0Max],
+        jwn: [fit.beta_ns_rad, fit.alpha * j0Max + fit.beta_ns_rad],
+        label: `fit: α=${fit.alpha.toFixed(4)}, β=${fit.beta_ns_rad.toFixed(3)}, r=${fit.r.toFixed(2)}`,
+      },
+      fallback: null,
+    };
+  }
+
+  const tauC = tauCFromResidues(residues, omegaN);
+  if (!tauC) return { fit: null, fallback: null };
+  const line = rigidRotorLine(omegaN, tauC, j0Max);
+  return {
+    fit: null,
+    fallback: { ...line, label: `τc = ${(tauC * 1e9).toFixed(2)} ns (S² varying)` },
+  };
+}

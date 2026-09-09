@@ -10,6 +10,7 @@ import {
   r2SourceType,
   filterResidues,
   includedResidues,
+  correlationReference,
   rigidRotorLine,
   rigidRotorSweep,
   tauCFromResidues,
@@ -515,5 +516,71 @@ describe('includedResidues', () => {
     const before = rows.map((r) => r.assignment);
     includedResidues(rows);
     expect(rows.map((r) => r.assignment)).toEqual(before);
+  });
+});
+
+describe('correlationReference', () => {
+  const omegaN = -3.8226e8;
+  const fit = {
+    alpha: -0.0046,
+    beta_ns_rad: 0.2754,
+    r: -0.19,
+    roots_ns: [0.74, 9.94, 140.61],
+    selected_reason: 'closest implied J(0)',
+  };
+  const rows = [
+    residue({ assignment: 'A1N', j0: 3.2, j_wn: 0.26 }),
+    residue({ assignment: 'A2N', j0: 3.4, j_wn: 0.27 }),
+    residue({ assignment: 'A3N', j0: 3.0, j_wn: 0.25 }),
+    residue({ assignment: 'A4N', j0: 3.6, j_wn: 0.28 }),
+  ];
+
+  it('draws the server fit when there is one', () => {
+    const ref = correlationReference(rows, omegaN, fit, 4);
+    expect(ref.fit).not.toBeNull();
+    expect(ref.fallback).toBeNull();
+  });
+
+  it('never draws the theoretical locus alongside the fit', () => {
+    // tau_m is derived from the fit; drawing a different line beside it
+    // would misrepresent where the number came from.
+    const ref = correlationReference(rows, omegaN, fit, 4);
+    expect(ref.fallback).toBeNull();
+  });
+
+  it('plots the fit as y = alpha x + beta', () => {
+    const j0Max = 4;
+    const { fit: line } = correlationReference(rows, omegaN, fit, j0Max);
+    expect(line!.j0).toEqual([0, j0Max]);
+    expect(line!.jwn[0]).toBeCloseTo(fit.beta_ns_rad, 12);
+    expect(line!.jwn[1]).toBeCloseTo(fit.alpha * j0Max + fit.beta_ns_rad, 12);
+  });
+
+  it('labels the fit with alpha, beta and r', () => {
+    const { fit: line } = correlationReference(rows, omegaN, fit, 4);
+    expect(line!.label).toContain('-0.0046');
+    expect(line!.label).toContain('0.275');
+    expect(line!.label).toContain('-0.19');
+  });
+
+  it('reproduces a nearly flat line for a nearly zero slope', () => {
+    // The published figure's fit lines look flat for exactly this reason.
+    const { fit: line } = correlationReference(rows, omegaN, fit, 4);
+    const slope = (line!.jwn[1] - line!.jwn[0]) / (line!.j0[1] - line!.j0[0]);
+    expect(Math.abs(slope)).toBeLessThan(0.01);
+  });
+
+  it('falls back to the theoretical locus only without a fit', () => {
+    const ref = correlationReference(rows, omegaN, null, 4);
+    expect(ref.fit).toBeNull();
+    expect(ref.fallback).not.toBeNull();
+    expect(ref.fallback!.label).toMatch(/τc = .* ns/);
+  });
+
+  it('draws nothing when there is neither a fit nor a usable tau_c', () => {
+    const flat = [residue({ assignment: 'X1N', j0: 0.2, j_wn: 0.5 })];
+    const ref = correlationReference(flat, omegaN, null, 4);
+    expect(ref.fit).toBeNull();
+    expect(ref.fallback).toBeNull();
   });
 });

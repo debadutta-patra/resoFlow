@@ -25,11 +25,11 @@ import {
   R_NH_PRESETS,
   R2_PROVENANCE_OPTIONS,
   r2SourceType,
-  rigidRotorLine,
+  correlationReference,
   rigidRotorSweep,
-  tauCFromResidues,
   sortResidues,
   validateConstants,
+  type CorrelationFit,
   type ConstantsForm,
   type R2Provenance,
   type SdmResidue,
@@ -660,6 +660,8 @@ export const SdmAnalysisManager: React.FC<SdmAnalysisManagerProps> = ({
             <CorrelationPlot
               residues={plottedResidues}
               omegaN={Number(results.physics_snapshot?.omega_n_rad_s ?? 0)}
+              fit={results.summary.correlation_fit ?? null}
+              tauCNs={results.summary.tau_c_estimate_ns}
             />
             <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
               Ellipses are 1σ contours from the full covariance, not independent error
@@ -983,10 +985,16 @@ const ProfilePlots: React.FC<{ residues: SdmResidue[] }> = ({ residues }) => {
   );
 };
 
-const CorrelationPlot: React.FC<{ residues: SdmResidue[]; omegaN: number }> = ({
-  residues,
-  omegaN,
-}) => {
+const CorrelationPlot: React.FC<{
+  residues: SdmResidue[];
+  omegaN: number;
+  /** The server's least-squares fit; the line tau_m is derived from. */
+  fit: CorrelationFit | null;
+  /** The server's tau_m. Not recomputed here: two derivations of the same
+      quantity in one app will disagree, and the server's is the one the
+      report and the CSV carry. */
+  tauCNs: number | null;
+}> = ({ residues, omegaN, fit, tauCNs }) => {
   // Math.min of an empty list is Infinity, which would poison the axis
   // bounds and the rigid-rotor curve.
   if (residues.length === 0) return <NoResiduesNotice />;
@@ -995,9 +1003,9 @@ const CorrelationPlot: React.FC<{ residues: SdmResidue[]; omegaN: number }> = ({
   // J(0) on x, J(wN) on y -- the conventional orientation, in which
   // exchange displaces a residue horizontally along the axis it contaminates.
   const j0Max = Math.max(...j0) * 1.2;
-  const tauC = tauCFromResidues(residues, omegaN);
   const sweep = rigidRotorSweep(omegaN, j0Max);
-  const line = tauC ? rigidRotorLine(omegaN, tauC, j0Max) : null;
+
+  const reference = correlationReference(residues, omegaN, fit, j0Max);
 
   // Covariance rows/columns are ordered [J(0), J(wN), J_h]; the plot puts
   // J(wN) on x and J(0) on y, so the block is picked out accordingly.
@@ -1033,14 +1041,24 @@ const CorrelationPlot: React.FC<{ residues: SdmResidue[]; omegaN: number }> = ({
             line: { color: PLOT_COLORS.neutral, width: 2, dash: 'dash' },
             name: 'Rigid rotor (τc sweep)',
           },
-          ...(line
+          ...(reference.fit
             ? [{
-                x: line.j0,
-                y: line.jwn,
+                x: reference.fit.j0,
+                y: reference.fit.jwn,
+                type: 'scatter' as const,
+                mode: 'lines' as const,
+                line: { color: PLOT_COLORS.warning, width: 2 },
+                name: reference.fit.label,
+              }]
+            : []),
+          ...(reference.fallback
+            ? [{
+                x: reference.fallback.j0,
+                y: reference.fallback.jwn,
                 type: 'scatter' as const,
                 mode: 'lines' as const,
                 line: { color: PLOT_COLORS.warning, width: 2, dash: 'dash' },
-                name: `τc = ${(tauC! * 1e9).toFixed(2)} ns (S² varying)`,
+                name: reference.fallback.label,
               }]
             : []),
           {
@@ -1056,6 +1074,11 @@ const CorrelationPlot: React.FC<{ residues: SdmResidue[]; omegaN: number }> = ({
         ]}
         layout={{
           margin: { l: 70, r: 20, b: 50, t: 24 },
+          annotations: tauCNs != null ? [{
+            xref: 'paper', yref: 'paper', x: 0.02, y: 0.98,
+            text: `<b>τm = ${tauCNs.toFixed(2)} ns</b>`,
+            showarrow: false, font: { size: 12 }, align: 'left',
+          }] : [],
           xaxis: { title: { text: 'J(0) (ns rad⁻¹)' }, rangemode: 'tozero' },
           yaxis: { title: { text: 'J(ω_N) (ns rad⁻¹)' }, rangemode: 'tozero' },
           legend: { orientation: 'h', y: -0.2 },
