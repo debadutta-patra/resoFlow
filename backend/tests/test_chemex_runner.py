@@ -14,6 +14,7 @@ from app.services.fitting.chemex_runner import (
     cancel_chemex_job,
     run_chemex_job,
     reap_orphaned_chemex_containers,
+    is_chemex_container_running,
 )
 
 
@@ -205,3 +206,40 @@ def test_cancellation_cleanup():
             assert (final_output / "old_result.txt").read_text() == "pre-existing good output"
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_cancel_chemex_job_podman3_socket_fallback():
+    """Verify cancellation falls back to /v3.0.0/libpod when /v4.0.0 returns 404."""
+    import app.services.fitting.chemex_runner as runner
+    runner._DETECTED_API_PREFIX = None
+
+    with patch("app.services.fitting.chemex_runner._podman_socket_request") as mock_sock:
+        # First call (/v4.0.0/.../stop): 404 Not Found (Podman 3.x)
+        # Second call (/v3.0.0/.../stop): 204 No Content (Success on fallback)
+        # Third call (/v3.0.0/...?force=true): 200 OK (Deletion)
+        mock_sock.side_effect = [(404, b"Not Found"), (204, b""), (200, b"")]
+        res = cancel_chemex_job("analysis-podman3", timeout=2)
+        assert res is True
+        assert mock_sock.call_count == 3
+        # Verify calls were routed to /v3.0.0
+        assert mock_sock.call_args_list[1][0][1].startswith("/v3.0.0/libpod/")
+        assert mock_sock.call_args_list[2][0][1].startswith("/v3.0.0/libpod/")
+
+    runner._DETECTED_API_PREFIX = None
+
+
+def test_is_chemex_container_running_podman3_socket_fallback():
+    """Verify running container check falls back to /v3.0.0/libpod when /v4.0.0 returns 404."""
+    import app.services.fitting.chemex_runner as runner
+    runner._DETECTED_API_PREFIX = None
+
+    with patch("app.services.fitting.chemex_runner._podman_socket_request") as mock_sock:
+        # First call (/v4.0.0): 404
+        # Second call (/v3.0.0): 200 with containers JSON
+        mock_sock.side_effect = [(404, b"Not Found"), (200, b'[{"Names":["rf-chemex-p3"]}]')]
+        res = is_chemex_container_running("p3")
+        assert res is True
+        assert mock_sock.call_count == 2
+        assert mock_sock.call_args_list[1][0][1].startswith("/v3.0.0/libpod/")
+
+    runner._DETECTED_API_PREFIX = None

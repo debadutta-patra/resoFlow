@@ -77,7 +77,7 @@ This archive is a standalone, self-contained distribution bundle for deploying *
 ## Prerequisites
 
 1. **Linux Workstation** (RHEL 9, Rocky Linux 9, Fedora, Ubuntu 22.04+, Debian 12+).
-2. **Podman 5.x** — if not installed on the system, the installer will automatically set up a
+2. **Podman 3.4+ or 5.x** — if not installed on the system, the installer will automatically set up a
    bundled static Podman binary (no root required). The only host-level dependencies are:
    - `newuidmap` / `newgidmap` (from `uidmap` or `shadow-utils`)
    - Entries in `/etc/subuid` and `/etc/subgid` for the installing user

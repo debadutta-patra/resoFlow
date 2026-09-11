@@ -67,17 +67,17 @@ resoFlow ships as a set of Podman containers (API, Celery worker, Postgres, Redi
 | Platform | Container runtime | Service supervisor | Units installed to |
 |---|---|---|---|
 | Linux, Podman 5.x | rootless Podman | systemd user units via [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html) | `~/.config/containers/systemd/` |
-| Linux, Podman 4.x | rootless Podman | systemd user units | `~/.config/systemd/user/` |
+| Linux, Podman 3.4+ / 4.x | rootless Podman | systemd user units | `~/.config/systemd/user/` |
 | Windows 10/11 | rootless Podman **inside WSL 2** | systemd user units inside the distro | `~/.config/...` inside WSL |
 | macOS 12+ | Podman machine (Linux VM) | `launchd` LaunchAgents | `~/Library/LaunchAgents/` |
 
-The installer picks the mode for you: Quadlet on Podman 5.x, systemd user services on Podman 4.x, launchd on macOS.
+The installer picks the mode for you: Quadlet on Podman 5.x, systemd user services on Podman 3.4+/4.x, launchd on macOS.
 
 ### Prerequisites
 
 Common to every platform:
 
-- **Podman 4.x or 5.x** (rootless) — on Linux, a standalone static Podman binary or archive can also be pointed to directly without root or system package manager installation
+- **Podman 3.4+ or 5.x** (rootless) — on Linux, Podman 3.4.x (such as default Ubuntu 22.04 LTS), 4.x, and 5.x are supported. A standalone static Podman binary or archive can also be pointed to directly without root or system package manager installation
 - `curl` — used by the installer's post-start health check
 - `openssl` for secret generation (falls back to `python3 -c "import secrets..."` if absent)
 - Roughly **2–3 GB** of disk for the built images (they share a common base layer), plus whatever your project data needs
@@ -170,11 +170,11 @@ resoFlow runs inside a WSL 2 Linux distro; the PowerShell script is a wrapper th
 **Before you start:**
 
 1. **Install WSL 2** — in an *elevated* PowerShell: `wsl --install`, then reboot and create your Linux user. (The installer script checks only that `wsl.exe` exists; it does not verify the WSL version or that a distro is present.)
-2. **Install Podman 4.0+ inside the distro.** The PowerShell script never checks for or installs Podman — `install.sh` will stop with an error if it's missing or too old. Note that Ubuntu 22.04 ships Podman 3.4, which is **not** supported; use Ubuntu 24.04 or a backport.
+2. **Install Podman 3.4+ inside the distro.** The PowerShell script never checks for or installs Podman — `install.sh` will stop with an error if it's missing or too old. Both Ubuntu 22.04 (ships Podman 3.4) and Ubuntu 24.04 (ships Podman 4.9) are supported out of the box.
    ```bash
    # inside WSL
    sudo apt update && sudo apt install -y podman
-   podman --version    # must be >= 4.0
+   podman --version    # must be >= 3.4
    ```
 3. **Clone the repo inside the WSL filesystem** (e.g. `~/resoFlow`), not on `C:\`. Repos under `/mnt/c` have no real Unix ownership, which breaks rootless Podman bind mounts and is markedly slower. The same applies to `-DataDir`.
 4. **Allow the script to run** — it is unsigned, so either launch it as below or set `Set-ExecutionPolicy -Scope Process Bypass` first.
@@ -266,7 +266,7 @@ For scripted/unattended installs on any platform, pass CLI flags:
 
 #### Using a static Podman binary (rootless / no root required)
 
-On Linux workstations where Podman is missing, locked to an older unsupported version (< 4.0, such as Ubuntu 22.04 default packages), or where you do not have root/sudo permissions to install system packages, you can point the installer directly to a standalone static Podman build (such as those provided by [podman-static](https://github.com/mgoltzsche/podman-static)):
+On Linux workstations where Podman is missing, locked to an older unsupported version (< 3.4), or where you do not have root/sudo permissions to install system packages, you can point the installer directly to a standalone static Podman build (such as those provided by [podman-static](https://github.com/mgoltzsche/podman-static)):
 
 ```bash
 # Point directly to an executable Podman binary:

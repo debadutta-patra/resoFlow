@@ -141,15 +141,33 @@ def _podman_socket_request(method: str, path: str):
         return None
 
 
+# Cached API prefix for Podman socket endpoints (/v4.0.0/libpod, /v3.0.0/libpod, or /v1.40)
+_DETECTED_API_PREFIX: Optional[str] = None
+
+
 def is_chemex_container_running(job_id: str) -> bool:
     """Check if the ephemeral ChemEx container for the given job_id is currently running."""
+    global _DETECTED_API_PREFIX
     container_name = get_container_name(job_id)
 
     # 1. Try Podman API socket first (works in containers without podman CLI)
     import urllib.parse
     import json
     filters = json.dumps({"name": [container_name], "status": ["running"]})
-    res = _podman_socket_request("GET", f"/v4.0.0/libpod/containers/json?filters={urllib.parse.quote(filters)}")
+    encoded_filters = urllib.parse.quote(filters)
+
+    prefix = _DETECTED_API_PREFIX or "/v4.0.0/libpod"
+    res = _podman_socket_request("GET", f"{prefix}/containers/json?filters={encoded_filters}")
+
+    # If initial /v4.0.0 endpoint returns 404 (Podman 3.x / Docker compat), probe fallback prefixes
+    if res is not None and res[0] == 404 and _DETECTED_API_PREFIX is None:
+        for candidate in ["/v3.0.0/libpod", "/v1.40"]:
+            probe = _podman_socket_request("GET", f"{candidate}/containers/json?filters={encoded_filters}")
+            if probe is not None and probe[0] == 200:
+                _DETECTED_API_PREFIX = candidate
+                res = probe
+                break
+
     if res is not None:
         status, data = res
         if status == 200:
@@ -177,13 +195,26 @@ def cancel_chemex_job(job_id: str, timeout: int = 2) -> bool:
     Cancel an active ChemEx fit by stopping and removing its deterministic container.
     Sends SIGTERM with a short grace period, followed by SIGKILL.
     """
+    global _DETECTED_API_PREFIX
     container_name = get_container_name(job_id)
     logger.info(f"Attempting to cancel ChemEx container: {container_name}")
 
     # 1. Try socket API
-    res = _podman_socket_request("POST", f"/v4.0.0/libpod/containers/{container_name}/stop?t={timeout}")
+    prefix = _DETECTED_API_PREFIX or "/v4.0.0/libpod"
+    res = _podman_socket_request("POST", f"{prefix}/containers/{container_name}/stop?t={timeout}")
+
+    # If /v4.0.0 endpoint returns 404 (Podman 3.x / Docker compat), probe fallback prefixes
+    if res is not None and res[0] == 404 and _DETECTED_API_PREFIX is None:
+        for candidate in ["/v3.0.0/libpod", "/v1.40"]:
+            probe = _podman_socket_request("POST", f"{candidate}/containers/{container_name}/stop?t={timeout}")
+            if probe is not None and probe[0] in (200, 204, 304):
+                _DETECTED_API_PREFIX = candidate
+                prefix = candidate
+                res = probe
+                break
+
     if res is not None and res[0] in (200, 204, 304):
-        _podman_socket_request("DELETE", f"/v4.0.0/libpod/containers/{container_name}?force=true")
+        _podman_socket_request("DELETE", f"{prefix}/containers/{container_name}?force=true")
         logger.info(f"Successfully cancelled container via Podman socket: {container_name}")
         return True
 
