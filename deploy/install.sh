@@ -333,14 +333,16 @@ export PATH="${PODMAN_BIN_DIR}:${PATH}"
 PODMAN_RAW_VER="$("${PODMAN_BIN}" --version 2>&1 || true)"
 PODMAN_VER="$(echo "${PODMAN_RAW_VER}" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)"
 PODMAN_MAJOR="$(echo "${PODMAN_VER}" | cut -d. -f1)"
+PODMAN_MINOR="$(echo "${PODMAN_VER}" | cut -d. -f2)"
+PODMAN_MINOR="${PODMAN_MINOR:-0}"
 
-if [ -z "${PODMAN_MAJOR}" ] || [ "${PODMAN_MAJOR}" -lt 4 ]; then
-    echo -e "${RED}Error: Podman 4.0 or higher is required.${NC}" >&2
+if [ -z "${PODMAN_MAJOR}" ] || [ "${PODMAN_MAJOR}" -lt 3 ] || { [ "${PODMAN_MAJOR}" -eq 3 ] && [ "${PODMAN_MINOR}" -lt 4 ]; }; then
+    echo -e "${RED}Error: Podman 3.4 or higher is required.${NC}" >&2
     echo -e "${RED}Detected: ${PODMAN_RAW_VER}${NC}" >&2
     if [ -n "${BUNDLED_PODMAN_ARCHIVE}" ] && [ "${IS_CUSTOM_PODMAN}" = false ]; then
         echo -e "${YELLOW}A bundled static Podman 5.x is available in this bundle. Re-run with: ./deploy/install.sh --use-bundled-podman${NC}" >&2
     else
-        echo -e "${YELLOW}Please upgrade Podman to version 4.x or 5.x, or specify a static binary with --podman PATH.${NC}" >&2
+        echo -e "${YELLOW}Please upgrade Podman to version 3.4+ (4.x/5.x recommended), or specify a static binary with --podman PATH.${NC}" >&2
     fi
     exit 1
 fi
@@ -625,6 +627,7 @@ RESOFLOW_SELINUX_MOUNT=${SELINUX_SETTING}
 WEB_PORT=${WEB_PORT}
 API_PORT=${API_PORT}
 PODMAN_BIN=${PODMAN_BIN}
+PODMAN_VERSION=${PODMAN_VER}
 ENVEOF
     chmod 600 "${ENV_FILE}"
     echo -e "${GREEN}✓ Generated ${ENV_FILE} with permissions 600.${NC}"
@@ -644,6 +647,7 @@ else
     update_env_var "WEB_PORT" "${WEB_PORT}"
     update_env_var "API_PORT" "${API_PORT}"
     update_env_var "PODMAN_BIN" "${PODMAN_BIN}"
+    update_env_var "PODMAN_VERSION" "${PODMAN_VER}"
     echo -e "${GREEN}✓ Updated ${ENV_FILE}.${NC}"
 fi
 
@@ -743,10 +747,22 @@ else
             "${src}" > "${dst}"
     }
 
+    POD_EXIT_POLICY="--exit-policy stop"
+    POD_STOP_IGNORE="--ignore"
+    POD_RM_IGNORE="--ignore"
+    if [ "${PODMAN_MAJOR}" -lt 4 ]; then
+        POD_EXIT_POLICY=""
+        POD_STOP_IGNORE=""
+        POD_RM_IGNORE=""
+    fi
+
     sed -e "s|/usr/bin/podman|${PODMAN_BIN}|g" \
         -e "s|__BIND_HOST__|${BIND_HOST}|g" \
         -e "s|__WEB_PORT__|${WEB_PORT}|g" \
-        "${SCRIPT_DIR}/systemd/resoflow-pod.service" > "${USER_SYSTEMD_DIR}/resoflow-pod.service"
+        -e "s|__POD_EXIT_POLICY__|${POD_EXIT_POLICY}|g" \
+        -e "s|__POD_STOP_IGNORE__|${POD_STOP_IGNORE}|g" \
+        -e "s|__POD_RM_IGNORE__|${POD_RM_IGNORE}|g" \
+        "${SCRIPT_DIR}/systemd/resoflow-pod.service" | sed -e 's/  */ /g' -e 's/ $//' > "${USER_SYSTEMD_DIR}/resoflow-pod.service"
 
     sed -e "s|/usr/bin/podman|${PODMAN_BIN}|g" \
         -e "s|Environment=PODMAN_SYSTEMD_UNIT=%n|Environment=PODMAN_SYSTEMD_UNIT=%n\nEnvironment=\"PATH=${PODMAN_BIN_DIR}:/usr/local/bin:/usr/bin:/bin\"|g" \

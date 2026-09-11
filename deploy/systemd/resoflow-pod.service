@@ -11,10 +11,10 @@ Type=forking
 Restart=on-failure
 PIDFile=%t/%N.pid
 ExecStartPre=-/usr/bin/podman pod rm -f resoflow
-ExecStartPre=/usr/bin/podman pod create --infra-conmon-pidfile=%t/%N.pid --replace --exit-policy stop --publish __BIND_HOST__:__WEB_PORT__:__WEB_PORT__ --infra-name resoflow-infra --name resoflow
+ExecStartPre=/usr/bin/podman pod create --infra-conmon-pidfile=%t/%N.pid --replace __POD_EXIT_POLICY__ --publish __BIND_HOST__:__WEB_PORT__:__WEB_PORT__ --infra-name resoflow-infra --name resoflow
 ExecStart=/usr/bin/podman pod start resoflow
-ExecStop=/usr/bin/podman pod stop --ignore --time=10 resoflow
-ExecStopPost=-/usr/bin/podman pod rm --ignore --force resoflow
+ExecStop=-/usr/bin/podman pod stop __POD_STOP_IGNORE__ --time=10 resoflow
+ExecStopPost=-/usr/bin/podman pod rm __POD_RM_IGNORE__ --force resoflow
 
 [Install]
 WantedBy=default.target
