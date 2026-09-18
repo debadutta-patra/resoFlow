@@ -72,4 +72,11 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+<<<<<<< Updated upstream
 backend/tests/fixtures/chemex_trees/single_step/plots_emerald_green.zip
+=======
+
+# Agent context artifacts (local only)
+/CLAUDE.md
+/docs/REPO_GRAPH.md
+>>>>>>> Stashed changes
