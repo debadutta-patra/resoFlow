@@ -142,7 +142,6 @@ class DatasetDiagnostics:
     """Dataset-level summary of a mapped set of residues."""
 
     tau_c_estimate: Optional[float]
-    tau_c_method: str
     correlation: Optional[TauMSolution]
     tau_c_j0_trimmed: float
     tau_c_jwn_trimmed: float
@@ -155,26 +154,12 @@ class DatasetDiagnostics:
     residues: List[ResidueDiagnostics]
 
     def to_dict(self) -> Dict[str, object]:
-        corr = self.correlation
         return {
             "tau_c_estimate_s": self.tau_c_estimate,
             "tau_c_estimate_ns": (
                 self.tau_c_estimate * 1e9 if self.tau_c_estimate is not None else None
             ),
-            "tau_c_method": self.tau_c_method,
-            "correlation_fit": (
-                {
-                    "alpha": corr.alpha,
-                    # Reported in ns rad^-1, the unit the source paper quotes
-                    # beta in and the unit the J values are displayed in.
-                    "beta_ns_rad": corr.beta * 1e9,
-                    "r": corr.r,
-                    "roots_ns": [t * 1e9 for t in corr.roots],
-                    "positive_roots_ns": [t * 1e9 for t in corr.positive_roots],
-                    "selected_reason": corr.selected_reason,
-                }
-                if corr else None
-            ),
+            "correlation_fit": correlation_fit_dict(self.correlation),
             "j0_trimmed_mean": self.j0_trimmed_mean,
             "jwn_trimmed_mean": self.jwn_trimmed_mean,
             "jh_trimmed_mean": self.jh_trimmed_mean,
@@ -260,27 +245,17 @@ def analyse(
             flag_counts[f] = flag_counts.get(f, 0) + 1
         residues.append(rd)
 
-    # Overall tumbling time. The correlation method of Lefevre, Dayie, Peng &
-    # Wagner (1996) uses the whole dataset -- fit J(wN) = alpha J(0) + beta,
-    # then solve the resulting cubic -- rather than a single ratio of trimmed
-    # means, so it is preferred. The ratio remains the fallback for datasets
-    # too small or too degenerate to fit a line to.
-    fit = fit_j_correlation(j0, jwn)
-    correlation = (
-        tau_m_from_correlation(fit, mapping.physics.omega_n, j0_reference=j0_ref)
-        if fit else None
-    )
-
-    if correlation is not None and correlation.tau_m is not None:
-        tau_global = correlation.tau_m
-        tau_method = "correlation"
-    else:
-        tau_global = tau_c_from_ratio(j0_ref, jwn_ref, mapping.physics.omega_n)
-        tau_method = "trimmed_ratio"
+    # Overall tumbling time, by the one route the whole application uses:
+    # fit J(wN) = alpha J(0) + beta over the dataset and take the root of the
+    # resulting cubic (Lefevre, Dayie, Peng & Wagner 1996). A dataset too
+    # small or too degenerate to fit gets no tau_m rather than a number from
+    # a second derivation, which would disagree with the roots reported
+    # beside it.
+    correlation = solve_tau_m(j0, jwn, mapping.physics.omega_n,
+                              j0_reference=j0_ref)
 
     return DatasetDiagnostics(
-        tau_c_estimate=tau_global,
-        tau_c_method=tau_method,
+        tau_c_estimate=correlation.tau_m if correlation else None,
         correlation=correlation,
         tau_c_j0_trimmed=j0_ref,
         tau_c_jwn_trimmed=jwn_ref,
@@ -391,6 +366,57 @@ class TauMSolution:
     r: float
 
 
+def solve_tau_m(
+    j0: Sequence[float],
+    jwn: Sequence[float],
+    omega_n: float,
+    j0_reference: Optional[float] = None,
+) -> Optional[TauMSolution]:
+    """Fit the J(omega_N)-J(0) line and solve its cubic for tau_m.
+
+    The single entry point for the overall tumbling time. Everything that
+    reports tau_m -- the run, the recompute after residues are excluded, the
+    report and the results view -- goes through here, so the number, the
+    roots printed beside it and the line drawn on the correlation plot all
+    come from one derivation.
+
+    Args and returns are in SECONDS and s rad^-1. Callers holding the
+    display units (ns rad^-1) must convert first; the ratio alpha is
+    unit-free but beta and tau_m are not.
+
+    Returns:
+        None when fewer than three finite pairs are available, or when they
+        carry no spread in J(0) -- there is no line to fit, so there is no
+        tau_m to report.
+    """
+    fit = fit_j_correlation(j0, jwn)
+    if fit is None:
+        return None
+    return tau_m_from_correlation(fit, omega_n, j0_reference=j0_reference)
+
+
+def correlation_fit_dict(
+    solution: Optional[TauMSolution],
+) -> Optional[Dict[str, object]]:
+    """Serialise a TauMSolution for the results payload.
+
+    Shared by the initial run and by the recompute that follows an exclusion
+    change, so the two cannot drift into reporting different keys or units.
+    """
+    if solution is None:
+        return None
+    return {
+        "alpha": solution.alpha,
+        # Reported in ns rad^-1, the unit the source paper quotes beta in and
+        # the unit the J values are displayed in.
+        "beta_ns_rad": solution.beta * 1e9,
+        "r": solution.r,
+        "roots_ns": [t * 1e9 for t in solution.roots],
+        "positive_roots_ns": [t * 1e9 for t in solution.positive_roots],
+        "selected_reason": solution.selected_reason,
+    }
+
+
 def tau_m_from_correlation(
     fit: JCorrelationFit,
     omega_n: float,
@@ -451,10 +477,7 @@ def tau_m_from_correlation(
 
     if not positive:
         tau_m = None
-        reason = (
-            "no positive real root; the fitted line is not consistent with a "
-            "rigid rotor"
-        )
+        reason = "the cubic has no positive real root"
     elif j0_reference is not None and np.isfinite(j0_reference) and j0_reference > 0:
         # Each root implies J(0) = (2/5) tau; pick the one that matches the
         # J(0) actually observed.
@@ -477,12 +500,6 @@ def tau_m_from_correlation(
             "no J(0) reference was supplied to check it against"
             if slow else
             "largest positive root; none clears omega_N*tau = 1"
-        )
-
-    if fit.alpha < 0:
-        reason += (
-            ". NOTE: the fitted slope is negative, which no rigid rotor can "
-            "produce, so tau_m from this fit is not well founded"
         )
 
     return TauMSolution(

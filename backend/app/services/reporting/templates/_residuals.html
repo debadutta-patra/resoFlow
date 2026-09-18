@@ -1,6 +1,6 @@
 <!-- backend/app/services/reporting/templates/_residuals.html -->
 <div class="page-break"></div>
-<h2>Detailed Residue Profiles &amp; Residuals</h2>
+<h2>Detailed Residue Profiles{% if detailed_shows_residuals %} &amp; Residuals{% endif %}</h2>
 {% for rec in detailed_residues %}
 <div class="residue-detail{% if not loop.first %} residue-detail-break{% endif %}">
   <h3>Residue {{ rec.display_name }} ({{ rec.dw_status }})</h3>

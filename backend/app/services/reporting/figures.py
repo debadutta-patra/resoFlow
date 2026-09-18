@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import io
-import math
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -576,32 +575,46 @@ def residuals_strip(
     return _svg(fig)
 
 
+def report_shows_residuals(analysis_type: Optional[str]) -> bool:
+    """Whether the report's per-residue figure carries a residuals strip.
+
+    A relaxation decay is a two-parameter fit to a handful of delay points,
+    and its goodness of fit is already reported as RMSD and chi2_red in the
+    table beside the curve. The strip added a panel that said nothing the
+    numbers did not, so relaxation reports carry the decay curve alone.
+    CEST and CPMG keep it: there the residuals across offset or nu_CPMG are
+    how a wrong exchange model shows itself.
+    """
+    return (analysis_type or "").upper() not in ("R1", "R2", "HETNOE")
+
+
 def detailed_residue_plot(
     rec: Any,
     analysis_type: str = "CEST",
     palette: Optional[str] = None,
 ) -> str:
-    """Generate composite SVG containing both profile and residuals strip."""
+    """Generate the report's per-residue SVG: profile, and residuals strip
+    beneath it for the analyses that report one."""
+    def _render():
+        if not report_shows_residuals(analysis_type):
+            fig, ax = plt.subplots(figsize=(6.4, 3.4))
+            _draw_dispersion_curve(ax, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
+            return _svg(fig)
+
+        fig = plt.figure(figsize=(6.4, 4.4))
+        gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
+        ax_profile = fig.add_subplot(gs[0])
+        ax_residual = fig.add_subplot(gs[1], sharex=ax_profile)
+
+        _draw_dispersion_curve(ax_profile, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
+        ax_profile.set_xlabel("")
+        _draw_residuals_strip(ax_residual, rec, analysis_type=analysis_type)
+        return _svg(fig)
+
     if palette:
         with apply_report_style(palette=palette):
-            fig = plt.figure(figsize=(6.4, 4.4))
-            gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
-            ax_profile = fig.add_subplot(gs[0])
-            ax_residual = fig.add_subplot(gs[1], sharex=ax_profile)
-
-            _draw_dispersion_curve(ax_profile, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
-            ax_profile.set_xlabel("")
-            _draw_residuals_strip(ax_residual, rec, analysis_type=analysis_type)
-            return _svg(fig)
-    fig = plt.figure(figsize=(6.4, 4.4))
-    gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
-    ax_profile = fig.add_subplot(gs[0])
-    ax_residual = fig.add_subplot(gs[1], sharex=ax_profile)
-
-    _draw_dispersion_curve(ax_profile, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
-    ax_profile.set_xlabel("")
-    _draw_residuals_strip(ax_residual, rec, analysis_type=analysis_type)
-    return _svg(fig)
+            return _render()
+    return _render()
 
 
 def kinetic_correlation_plot(
@@ -855,21 +868,6 @@ def spectral_density_profile_plot(
     return _render()
 
 
-def _trimmed_mean(values: np.ndarray, trim_fraction: float = 0.1) -> float:
-    """Symmetric trimmed mean, robust to the outliers the plot exists to show."""
-    v = np.asarray(values, dtype=float)
-    v = v[np.isfinite(v)]
-    if v.size == 0:
-        return float("nan")
-    if v.size < 3 or trim_fraction <= 0:
-        return float(np.mean(v))
-    k = int(math.floor(v.size * trim_fraction))
-    ordered = np.sort(v)
-    if 2 * k >= v.size:
-        return float(np.median(v))
-    return float(np.mean(ordered[k:v.size - k]))
-
-
 def spectral_density_correlation_plot(
     residues: List[Any],
     omega_n_rad_s: float,
@@ -905,9 +903,10 @@ def spectral_density_correlation_plot(
     region along one diagonal and understate it along the other.
 
     Args:
-        tau_c_s: overall correlation time in seconds. Derived from the
-            trimmed-mean J(0)/J(omega_N) ratio when omitted, which keeps the
-            reference robust to the very residues the plot exists to reveal.
+        tau_c_s: overall correlation time in seconds, as the analysis derived
+            it from the cubic. Nothing is recomputed here: a second
+            derivation drawn beside the reported number would disagree with
+            it, so without one the annotation is simply omitted.
     """
     def _render():
         data = _spectral_density_series(residues)
@@ -939,12 +938,7 @@ def spectral_density_correlation_plot(
 
         tau_c = tau_c_s
         if tau_c is None or not np.isfinite(tau_c) or tau_c <= 0:
-            j0_ref = _trimmed_mean(j0[good])
-            jwn_ref = _trimmed_mean(jwn[good])
-            ratio = j0_ref / jwn_ref if jwn_ref > 0 else 0.0
-            tau_c = (
-                math.sqrt(ratio - 1.0) / omega_n if ratio > 1.0 and omega_n else None
-            )
+            tau_c = None
 
         x_max = float(np.nanmax(j0[good])) * 1.2
 
@@ -972,13 +966,6 @@ def spectral_density_correlation_plot(
             ax.plot(line_x, alpha * line_x + beta_ns,
                     color=colors[1 % len(colors)], linestyle="-", linewidth=1.4,
                     zorder=1, label=label)
-        elif tau_c:
-            # Without a fit, fall back to the theoretical fixed-tau_c locus.
-            slope = 1.0 / (1.0 + (omega_n * tau_c) ** 2)
-            line_x = np.linspace(0.0, x_max, 50)
-            ax.plot(line_x, slope * line_x,
-                    color=colors[1 % len(colors)], linestyle="--", linewidth=1.4,
-                    zorder=1, label=f"τ$_c$ = {tau_c * 1e9:.2f} ns (S² varying)")
 
         if tau_c:
             ax.annotate(
@@ -987,7 +974,8 @@ def spectral_density_correlation_plot(
                 color="#374151", va="top", fontweight="bold",
             )
 
-        # Both references pass through the origin, so it belongs on the axes.
+        # The sweep starts at the origin and the fit is read at its
+        # intercept, so the origin belongs on the axes.
         ax.set_xlim(left=0.0, right=x_max)
         ax.set_ylim(bottom=0.0)
 

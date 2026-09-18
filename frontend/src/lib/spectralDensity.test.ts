@@ -11,9 +11,7 @@ import {
   filterResidues,
   includedResidues,
   correlationReference,
-  rigidRotorLine,
   rigidRotorSweep,
-  tauCFromResidues,
   sortResidues,
   validateConstants,
   type SdmResidue,
@@ -328,76 +326,6 @@ describe('rigidRotorSweep', () => {
   });
 });
 
-describe('rigidRotorLine', () => {
-  const omegaN = -3.8226e8;
-
-  it('passes through the origin', () => {
-    const { j0, jwn } = rigidRotorLine(omegaN, 9e-9, 4);
-    expect(j0[0]).toBe(0);
-    expect(jwn[0]).toBe(0);
-  });
-
-  it('has slope 1/(1 + (wN tau_c)^2) with J(0) on the abscissa', () => {
-    const tauC = 9e-9;
-    const { j0, jwn } = rigidRotorLine(omegaN, tauC, 4);
-    const slope = 1 / (1 + (Math.abs(omegaN) * tauC) ** 2);
-    for (let i = 1; i < j0.length; i += 1) {
-      expect(jwn[i] / j0[i]).toBeCloseTo(slope, 9);
-    }
-  });
-
-  it('is shallower for a longer correlation time', () => {
-    // A slower tumbler puts less spectral density at omega_N.
-    const short = rigidRotorLine(omegaN, 5e-9, 4);
-    const long = rigidRotorLine(omegaN, 12e-9, 4);
-    expect(long.jwn[1] / long.j0[1]).toBeLessThan(short.jwn[1] / short.j0[1]);
-  });
-
-  it('ignores the sign of omega_N', () => {
-    expect(rigidRotorLine(-3.8226e8, 9e-9, 4).jwn)
-      .toEqual(rigidRotorLine(3.8226e8, 9e-9, 4).jwn);
-  });
-});
-
-describe('tauCFromResidues', () => {
-  const omegaN = -3.8226e8;
-
-  const withRatio = (assignment: string, j0v: number, jwnv: number) =>
-    residue({ assignment, j0: j0v, j_wn: jwnv });
-
-  it('inverts J(0)/J(wN) = 1 + (wN tau_c)^2', () => {
-    const tauC = 9e-9;
-    const slope = 1 + (Math.abs(omegaN) * tauC) ** 2;
-    const rows = [1, 2, 3, 4, 5].map((i) => withRatio(`R${i}N`, 3.3, 3.3 / slope));
-    expect(tauCFromResidues(rows, omegaN)).toBeCloseTo(tauC, 12);
-  });
-
-  it('is robust to the outliers the plot exists to reveal', () => {
-    const tauC = 9e-9;
-    const slope = 1 + (Math.abs(omegaN) * tauC) ** 2;
-    const clean = Array.from({ length: 20 }, (_, i) =>
-      withRatio(`R${i}N`, 3.3, 3.3 / slope));
-    // Two residues with wildly inflated J(0), as a bad R2 fit produces.
-    const withOutliers = [
-      ...clean,
-      withRatio('X1N', 266, 0.28),
-      withRatio('X2N', 229, 0.28),
-    ];
-    const trimmed = tauCFromResidues(withOutliers, omegaN)!;
-    expect(trimmed).toBeCloseTo(tauC, 10);
-  });
-
-  it('returns null when the ratio is below 1', () => {
-    // No rigid rotor can give J(wN) > J(0).
-    const rows = [withRatio('R1N', 0.2, 0.5), withRatio('R2N', 0.2, 0.5)];
-    expect(tauCFromResidues(rows, omegaN)).toBeNull();
-  });
-
-  it('returns null for an empty set', () => {
-    expect(tauCFromResidues([], omegaN)).toBeNull();
-  });
-});
-
 const residue = (over: Partial<SdmResidue> = {}): SdmResidue => ({
   assignment: 'G10N',
   res_num: 10,
@@ -520,7 +448,6 @@ describe('includedResidues', () => {
 });
 
 describe('correlationReference', () => {
-  const omegaN = -3.8226e8;
   const fit = {
     alpha: -0.0046,
     beta_ns_rad: 0.2754,
@@ -528,36 +455,20 @@ describe('correlationReference', () => {
     roots_ns: [0.74, 9.94, 140.61],
     selected_reason: 'closest implied J(0)',
   };
-  const rows = [
-    residue({ assignment: 'A1N', j0: 3.2, j_wn: 0.26 }),
-    residue({ assignment: 'A2N', j0: 3.4, j_wn: 0.27 }),
-    residue({ assignment: 'A3N', j0: 3.0, j_wn: 0.25 }),
-    residue({ assignment: 'A4N', j0: 3.6, j_wn: 0.28 }),
-  ];
-
   it('draws the server fit when there is one', () => {
-    const ref = correlationReference(rows, omegaN, fit, 4);
-    expect(ref.fit).not.toBeNull();
-    expect(ref.fallback).toBeNull();
-  });
-
-  it('never draws the theoretical locus alongside the fit', () => {
-    // tau_m is derived from the fit; drawing a different line beside it
-    // would misrepresent where the number came from.
-    const ref = correlationReference(rows, omegaN, fit, 4);
-    expect(ref.fallback).toBeNull();
+    expect(correlationReference(fit, 4).fit).not.toBeNull();
   });
 
   it('plots the fit as y = alpha x + beta', () => {
     const j0Max = 4;
-    const { fit: line } = correlationReference(rows, omegaN, fit, j0Max);
+    const { fit: line } = correlationReference(fit, j0Max);
     expect(line!.j0).toEqual([0, j0Max]);
     expect(line!.jwn[0]).toBeCloseTo(fit.beta_ns_rad, 12);
     expect(line!.jwn[1]).toBeCloseTo(fit.alpha * j0Max + fit.beta_ns_rad, 12);
   });
 
   it('labels the fit with alpha, beta and r', () => {
-    const { fit: line } = correlationReference(rows, omegaN, fit, 4);
+    const { fit: line } = correlationReference(fit, 4);
     expect(line!.label).toContain('-0.0046');
     expect(line!.label).toContain('0.275');
     expect(line!.label).toContain('-0.19');
@@ -565,22 +476,15 @@ describe('correlationReference', () => {
 
   it('reproduces a nearly flat line for a nearly zero slope', () => {
     // The published figure's fit lines look flat for exactly this reason.
-    const { fit: line } = correlationReference(rows, omegaN, fit, 4);
+    const { fit: line } = correlationReference(fit, 4);
     const slope = (line!.jwn[1] - line!.jwn[0]) / (line!.j0[1] - line!.j0[0]);
     expect(Math.abs(slope)).toBeLessThan(0.01);
   });
 
-  it('falls back to the theoretical locus only without a fit', () => {
-    const ref = correlationReference(rows, omegaN, null, 4);
-    expect(ref.fit).toBeNull();
-    expect(ref.fallback).not.toBeNull();
-    expect(ref.fallback!.label).toMatch(/τc = .* ns/);
-  });
-
-  it('draws nothing when there is neither a fit nor a usable tau_c', () => {
-    const flat = [residue({ assignment: 'X1N', j0: 0.2, j_wn: 0.5 })];
-    const ref = correlationReference(flat, omegaN, null, 4);
-    expect(ref.fit).toBeNull();
-    expect(ref.fallback).toBeNull();
+  it('draws no line at all without a server fit', () => {
+    // tau_m comes from the cubic the server solved. A locus computed here
+    // instead would be a second derivation, disagreeing with the number
+    // printed beside it.
+    expect(correlationReference(null, 4).fit).toBeNull();
   });
 });

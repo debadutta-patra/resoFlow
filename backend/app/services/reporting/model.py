@@ -30,6 +30,7 @@ from .provenance import (
     ReportProvenance,
     DegreeOfFreedomAccounting,
 )
+from ..fitting.sdm_runner import NOE_THRESHOLD_UNSET
 from ..fitting.statistics_engine import clean_param_name
 
 logger = logging.getLogger(__name__)
@@ -448,7 +449,7 @@ def build_report_model(
     chemex_image_digest: Optional[str] = None,
     fixed_timestamp: Optional[str] = None,
     excluded_residues: Optional[Sequence[str]] = None,
-    noe_threshold: Optional[float] = None,
+    noe_threshold: Any = NOE_THRESHOLD_UNSET,
 ) -> ReportModel:
     """
     Build the canonical ReportModel from an analysis output directory.
@@ -516,15 +517,15 @@ def build_report_model(
 
         # Reuse the same exclusion pass the API and CSV use, so a residue the
         # user turned off is greyed out of every output rather than only some.
-        from ..fitting.sdm_runner import apply_exclusions
-
-        # None here means "use the mapper's default"; the router passes the
-        # analysis's own setting, including an explicit null to disable.
-        from ..fitting.sdm_runner import DEFAULT_NOE_THRESHOLD
+        # The caller passes the analysis's own hetNOE cutoff, an explicit None
+        # to disable it, or nothing at all for the default -- three distinct
+        # statements, which resolve_noe_threshold keeps distinct. Filtering a
+        # different set here than the results endpoint refits the correlation
+        # line and changes tau_m.
+        from ..fitting.sdm_runner import apply_exclusions, resolve_noe_threshold
 
         spectral_density = apply_exclusions(
-            results_data, excluded_residues,
-            DEFAULT_NOE_THRESHOLD if noe_threshold is None else noe_threshold,
+            results_data, excluded_residues, resolve_noe_threshold(noe_threshold),
         )
 
         not_in_mod_tpl = dict(value=None, status=ParameterStatus.NOT_IN_MODEL)

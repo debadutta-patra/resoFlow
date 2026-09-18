@@ -158,7 +158,7 @@
       <td><strong>&tau;<sub>m</sub> estimate</strong></td>
       <td>
         {{ "%.2f"|format(spectral_density_data.tau_c_ns) }} ns
-        <span style="font-size:7pt;color:#6B7280;">({{ spectral_density_data.tau_c_method }})</span>
+        <span style="font-size:7pt;color:#6B7280;">(root of the J(&omega;<sub>N</sub>)&ndash;J(0) cubic)</span>
       </td>
       <td><strong>Systematic band</strong></td>
       <td>
@@ -282,14 +282,13 @@
 </div>
 <p style="font-size:8pt;color:#4B5563;">
   J(0) is on the abscissa, so chemical exchange &mdash; which contaminates
-  J(0) alone &mdash; displaces a residue horizontally. Two references are
-  drawn: the <strong>&tau;<sub>c</sub> sweep</strong> traces where a rigid
-  isotropic rotor of any size would sit, rising to a maximum at
-  &omega;<sub>N</sub>&tau; = 1 and decaying after it; the
-  <strong>fixed-&tau;<sub>c</sub> line</strong> is the locus for this
-  dataset's &tau;<sub>c</sub> with S&sup2; varying, which is what actually
-  differs between residues of one protein, so it is the line they scatter
-  along.
+  J(0) alone &mdash; displaces a residue horizontally. The dashed
+  <strong>&tau;<sub>c</sub> sweep</strong> traces where an isotropic rotor of
+  any size would sit, rising to a maximum at &omega;<sub>N</sub>&tau; = 1 and
+  decaying after it, which locates the family in the plane. The solid line is
+  the <strong>least-squares fit</strong> above &mdash; the one line
+  &tau;<sub>m</sub> was derived from, so its quality can be judged by eye
+  next to the number it produced.
 </p>
 <p style="font-size:8pt;color:#4B5563;">
   Ellipses are 1&sigma; contours from the full covariance, not independent error

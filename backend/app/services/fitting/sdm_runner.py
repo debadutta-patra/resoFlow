@@ -37,12 +37,13 @@ from ...services.sdm import (
     SdmVariant,
     analyse,
     constants_from_presets,
+    correlation_fit_dict,
     custom_constants,
     field_physics,
     map_dataset,
     monte_carlo_covariance,
+    solve_tau_m,
     systematic_band,
-    tau_c_from_ratio,
     trimmed_mean,
 )
 from ...services.sdm.multifield import (
@@ -416,6 +417,40 @@ measured", and a reader must be able to tell which.
 _INPUT_DERIVED_FLAGS = ("negative_noe", "low_noe_precision", "negative_j")
 
 
+# Sentinel for "the caller did not say", which is NOT the same statement as
+# an explicit None. None means the user turned the hetNOE filter off; absent
+# means fall back to DEFAULT_NOE_THRESHOLD. Collapsing the two is how the
+# report came to filter at 0.65 while the analysis was set to 0.75, refit the
+# correlation line over a different set of residues, and print a tau_m that
+# disagreed with the one on the results page.
+NOE_THRESHOLD_UNSET: Any = object()
+
+
+def resolve_noe_threshold(value: Any = NOE_THRESHOLD_UNSET) -> Optional[float]:
+    """Settle an optional hetNOE cutoff against the sentinel above."""
+    return DEFAULT_NOE_THRESHOLD if value is NOE_THRESHOLD_UNSET else value
+
+
+def stored_noe_threshold(analysis) -> Optional[float]:
+    """The hetNOE cutoff recorded on an analysis.
+
+    The single reader of this setting, so the results endpoint, the CSV, the
+    interactive report and the PDF all filter the same residues. Absent means
+    the default rather than "off", so the filter applies uniformly; an
+    explicit null turns it off.
+    """
+    if not getattr(analysis, "parameters", None):
+        return DEFAULT_NOE_THRESHOLD
+    try:
+        params = json.loads(analysis.parameters)
+    except (TypeError, ValueError):
+        return DEFAULT_NOE_THRESHOLD
+    if not isinstance(params, dict) or "noeThreshold" not in params:
+        return DEFAULT_NOE_THRESHOLD
+    value = params["noeThreshold"]
+    return None if value is None else float(value)
+
+
 def apply_exclusions(
     payload: Dict[str, Any],
     excluded: Optional[Sequence[str]],
@@ -537,10 +572,25 @@ def apply_exclusions(
         for flag in row["flags"]:
             flag_counts[flag] = flag_counts.get(flag, 0) + 1
 
-    # J is stored in ns/rad; tau_c_from_ratio works on the ratio, which is
-    # unit-free, so the scale cancels and only omega_N sets the time unit.
+    # tau_m is refitted over the kept residues by the same route the run
+    # used -- the J(wN)-J(0) line and the root of its cubic -- so the summary
+    # card, the report and the roots printed beside them stay one derivation.
+    # Deriving it any other way here put a tau_m on the card that the roots
+    # underneath it did not imply.
+    #
+    # solve_tau_m works in s/rad while the payload carries ns/rad, so the
+    # inputs are converted going in and tau_m comes back in seconds.
     omega_n = float((payload.get("physics_snapshot") or {}).get("omega_n_rad_s") or 0.0)
-    tau_c = tau_c_from_ratio(j0_ref, jwn_ref, omega_n) if omega_n else None
+    solution = (
+        solve_tau_m(
+            j0 / S_RAD_TO_NS_RAD,
+            jwn / S_RAD_TO_NS_RAD,
+            omega_n,
+            j0_reference=(j0_ref / S_RAD_TO_NS_RAD if np.isfinite(j0_ref) else None),
+        )
+        if omega_n else None
+    )
+    tau_c = solution.tau_m if solution else None
 
     summary = dict(payload.get("summary", {}))
     summary.update({
@@ -549,6 +599,7 @@ def apply_exclusions(
         "jh_trimmed_mean": _finite(jh_ref),
         "tau_c_estimate_s": tau_c,
         "tau_c_estimate_ns": tau_c * 1e9 if tau_c is not None else None,
+        "correlation_fit": correlation_fit_dict(solution),
         "n_residues": len(kept),
         "n_flagged": sum(1 for r in kept if r["flags"]),
         "n_excluded_by_user": sum(

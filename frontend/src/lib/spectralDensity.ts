@@ -325,61 +325,6 @@ export function rigidRotorSweep(
   return { j0, jwn };
 }
 
-/**
- * The fixed-τ_c locus: J(ω_N) = J(0)/(1 + (ω_N τ_c)²).
- *
- * S² is what genuinely differs between residues of one protein, and both
- * spectral densities scale with it, so this straight line through the origin
- * is the reference residues actually scatter along.
- */
-export function rigidRotorLine(
-  omegaN: number,
-  tauCSeconds: number,
-  j0Max: number,
-  nPoints = 2,
-): { j0: number[]; jwn: number[] } {
-  const slope = 1 / (1 + (Math.abs(omegaN) * tauCSeconds) ** 2);
-  const j0: number[] = [];
-  const jwn: number[] = [];
-  const steps = Math.max(nPoints, 2);
-  for (let i = 0; i < steps; i += 1) {
-    const x = (j0Max * i) / (steps - 1);
-    j0.push(x);
-    jwn.push(slope * x);
-  }
-  return { j0, jwn };
-}
-
-/**
- * τ_c from the trimmed-mean J(0)/J(ω_N) ratio, in seconds.
- *
- * For a rigid isotropic rotor J(0)/J(ω_N) = 1 + (ω_N τ_c)². Trimmed so the
- * outliers the plot exists to reveal do not set the reference they are
- * judged against. Returns null when the ratio is below 1, which no rigid
- * rotor can produce.
- */
-export function tauCFromResidues(
-  rows: SdmResidue[],
-  omegaN: number,
-  trimFraction = 0.1,
-): number | null {
-  const trimmed = (values: number[]): number => {
-    const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
-    if (v.length === 0) return NaN;
-    if (v.length < 3) return v.reduce((a, b) => a + b, 0) / v.length;
-    const k = Math.floor(v.length * trimFraction);
-    const core = 2 * k < v.length ? v.slice(k, v.length - k) : v;
-    return core.reduce((a, b) => a + b, 0) / core.length;
-  };
-
-  const j0 = trimmed(rows.map((r) => r.j0));
-  const jwn = trimmed(rows.map((r) => r.j_wn));
-  if (!Number.isFinite(j0) || !Number.isFinite(jwn) || jwn <= 0) return null;
-  const ratio = j0 / jwn;
-  if (!(ratio > 1) || !omegaN) return null;
-  return Math.sqrt(ratio - 1) / Math.abs(omegaN);
-}
-
 export interface SdmResidue {
   assignment: string;
   res_num: number | null;
@@ -478,45 +423,27 @@ export interface CorrelationFit {
 export interface CorrelationReference {
   /** The least-squares fit the server derived τ_m from, when it made one. */
   fit: { j0: number[]; jwn: number[]; label: string } | null;
-  /** The theoretical fixed-τ_c locus, used only when there is no fit. */
-  fallback: { j0: number[]; jwn: number[]; label: string } | null;
 }
 
 /**
- * Choose which reference line the correlation plot draws.
+ * The reference line the correlation plot draws.
  *
- * The server's least-squares fit wins whenever it exists, because that is
- * the line τ_m was actually derived from — drawing a different line beside
- * a τ_m taken from this one would misrepresent where the number came from.
- * The theoretical fixed-τ_c locus is the fallback for a dataset too small
- * to fit, which is also where the server falls back to the ratio method.
- *
- * Deliberately does NOT recompute τ_c: two derivations of one quantity in
- * the same app will disagree, and the server's is the one the report, the
- * CSV and the summary card all carry.
+ * Only the server's least-squares fit, because that is the line τ_m was
+ * actually derived from — its cubic, its root. Nothing is recomputed here
+ * and there is no second line for a dataset the server could not fit: two
+ * derivations of one quantity in the same app will disagree, and the
+ * server's is the one the report, the CSV and the summary card all carry.
  */
 export function correlationReference(
-  residues: SdmResidue[],
-  omegaN: number,
   fit: CorrelationFit | null,
   j0Max: number,
 ): CorrelationReference {
-  if (fit) {
-    return {
-      fit: {
-        j0: [0, j0Max],
-        jwn: [fit.beta_ns_rad, fit.alpha * j0Max + fit.beta_ns_rad],
-        label: `fit: α=${fit.alpha.toFixed(4)}, β=${fit.beta_ns_rad.toFixed(3)}, r=${fit.r.toFixed(2)}`,
-      },
-      fallback: null,
-    };
-  }
-
-  const tauC = tauCFromResidues(residues, omegaN);
-  if (!tauC) return { fit: null, fallback: null };
-  const line = rigidRotorLine(omegaN, tauC, j0Max);
+  if (!fit) return { fit: null };
   return {
-    fit: null,
-    fallback: { ...line, label: `τc = ${(tauC * 1e9).toFixed(2)} ns (S² varying)` },
+    fit: {
+      j0: [0, j0Max],
+      jwn: [fit.beta_ns_rad, fit.alpha * j0Max + fit.beta_ns_rad],
+      label: `fit: α=${fit.alpha.toFixed(4)}, β=${fit.beta_ns_rad.toFixed(3)}, r=${fit.r.toFixed(2)}`,
+    },
   };
 }

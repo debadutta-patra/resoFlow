@@ -36,6 +36,7 @@ from sqlalchemy.pool import StaticPool
 
 from app import database, models, security
 from app.features import ENABLE_EXPERIMENTAL_SDM_REX
+from app.services.fitting.sdm_runner import NOE_THRESHOLD_UNSET
 from app.main import app
 
 ANALYSIS_URL = "/api/projects/{p}/analysis"
@@ -1046,9 +1047,9 @@ class TestResidueExclusion(TestSpectralDensityApi):
     def test_exclusion_changes_the_tau_c_estimate(self):
         """The summary must describe the residues actually shown.
 
-        tau_c comes from the trimmed means across residues, so leaving an
-        excluded outlier in the aggregate would put a number on the summary
-        card that does not match the table underneath it.
+        tau_m is refitted over the kept residues, so leaving an excluded
+        outlier in the aggregate would put a number on the summary card that
+        does not match the table underneath it.
         """
         r1, r2, noe = self._spread_dataset()
         uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
@@ -1061,6 +1062,29 @@ class TestResidueExclusion(TestSpectralDensityApi):
             before["j0_trimmed_mean"], after["j0_trimmed_mean"], places=6
         )
         self.assertIsNotNone(after["tau_c_estimate_ns"])
+
+    def test_tau_m_and_its_roots_stay_one_derivation_after_exclusion(self):
+        """The card's tau_m must be a root of the cubic printed beside it.
+
+        The recompute used to re-derive tau_m from the trimmed-mean
+        J(0)/J(wN) ratio while leaving the fit from the full set in place,
+        so the summary reported a number none of its own roots implied.
+        """
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        before = self._results(uuid)["summary"]["correlation_fit"]
+
+        self._exclude(uuid, ["V13N"])
+        summary = self._results(uuid)["summary"]
+        fit = summary["correlation_fit"]
+
+        self.assertIsNotNone(fit)
+        # Refitted, not carried over from the full set.
+        self.assertNotEqual(before["roots_ns"], fit["roots_ns"])
+        self.assertIn(
+            round(summary["tau_c_estimate_ns"], 9),
+            [round(t, 9) for t in fit["roots_ns"]],
+        )
 
     def test_per_residue_values_are_untouched_by_exclusion(self):
         """Each residue is an independent solve; excluding one cannot move another."""
@@ -1283,6 +1307,100 @@ class TestSharedReportEndpoints(TestSpectralDensityApi):
         self.assertEqual(resp.status_code, 200, resp.text[:400])
         self.assertTrue(resp.content.startswith(b"%PDF"))
 
+    def _noe_spread_sources(self):
+        """Eight residues whose hetNOE straddles the 0.65 default and 0.75.
+
+        The two cutoffs must keep different sets, or the test would pass on a
+        report that ignored the setting entirely. R2 varies so the kept
+        residues carry a spread in J(0) and the correlation line can be fitted.
+        """
+        assignments = [f"G{i}N" for i in range(10, 18)]
+        noes = [0.88, 0.85, 0.82, 0.79, 0.72, 0.70, 0.68, 0.66]
+        r2s = [11.4, 11.8, 12.2, 12.6, 13.0, 13.4, 13.8, 14.2]
+        n = len(assignments)
+        r1 = self._make_source(self.project, "R1", [1.35] * n, [0.03] * n, assignments)
+        r2 = self._make_source(self.project, "R2", r2s, [0.30] * n, assignments)
+        noe = self._make_source(self.project, "hetNOE", noes, [0.04] * n, assignments)
+        return r1, r2, noe
+
+    def _summary(self, uuid):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.get(f"{url}/{uuid}/sdm/results",
+                               headers=self._auth(self.token_a)).json()["results"]["summary"]
+
+    def _put_params(self, uuid, params):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.put(f"{url}/{uuid}", json={"parameters": json.dumps(params)},
+                               headers=self._auth(self.token_a))
+
+    def _report_section_at(self, uuid, threshold):
+        """The spectral density section the report builds at a given cutoff."""
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import build_spectral_density_data
+        from app.routers.analysis import _extract_excluded_residues
+
+        analysis = self.db.query(models.Analysis).filter(
+            models.Analysis.analysis_uuid == uuid).one()
+        model = build_report_model(
+            analysis_dir=os.path.dirname(analysis.results_path),
+            analysis_name=analysis.name,
+            analysis_type="SDM",
+            excluded_residues=_extract_excluded_residues(analysis),
+            noe_threshold=threshold,
+        )
+        return build_spectral_density_data(model)
+
+    def _report_section(self, uuid):
+        """The spectral density section as the shared report routes build it."""
+        from app.routers.analysis import _sdm_noe_threshold
+
+        analysis = self.db.query(models.Analysis).filter(
+            models.Analysis.analysis_uuid == uuid).one()
+        return self._report_section_at(uuid, _sdm_noe_threshold(analysis))
+
+    def test_report_filters_at_the_analysis_hetnoe_cutoff(self):
+        """The report must describe the residues the results page shows.
+
+        The report routes used to build without the analysis's cutoff, so it
+        filtered at the default while the analysis was set to something else.
+        tau_m is refitted over whatever survives the filter, so the two pages
+        printed different tumbling times for one analysis.
+        """
+        r1, r2, noe = self._noe_spread_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._put_params(uuid, {"noeThreshold": 0.75})
+        summary = self._summary(uuid)
+        section = self._report_section(uuid)
+
+        self.assertEqual(section["n_residues"], summary["n_residues"])
+        self.assertEqual(section["noe_threshold"], 0.75)
+        self.assertAlmostEqual(section["tau_c_ns"], summary["tau_c_estimate_ns"],
+                               places=9)
+        self.assertEqual(section["correlation_fit"]["roots_ns"],
+                         summary["correlation_fit"]["roots_ns"])
+
+        # The fixture has to straddle the two cutoffs, or this test would
+        # pass just as well against the bug it exists to catch.
+        default_section = self._report_section_at(uuid, NOE_THRESHOLD_UNSET)
+        self.assertGreater(default_section["n_residues"], section["n_residues"])
+        self.assertNotAlmostEqual(default_section["tau_c_ns"],
+                                  section["tau_c_ns"], places=6)
+
+    def test_report_honours_a_disabled_hetnoe_filter(self):
+        """An explicit null turns the filter off; it is not "unset"."""
+        r1, r2, noe = self._noe_spread_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._put_params(uuid, {"noeThreshold": None})
+        summary = self._summary(uuid)
+        section = self._report_section(uuid)
+
+        self.assertIsNone(section["noe_threshold"])
+        self.assertEqual(section["n_residues"], summary["n_residues"])
+        self.assertAlmostEqual(section["tau_c_ns"], summary["tau_c_estimate_ns"],
+                               places=9)
+
     def test_plot_archive_refuses_with_a_reason(self):
         """The one shared export SDM genuinely cannot serve.
 
@@ -1418,13 +1536,14 @@ class TestSdmReportOmitsInapplicableSections(TestSpectralDensityApi):
 
 
 class TestCorrelationPlotReference(TestSpectralDensityApi):
-    """J(0) on the abscissa, with both rigid-rotor references.
+    """J(0) on the abscissa, with the tau_c sweep and the fitted line.
 
     This is the conventional orientation: exchange contaminates J(0) alone,
-    so it displaces a residue horizontally. Two references are drawn because
-    they answer different questions -- the tau_c sweep locates the rigid-rotor
-    family in the plane, while the fixed-tau_c line is the locus residues of
-    one protein actually scatter along as S^2 varies.
+    so it displaces a residue horizontally. The dashed tau_c sweep locates
+    the family in the plane; the solid line is the least-squares fit the
+    analysis solved its cubic for, and it is drawn only when the analysis
+    supplies one -- a locus computed here instead would be a second
+    derivation, disagreeing with the tau_m printed beside it.
     """
 
     OMEGA_N = -3.8226e8
@@ -1444,7 +1563,11 @@ class TestCorrelationPlotReference(TestSpectralDensityApi):
         ]
 
     def _capture(self, rows, **kwargs):
-        """Render and return the dashed reference lines, by label."""
+        """Render and return the labelled reference lines, by label.
+
+        Both linestyles are collected now that the fit is the solid one --
+        capturing only dashes would report an empty plot as a passing one.
+        """
         import numpy as np
         from app.services.reporting import figures
 
@@ -1459,9 +1582,9 @@ class TestCorrelationPlotReference(TestSpectralDensityApi):
                     np.asarray(line.get_ydata(), dtype=float),
                 )
                 for line in ax.get_lines()
-                if line.get_linestyle() in ("--", "dashed")
-                and not str(line.get_label()).startswith("_")
+                if not str(line.get_label()).startswith("_")
             }
+            captured["texts"] = [t.get_text() for t in ax.texts]
             captured["xlabel"] = ax.get_xlabel()
             captured["ylabel"] = ax.get_ylabel()
             captured["xlim"] = ax.get_xlim()
@@ -1481,11 +1604,12 @@ class TestCorrelationPlotReference(TestSpectralDensityApi):
         self.assertIn("J(", captured["ylabel"])
         self.assertNotIn("J(0)", captured["ylabel"])
 
-    def test_both_references_are_drawn(self):
-        labels = list(self._capture(self._rows())["lines"])
+    def test_the_sweep_is_drawn_and_the_fit_beside_it(self):
+        fit = {"alpha": 0.0772, "beta_ns_rad": 0.2182, "r": 0.218}
+        labels = list(self._capture(self._rows(), correlation_fit=fit)["lines"])
         self.assertEqual(len(labels), 2, labels)
         self.assertTrue(any("sweep" in v for v in labels), labels)
-        self.assertTrue(any("S²" in v or "τ" in v for v in labels), labels)
+        self.assertTrue(any(v.startswith("fit:") for v in labels), labels)
 
     def test_sweep_peaks_at_omega_tau_equals_one(self):
         import numpy as np
@@ -1500,17 +1624,16 @@ class TestCorrelationPlotReference(TestSpectralDensityApi):
             float(x[peak]), 0.4 / abs(self.OMEGA_N) * 1e9, places=1
         )
 
-    def test_fixed_tau_line_is_straight_through_the_origin(self):
+    def test_the_fitted_line_is_the_one_the_analysis_supplied(self):
+        """Plotted as y = alpha x + beta, not refitted from the points."""
         import numpy as np
 
-        lines = self._capture(self._rows(), tau_c_s=self.TAU_C)["lines"]
-        x, y = next(v for k, v in lines.items() if "sweep" not in k)
-        slope = 1.0 / (1.0 + (abs(self.OMEGA_N) * self.TAU_C) ** 2)
+        fit = {"alpha": 0.0772, "beta_ns_rad": 0.2182, "r": 0.218}
+        lines = self._capture(self._rows(), correlation_fit=fit)["lines"]
+        x, y = next(v for k, v in lines.items() if k.startswith("fit:"))
 
-        self.assertAlmostEqual(float(x[0]), 0.0, places=12)
-        self.assertAlmostEqual(float(y[0]), 0.0, places=12)
-        nonzero = x > 0
-        self.assertTrue(np.allclose(y[nonzero] / x[nonzero], slope, rtol=1e-9))
+        self.assertTrue(np.allclose(
+            y, fit["alpha"] * x + fit["beta_ns_rad"], rtol=1e-9, atol=1e-12))
         self.assertTrue(np.all(np.diff(x) > 0))
 
     def test_origin_is_on_the_axes(self):
@@ -1519,22 +1642,25 @@ class TestCorrelationPlotReference(TestSpectralDensityApi):
         self.assertLessEqual(captured["xlim"][0], 0.0)
         self.assertLessEqual(captured["ylim"][0], 0.0)
 
-    def test_tau_c_is_derived_from_trimmed_means_when_not_supplied(self):
-        """The fallback must survive the outliers the plot exists to reveal."""
-        import numpy as np
+    def test_no_second_line_is_invented_without_a_fit(self):
+        """tau_m comes from the analysis's cubic, so the plot draws no rival.
 
-        rows = self._rows(20)
-        bad = dict(rows[0])
-        # Two failed R2 fits, the kind that put J(0) in the hundreds.
-        rows += [dict(bad, assignment="X1N", res_num=90, j0=266.0, j_wn=0.28),
-                 dict(bad, assignment="X2N", res_num=91, j0=229.0, j_wn=0.28)]
+        The figure used to fall back to a locus built from the trimmed-mean
+        J(0)/J(wN) ratio, which is a different derivation of the same
+        quantity and disagreed with the tau_m annotated on the same axes.
+        """
+        labels = list(self._capture(self._rows())["lines"])
+        self.assertEqual(len(labels), 1, labels)
+        self.assertIn("sweep", labels[0])
 
-        lines = self._capture(rows)["lines"]
-        x, y = next(v for k, v in lines.items() if "sweep" not in k)
-        nonzero = x > 0
-        recovered = float(np.mean(y[nonzero] / x[nonzero]))
-        expected = 1.0 / (1.0 + (abs(self.OMEGA_N) * self.TAU_C) ** 2)
-        self.assertAlmostEqual(recovered, expected, delta=0.05 * expected)
+    def test_the_annotated_tau_m_is_the_one_supplied(self):
+        """Never recomputed here: the report's number and the plot's agree."""
+        texts = self._capture(self._rows(), tau_c_s=self.TAU_C)["texts"]
+        self.assertTrue(any("9.00" in t for t in texts), texts)
+
+        # And nothing is annotated when the analysis derived no tau_m.
+        bare = self._capture(self._rows())["texts"]
+        self.assertFalse(any("τ$_m$" in t for t in bare), bare)
 
 
 class TestHetNoeFilter(TestSpectralDensityApi):

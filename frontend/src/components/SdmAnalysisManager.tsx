@@ -58,7 +58,6 @@ interface SdmResults {
   physics_snapshot: Record<string, number | string>;
   summary: {
     tau_c_estimate_ns: number | null;
-    tau_c_method?: string;
     correlation_fit?: {
       alpha: number;
       beta_ns_rad: number;
@@ -905,9 +904,7 @@ const SummaryCard: React.FC<{ results: SdmResults; experimental: boolean }> = ({
         <Stat
           label="τm estimate"
           value={s.tau_c_estimate_ns != null ? `${s.tau_c_estimate_ns.toFixed(2)} ns` : '—'}
-          hint={s.tau_c_method === 'correlation'
-            ? 'from the J(ωN)–J(0) fit'
-            : 'from ⟨J(0)⟩/⟨J(ωN)⟩, trimmed'}
+          hint="root of the J(ωN)–J(0) cubic"
         />
         <Stat label="Residues mapped" value={String(s.n_residues)} />
         <Stat label="Flagged" value={String(s.n_flagged)} hint="advisory, not dropped" />
@@ -1049,7 +1046,7 @@ const CorrelationPlot: React.FC<{
   const j0Max = Math.max(...j0) * 1.2;
   const sweep = rigidRotorSweep(omegaN, j0Max);
 
-  const reference = correlationReference(residues, omegaN, fit, j0Max);
+  const reference = correlationReference(fit, j0Max);
 
   // Covariance rows/columns are ordered [J(0), J(wN), J_h]; the plot puts
   // J(wN) on x and J(0) on y, so the block is picked out accordingly.
@@ -1093,16 +1090,6 @@ const CorrelationPlot: React.FC<{
                 mode: 'lines' as const,
                 line: { color: PLOT_COLORS.warning, width: 2 },
                 name: reference.fit.label,
-              }]
-            : []),
-          ...(reference.fallback
-            ? [{
-                x: reference.fallback.j0,
-                y: reference.fallback.jwn,
-                type: 'scatter' as const,
-                mode: 'lines' as const,
-                line: { color: PLOT_COLORS.warning, width: 2, dash: 'dash' },
-                name: reference.fallback.label,
               }]
             : []),
           {

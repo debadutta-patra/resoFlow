@@ -848,12 +848,18 @@ def test_selection_rejects_a_root_inconsistent_with_the_data():
     assert solution.tau_m * 1e9 < 20.0
 
 
-def test_negative_slope_is_called_out():
-    """No rigid rotor gives a falling J(wN) against J(0)."""
+def test_a_negative_slope_still_yields_the_data_consistent_root():
+    """A falling J(wN) against J(0) is reported, not editorialised.
+
+    The selection rule is the same either way -- the root whose implied J(0)
+    matches the observed one -- and the reason says which root was taken
+    rather than passing judgement on the slope.
+    """
     fit = JCorrelationFit(alpha=-0.0046, beta=0.2754e-9, r=-0.19, n=85)
     solution = tau_m_from_correlation(fit, _omega_n(600.0), j0_reference=3.19e-9)
-    assert "negative" in solution.selected_reason
-    assert "not well founded" in solution.selected_reason
+    assert solution.tau_m is not None
+    assert "implied J(0)" in solution.selected_reason
+    assert "rigid rotor" not in solution.selected_reason
 
 
 def test_every_root_is_reported_not_just_the_choice():
@@ -871,9 +877,10 @@ def test_no_positive_root_is_reported_as_such():
     if not solution.positive_roots:
         assert solution.tau_m is None
         assert "no positive real root" in solution.selected_reason
+        assert "rigid rotor" not in solution.selected_reason
 
 
-def test_analyse_prefers_the_correlation_method():
+def test_analyse_derives_tau_m_from_the_cubic():
     phys = field_physics(600e6, constants_from_presets("1.02", "-160"))
     params = [(0.85, 9e-9, 50e-12), (0.80, 9e-9, 80e-12), (0.75, 9e-9, 120e-12),
               (0.90, 9e-9, 40e-12), (0.70, 9e-9, 200e-12)]
@@ -888,7 +895,6 @@ def test_analyse_prefers_the_correlation_method():
     from app.services.sdm import analyse
 
     payload = analyse(result, noes, zeros).to_dict()
-    assert payload["tau_c_method"] == "correlation"
     assert payload["correlation_fit"] is not None
     assert payload["correlation_fit"]["roots_ns"]
     # A clean single-tau_c dataset must recover roughly that tau_c.

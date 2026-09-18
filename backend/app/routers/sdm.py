@@ -36,13 +36,13 @@ from sqlalchemy.orm import Session
 from .. import database, models
 from ..features import ENABLE_EXPERIMENTAL_SDM_REX, experimental_sdm_rex_enabled
 from ..services.fitting.sdm_runner import (
-    DEFAULT_NOE_THRESHOLD,
     apply_exclusions,
     build_csv,
     build_multifield_csv,
     run_mapping,
     run_multifield_mapping,
     sdm_run_dir,
+    stored_noe_threshold,
     write_results,
 )
 from ..services.fitting.sdm_sources import (
@@ -129,24 +129,6 @@ def _excluded_residues(analysis: models.Analysis) -> List[str]:
     return list(params.get("excludedResidues") or params.get("excluded_residues") or [])
 
 
-def _noe_threshold(analysis: models.Analysis) -> Optional[float]:
-    """The hetNOE cutoff for this analysis.
-
-    Absent means the default rather than "off", so the filter applies
-    uniformly; an explicit null turns it off.
-    """
-    if not analysis.parameters:
-        return DEFAULT_NOE_THRESHOLD
-    try:
-        params = json.loads(analysis.parameters)
-    except (TypeError, ValueError):
-        return DEFAULT_NOE_THRESHOLD
-    if "noeThreshold" not in params:
-        return DEFAULT_NOE_THRESHOLD
-    value = params["noeThreshold"]
-    return None if value is None else float(value)
-
-
 def _read_results(analysis: models.Analysis) -> Optional[Dict[str, Any]]:
     """Load results.json and apply the current exclusion list.
 
@@ -163,7 +145,7 @@ def _read_results(analysis: models.Analysis) -> Optional[Dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
     return apply_exclusions(
-        payload, _excluded_residues(analysis), _noe_threshold(analysis)
+        payload, _excluded_residues(analysis), stored_noe_threshold(analysis)
     )
 
 
@@ -413,7 +395,7 @@ def generate_spectral_density_report(
         style=style,
         palette=palette,
         excluded_residues=_excluded_residues(analysis),
-        noe_threshold=_noe_threshold(analysis),
+        noe_threshold=stored_noe_threshold(analysis),
     )
     clean = re.sub(r"[^A-Za-z0-9_-]", "_", (analysis.name or "sdm").strip()).lower()
     filename = f"resoflow_sdm_{clean}_{analysis.analysis_uuid[:8]}.pdf"

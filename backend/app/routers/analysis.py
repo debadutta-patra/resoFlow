@@ -21,6 +21,7 @@ from ..services.fitting.relaxation import (
     fit_exponential_decay,
 )
 from ..services.fitting.relaxation_tasks import run_relaxation_analysis_task
+from ..services.fitting.sdm_runner import NOE_THRESHOLD_UNSET, stored_noe_threshold
 from .deps import get_project, get_analysis
 from ..celery_app import celery_app
 from ..services.fitting.cest_report import generate_cest_pdf_report
@@ -1236,6 +1237,20 @@ def restore_cest_analysis(
 
 
 
+def _sdm_noe_threshold(analysis: models.Analysis):
+    """The hetNOE cutoff a report must filter at.
+
+    Only SDM analyses have one; everything else passes the sentinel so the
+    shared builder leaves the setting alone. Without this the report filtered
+    at the default while the analysis was set to something else, refitting the
+    J(wN)-J(0) line over a different residue set and printing a tau_m that
+    disagreed with the results page.
+    """
+    if (analysis.analysis_type or "").upper() != "SDM":
+        return NOE_THRESHOLD_UNSET
+    return stored_noe_threshold(analysis)
+
+
 def _extract_excluded_residues(analysis: models.Analysis) -> Optional[List[str]]:
     if not analysis.parameters:
         return None
@@ -1269,6 +1284,7 @@ def _render_analysis_html(
             analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
             excluded_residues=excluded,
+            noe_threshold=_sdm_noe_threshold(analysis),
         )
         html_str = render_html(model, style=style, palette=palette)
         return HTMLResponse(content=html_str)
@@ -1296,6 +1312,7 @@ def _render_analysis_json(analysis: models.Analysis) -> Response:
             analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
             excluded_residues=excluded,
+            noe_threshold=_sdm_noe_threshold(analysis),
         )
         json_str = json.dumps(model.to_dict())
         return Response(content=json_str, media_type="application/json")
@@ -1344,6 +1361,7 @@ def _render_or_serve_pdf(
             palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
             excluded_residues=excluded,
+            noe_threshold=_sdm_noe_threshold(analysis),
         )
         try:
             with open(pdf_path, "wb") as f:
