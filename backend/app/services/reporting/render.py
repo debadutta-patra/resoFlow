@@ -267,6 +267,30 @@ def build_summary_data(model: ReportModel) -> Dict[str, Any]:
     }
 
 
+def _rate_html(record: Any, attr: str, param_name: str) -> str:
+    """Render a field-dependent rate, labelled by field when there are several.
+
+    A multi-field fit has one R2,0 per static field -- in this repo's own
+    fixtures 5.83 s^-1 at 500 MHz against 7.94 at 800 -- so showing a single
+    unlabelled number is wrong twice over: it hides one value and misattributes
+    the other. Each field gets its own line with the field as a label.
+    """
+    entries = getattr(record, "rates_by_field", {}).get(param_name) or []
+    if len(entries) <= 1:
+        return format_with_error(getattr(record, attr), style="html",
+                                 include_unit=False)
+
+    parts = []
+    for field_label, resolved in entries:
+        mhz = field_label.upper().replace("MHZ", "").strip()
+        value = format_with_error(resolved, style="html", include_unit=False)
+        parts.append(
+            f'<span class="rate-field">{value}'
+            f'<span class="field-tag">{mhz}</span></span>'
+        )
+    return "<br>".join(parts)
+
+
 def build_index_data(
     model: ReportModel,
     front_pages: int = 2,
@@ -292,9 +316,9 @@ def build_index_data(
     for idx, r in enumerate(model.residues):
         chi2_red_str = f"{r.chi2_red:.2f}" if r.chi2_red is not None else "—"
         dw_html = format_with_error(r.dw, style="html", include_unit=False)
-        r2a_html = format_with_error(r.r2a, style="html", include_unit=False)
-        r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
-        r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
+        r2a_html = _rate_html(r, "r2a", "r2_a")
+        r2b_html = _rate_html(r, "r2b", "r2_b")
+        r1a_html = _rate_html(r, "r1a", "r1_a")
 
         rate_html = format_with_error(r.rate, style="html", include_unit=False) if r.rate else "—"
         amplitude_html = format_with_error(r.amplitude, style="html", include_unit=False) if r.amplitude else "—"
@@ -646,8 +670,12 @@ def _build_covariance_corr_mat(labels: List[str]) -> np.ndarray:
     return corr_mat
 
 
-def build_statistics_data(model: ReportModel) -> Optional[Dict[str, Any]]:
-    """Render distributions (SVG) and correlation heatmap (300 dpi base64 PNG) for statistics."""
+def build_statistics_data(model: Union[ReportModel, StepReportModel]) -> Optional[Dict[str, Any]]:
+    """Render distributions (SVG) and correlation heatmap (300 dpi base64 PNG) for statistics.
+
+    Accepts either the whole-report model or a single step of a multi-step fit; both
+    carry the resampled cache and the document-level residue exclusion list.
+    """
     # Case A: Resampled cache available
     if model.resampled:
         methods = []
@@ -746,6 +774,163 @@ def build_statistics_data(model: ReportModel) -> Optional[Dict[str, Any]]:
         }
 
     return None
+
+
+def _build_multifield_section(
+    payload: Dict[str, Any], residues: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Render the EXPERIMENTAL multi-field consistency section.
+
+    The payload shape differs from a single-field run -- per-field blocks, a
+    chi-square and a p-value instead of one J triple with a covariance -- so
+    it gets its own context and its own half of the template rather than
+    being forced through the single-field one.
+    """
+    summary = payload.get("summary", {})
+    fields = payload.get("fields_mhz", [])
+    constants = payload.get("constants_snapshot", {})
+
+    rows = []
+    for r in residues:
+        scaling = r.get("scaling_exponent") or {}
+        rows.append({
+            "assignment": r.get("assignment"),
+            "res_num": r.get("res_num"),
+            "j0": r.get("j0"),
+            "j0_err": r.get("j0_err"),
+            "chi2": r.get("chi2"),
+            "p_value": r.get("p_value"),
+            "alpha": scaling.get("alpha"),
+            "alpha_err": scaling.get("alpha_err"),
+            "significant": (r.get("p_value") or 1.0) < 0.05,
+            "per_field": r.get("per_field") or [],
+        })
+
+    return {
+        "mode": "multi_field",
+        "rows": rows,
+        "fields_mhz": fields,
+        "experimental": True,
+        "experimental_notice": payload.get("experimental_notice"),
+        "j0_caveat": payload.get("j0_caveat"),
+        "multifield_caveat": payload.get("multifield_caveat"),
+        "variant": payload.get("variant"),
+        "r_nh_angstrom": constants.get("r_nh_angstrom"),
+        "delta_sigma_ppm": constants.get("delta_sigma_ppm"),
+        "n_fields": summary.get("n_fields"),
+        "dof": summary.get("dof"),
+        "n_residues": summary.get("n_residues"),
+        "n_exchange_flagged": summary.get("n_exchange_flagged"),
+        "median_chi2": summary.get("median_chi2"),
+        "median_alpha": summary.get("median_alpha"),
+        "scaling_available": summary.get("scaling_available"),
+        "scaling_unavailable_reason": summary.get("scaling_unavailable_reason"),
+        "n_excluded": summary.get("n_excluded"),
+        "excluded_residues": payload.get("excluded_residues") or [],
+    }
+
+
+def build_spectral_density_data(model: ReportModel) -> Optional[Dict[str, Any]]:
+    """Render the spectral density section: profiles, correlation plot, table.
+
+    Returns None for any analysis that is not a spectral density mapping, so
+    the section simply does not appear in other reports.
+    """
+    payload = getattr(model, "spectral_density", None)
+    if not payload:
+        return None
+
+    residues = payload.get("residues") or []
+    if not residues:
+        return None
+
+    if payload.get("mode") == "multi_field":
+        return _build_multifield_section(payload, residues)
+
+    omega_n = float(
+        (payload.get("physics_snapshot") or {}).get("omega_n_rad_s") or 0.0
+    )
+
+    summary = payload.get("summary", {})
+    band = summary.get("systematic_band") or {}
+    constants = payload.get("constants_snapshot", {})
+
+    # Excluded residues are listed in their own section, as they are in the
+    # CSV, rather than sitting in the main table where a reader would take
+    # them for part of the result.
+    included = [r for r in residues if not r.get("excluded")]
+    user_excluded = [
+        {
+            "residue": r.get("assignment"),
+            "res_num": r.get("res_num"),
+            "reason": r.get("exclusion_reason") or "excluded by user",
+        }
+        for r in residues if r.get("excluded")
+    ]
+
+    rows = []
+    for r in included:
+        cov = r.get("covariance") or [[0.0] * 3 for _ in range(3)]
+        rows.append({
+            "assignment": r.get("assignment"),
+            "res_num": r.get("res_num"),
+            "res_name": r.get("res_name"),
+            "j0": r.get("j0"),
+            "j0_err": r.get("j0_err"),
+            "j_wn": r.get("j_wn"),
+            "j_wn_err": r.get("j_wn_err"),
+            "j_h": r.get("j_h"),
+            "j_h_err": r.get("j_h_err"),
+            "cov_j0_jwn": cov[0][1],
+            "r1": r.get("r1"),
+            "r2": r.get("r2"),
+            "noe": r.get("noe"),
+            "flags": r.get("flags") or [],
+        })
+
+    tau_ns = summary.get("tau_c_estimate_ns")
+    # Excluded residues are already marked on the payload; each figure drops
+    # them, so every plot agrees with the summary and with the table.
+    return {
+        "mode": "single_field",
+        "profile_svg": figures.spectral_density_profile_plot(residues),
+        "correlation_svg": figures.spectral_density_correlation_plot(
+            residues, omega_n,
+            tau_c_s=summary.get("tau_c_estimate_s"),
+            correlation_fit=summary.get("correlation_fit"),
+        ),
+        "rates_svg": figures.relaxation_rates_profile_plot(residues),
+        "r2_over_r1_svg": figures.r2_over_r1_plot(residues),
+        "r1r2_svg": figures.r1r2_product_plot(residues),
+        "rows": rows,
+        "experimental": bool(payload.get("experimental")),
+        "experimental_notice": payload.get("experimental_notice"),
+        "j0_caveat": payload.get("j0_caveat"),
+        "b0_h_mhz": payload.get("b0_h_mhz"),
+        "variant": payload.get("variant"),
+        "error_method": payload.get("error_method"),
+        "rex_source": payload.get("rex_source"),
+        "r2_provenance": payload.get("r2_provenance"),
+        "r_nh_angstrom": constants.get("r_nh_angstrom"),
+        "delta_sigma_ppm": constants.get("delta_sigma_ppm"),
+        "tau_c_ns": tau_ns,
+        "correlation_fit": summary.get("correlation_fit"),
+        "n_residues": summary.get("n_residues"),
+        "n_flagged": summary.get("n_flagged"),
+        "n_excluded": summary.get("n_excluded"),
+        "n_excluded_by_noe": summary.get("n_excluded_by_noe"),
+        "n_excluded_by_user": summary.get("n_excluded_by_user"),
+        "noe_threshold": summary.get("noe_threshold"),
+        "flag_counts": summary.get("flag_counts") or {},
+        "flag_descriptions": summary.get("flag_descriptions") or {},
+        "excluded_residues": (payload.get("excluded_residues") or []) + user_excluded,
+        "systematic_band": band,
+        "systematic_band_pct": {
+            "j0": (band.get("j0_fractional") or 0.0) * 100.0,
+            "j_wn": (band.get("j_wn_fractional") or 0.0) * 100.0,
+            "j_h": (band.get("j_h_fractional") or 0.0) * 100.0,
+        },
+    }
 
 
 def build_grid_1d_data(model_or_grid: Any) -> Optional[List[Dict[str, Any]]]:
@@ -857,9 +1042,9 @@ def build_step_context(
     index_rows = []
     for r in step.residues:
         dw_html = format_with_error(r.dw, style="html", include_unit=False)
-        r2a_html = format_with_error(r.r2a, style="html", include_unit=False)
-        r2b_html = format_with_error(r.r2b, style="html", include_unit=False)
-        r1a_html = format_with_error(r.r1a, style="html", include_unit=False)
+        r2a_html = _rate_html(r, "r2a", "r2_a")
+        r2b_html = _rate_html(r, "r2b", "r2_b")
+        r1a_html = _rate_html(r, "r1a", "r1_a")
         rate_html = format_with_error(r.rate, style="html", include_unit=False) if r.rate else "—"
         amplitude_html = format_with_error(r.amplitude, style="html", include_unit=False) if r.amplitude else "—"
         rmse_str = f"{r.rmse:.4f}" if r.rmse is not None else "—"
@@ -918,21 +1103,40 @@ def build_report_context(
 
     steps_data = []
     sequence_rate_plot = None
+    is_spectral_density = (model.analysis_type or "").upper() == "SDM"
+
     with apply_report_style(style, palette=palette):
-        kinetic_data = build_kinetic_data(model)
-        if (model.analysis_type or "").upper() in ("R1", "R2", "HETNOE"):
-            sequence_rate_plot = figures.sequence_rate_plot(model.residues, analysis_type=model.analysis_type)
-        profile_curves = build_profile_curves(model)
-        detailed_residues = build_detailed_residues(model)
-        statistics_data = build_statistics_data(model)
-        grid_1d_plots = build_grid_1d_data(model)
+        spectral_density_data = build_spectral_density_data(model)
+
+        if is_spectral_density:
+            # A spectral density analysis produces none of the artefacts the
+            # remaining sections describe -- no exchange model, no decay or
+            # dispersion profiles, no grid scan, no resampling tree. Rendering
+            # them anyway gave a residue index of em-dashes, a "Global
+            # Relaxation & Exchange Parameters" table with nothing in it, and
+            # a page of empty NOT_IN_MODEL profile plots. They are skipped
+            # rather than emitted empty, which also saves rendering one
+            # matplotlib figure per residue for nothing.
+            kinetic_data = None
+            profile_curves = None
+            detailed_residues = None
+            statistics_data = None
+            grid_1d_plots = None
+        else:
+            kinetic_data = build_kinetic_data(model)
+            if (model.analysis_type or "").upper() in ("R1", "R2", "HETNOE"):
+                sequence_rate_plot = figures.sequence_rate_plot(model.residues, analysis_type=model.analysis_type)
+            profile_curves = build_profile_curves(model)
+            detailed_residues = build_detailed_residues(model)
+            statistics_data = build_statistics_data(model)
+            grid_1d_plots = build_grid_1d_data(model)
 
         if model.is_multi_step and model.steps:
             for idx, step in enumerate(model.steps):
                 steps_data.append(build_step_context(step, model, idx + 1))
 
     summary_data = build_summary_data(model)
-    index_data = build_index_data(model, fallback_anchors=False)
+    index_data = None if is_spectral_density else build_index_data(model, fallback_anchors=False)
     prov_data = build_provenance_data(model)
 
     css_file = s_dir / ("screen.css" if style == "screen" else "print.css")
@@ -940,6 +1144,7 @@ def build_report_context(
 
     return {
         "model": model,
+        "is_spectral_density": is_spectral_density,
         "style": style,
         "palette": palette or "okabe_ito",
         "palette_metadata": PALETTE_METADATA,
@@ -951,8 +1156,10 @@ def build_report_context(
         "sequence_rate_plot": sequence_rate_plot,
         "profile_curves": profile_curves,
         "detailed_residues": detailed_residues,
+        "detailed_shows_residuals": figures.report_shows_residuals(model.analysis_type),
         "statistics_data": statistics_data,
         "grid_1d_plots": grid_1d_plots,
+        "spectral_density_data": spectral_density_data,
         "steps_data": steps_data,
         "prov": model.provenance,
         "prov_data": prov_data,

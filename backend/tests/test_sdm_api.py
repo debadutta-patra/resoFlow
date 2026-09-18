@@ -1,0 +1,1903 @@
+# Copyright (C) 2026 resoFlow Authors
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+API-level tests for spectral density mapping: input validation, project
+scoping, and the experimental Rex feature gate.
+
+Follows the pattern in test_dashboard_scoping.py -- in-memory SQLite, the
+real FastAPI app with get_db overridden, two users so cross-user isolation
+is exercised rather than assumed.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import unittest
+
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app import database, models, security
+from app.features import ENABLE_EXPERIMENTAL_SDM_REX
+from app.services.fitting.sdm_runner import NOE_THRESHOLD_UNSET
+from app.main import app
+
+ANALYSIS_URL = "/api/projects/{p}/analysis"
+
+
+def _peak_results(rates, errs, assignments):
+    return {
+        "peak_results": [
+            {
+                "assignment": a,
+                "res_num": int("".join(c for c in a if c.isdigit()) or 0),
+                "res_name": "GLY",
+                "rate": r,
+                "rate_err": e,
+            }
+            for a, r, e in zip(assignments, rates, errs)
+        ]
+    }
+
+
+class TestSpectralDensityApi(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        cls.TestingSessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=cls.engine
+        )
+        models.Base.metadata.create_all(bind=cls.engine)
+
+        def override_get_db():
+            db = cls.TestingSessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[database.get_db] = override_get_db
+        cls.client = TestClient(app)
+
+    @classmethod
+    def tearDownClass(cls):
+        app.dependency_overrides.clear()
+
+    def setUp(self):
+        models.Base.metadata.drop_all(bind=self.engine)
+        models.Base.metadata.create_all(bind=self.engine)
+        self.db = self.TestingSessionLocal()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        os.environ.pop(ENABLE_EXPERIMENTAL_SDM_REX, None)
+        self.addCleanup(lambda: os.environ.pop(ENABLE_EXPERIMENTAL_SDM_REX, None))
+
+        self.user_a = models.User(
+            email="a@test.com", full_name="A",
+            hashed_password=security.get_password_hash("pw"),
+            is_active=True, is_superuser=False,
+        )
+        self.user_b = models.User(
+            email="b@test.com", full_name="B",
+            hashed_password=security.get_password_hash("pw"),
+            is_active=True, is_superuser=False,
+        )
+        self.db.add_all([self.user_a, self.user_b])
+        self.db.commit()
+
+        self.project = models.Project(
+            name="P", local_directory_path=self.tmp.name, user_id=self.user_a.id
+        )
+        self.project_b = models.Project(
+            name="PB", local_directory_path=self.tmp.name, user_id=self.user_b.id
+        )
+        self.db.add_all([self.project, self.project_b])
+        self.db.commit()
+        self.db.refresh(self.project)
+        self.db.refresh(self.project_b)
+
+        self.token_a = security.create_access_token(data={"sub": self.user_a.email})
+        self.token_b = security.create_access_token(data={"sub": self.user_b.email})
+
+    def tearDown(self):
+        self.db.close()
+
+    # -- helpers ---------------------------------------------------------
+
+    def _auth(self, token):
+        return {"Authorization": f"Bearer {token}"}
+
+    def _make_source(self, project, atype, rates, errs, assignments, b0=600.13,
+                     status="COMPLETED"):
+        spectrum = models.Spectrum(
+            name=f"{atype}-spec", file_path="/nowhere", project_id=project.id, b0=b0
+        )
+        self.db.add(spectrum)
+        self.db.commit()
+        self.db.refresh(spectrum)
+
+        analysis = models.Analysis(
+            name=f"{atype} run", analysis_type=atype,
+            project_id=project.id, status=status,
+        )
+        analysis.spectra = [spectrum]
+        self.db.add(analysis)
+        self.db.commit()
+        self.db.refresh(analysis)
+
+        run_dir = os.path.join(self.tmp.name, f"{atype.lower()}_fitting",
+                               analysis.analysis_uuid)
+        os.makedirs(run_dir, exist_ok=True)
+        path = os.path.join(run_dir, "results.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(_peak_results(rates, errs, assignments), handle)
+        analysis.results_path = path
+        self.db.commit()
+        self.db.refresh(analysis)
+        return analysis
+
+    def _standard_sources(self, project=None, b0_r2=600.13, assignments=None):
+        project = project or self.project
+        assignments = assignments or ["G10N", "A11N", "L12N", "V13N"]
+        n = len(assignments)
+        r1 = self._make_source(project, "R1", [1.35] * n, [0.03] * n, assignments)
+        r2 = self._make_source(project, "R2", [12.1] * n, [0.30] * n, assignments,
+                               b0=b0_r2)
+        noe = self._make_source(project, "hetNOE", [0.78] * n, [0.04] * n, assignments)
+        return r1, r2, noe
+
+    def _create_body(self, r1, r2, noe, **overrides):
+        body = {
+            "name": "SDM run",
+            "source_r1_analysis_uuid": r1.analysis_uuid,
+            "source_r2_analysis_uuid": r2.analysis_uuid,
+            "source_noe_analysis_uuid": noe.analysis_uuid,
+        }
+        body.update(overrides)
+        return body
+
+    def _new_sdm_analysis(self, project=None, name="SDM run"):
+        """Create an SDM analysis the standard way, as the UI does."""
+        project = project or self.project
+        resp = self.client.post(
+            ANALYSIS_URL.format(p=project.project_uuid),
+            json={"name": name, "analysis_type": "SDM"},
+            headers=self._auth(self.token_a),
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["analysis_uuid"]
+
+    def _run(self, body, project=None, token=None, analysis_uuid=None):
+        """Create-then-run, returning the run response."""
+        project = project or self.project
+        token = token or self.token_a
+        uuid = analysis_uuid or self._new_sdm_analysis(project, body.get("name", "SDM run"))
+        return self.client.post(
+            f"{ANALYSIS_URL.format(p=project.project_uuid)}/{uuid}/sdm/run",
+            json=body, headers=self._auth(token),
+        )
+
+    # -- happy path ------------------------------------------------------
+
+    def test_create_and_fetch_spectral_density(self):
+        r1, r2, noe = self._standard_sources()
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        self.assertEqual(body["status"], "COMPLETED")
+        self.assertFalse(body["experimental"])
+
+        results = body["results"]
+        self.assertEqual(len(results["residues"]), 4)
+        self.assertEqual(results["j_units"], "ns/rad")
+        self.assertEqual(results["b0_h_mhz"], 600.13)
+        # The J(0) exchange caveat travels with the results, not only the docs.
+        self.assertIn("exchange", results["j0_caveat"].lower())
+
+        row = results["residues"][0]
+        self.assertEqual(len(row["covariance"]), 3)
+        self.assertEqual(len(row["covariance"][0]), 3)
+        # Full covariance, not just variances: off-diagonals are populated.
+        self.assertNotEqual(row["covariance"][0][1], 0.0)
+        # Inputs are echoed so a row is self-contained.
+        for key in ("r1", "r2", "noe", "sigma", "j0", "j_wn", "j_h"):
+            self.assertIn(key, row)
+
+        uuid = body["analysis_uuid"]
+        detail = self.client.get(
+            f"{ANALYSIS_URL.format(p=self.project.project_uuid)}/{uuid}/sdm/results",
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(len(detail.json()["results"]["residues"]), 4)
+
+    def test_constants_snapshot_distinguishes_runs(self):
+        """Re-running with a different CSA must be self-describing."""
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        first = self._run(self._create_body(r1, r2, noe)).json()
+        second = self._run(self._create_body( r1, r2, noe, name="other CSA", constants={"r_nh_preset": "1.02", "delta_sigma_preset": "-172"}, )).json()
+
+        snap_a = first["results"]["constants_snapshot"]
+        snap_b = second["results"]["constants_snapshot"]
+        self.assertNotEqual(snap_a, snap_b)
+        self.assertAlmostEqual(snap_a["delta_sigma_ppm"], -160.0)
+        self.assertAlmostEqual(snap_b["delta_sigma_ppm"], -172.0)
+        # A different CSA must actually move J(0).
+        self.assertNotAlmostEqual(
+            first["results"]["residues"][0]["j0"],
+            second["results"]["residues"][0]["j0"],
+        )
+
+    def test_sdm_appears_in_the_projects_analysis_list(self):
+        """SDM is an ordinary analysis row, so it needs no list endpoint."""
+        r1, r2, noe = self._standard_sources()
+        self._run(self._create_body(r1, r2, noe))
+
+        listing = self.client.get(
+            ANALYSIS_URL.format(p=self.project.project_uuid),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(listing.status_code, 200)
+        sdm = [a for a in listing.json() if a["analysis_type"] == "SDM"]
+        self.assertEqual(len(sdm), 1)
+        self.assertEqual(sdm[0]["name"], "SDM run")
+        self.assertEqual(sdm[0]["status"], "COMPLETED")
+        # And it sits alongside the R1/R2/hetNOE sources in the same list.
+        self.assertEqual(
+            sorted(a["analysis_type"] for a in listing.json()),
+            ["R1", "R2", "SDM", "hetNOE"],
+        )
+
+    def test_delete_removes_analysis(self):
+        """Deletion goes through the shared DELETE /analysis/{uuid}."""
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        resp = self.client.delete(f"{url}/{uuid}", headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200)
+
+        remaining = self.client.get(url, headers=self._auth(self.token_a)).json()
+        self.assertEqual([a for a in remaining if a["analysis_type"] == "SDM"], [])
+
+    # -- 5.1.1 field consistency ----------------------------------------
+
+    def test_field_mismatch_is_rejected_not_warned(self):
+        """A 600/800 mix produces plausible nonsense, so it must hard-fail."""
+        r1, r2, noe = self._standard_sources(b0_r2=800.2)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 422, resp.text)
+        detail = resp.json()["detail"]
+        self.assertIn("different static fields", detail["message"])
+        # Every field is named so the UI can point at the odd one out.
+        self.assertIn("fields_mhz", detail)
+        self.assertEqual(detail["fields_mhz"]["R2"], 800.2)
+        self.assertEqual(detail["fields_mhz"]["R1"], 600.13)
+
+    def test_small_field_difference_is_tolerated(self):
+        """Two '600 MHz' instruments rarely report identical frequencies."""
+        r1, r2, noe = self._standard_sources(b0_r2=600.42)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+    def test_missing_b0_is_rejected_rather_than_defaulted(self):
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03],
+                               assignments, b0=None)
+        r2 = self._make_source(self.project, "R2", [12.0, 12.0], [0.3, 0.3],
+                               assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.8, 0.8], [0.04, 0.04],
+                                assignments)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("static field", resp.json()["detail"]["message"])
+
+    # -- 5.1.2 residue matching ------------------------------------------
+
+    def test_residue_intersection_reports_specific_reasons(self):
+        r1 = self._make_source(self.project, "R1", [1.3] * 4, [0.03] * 4,
+                               ["G10N", "A11N", "L12N", "V13N"])
+        r2 = self._make_source(self.project, "R2", [12.0] * 3, [0.3] * 3,
+                               ["G10N", "A11N", "L12N"])
+        noe = self._make_source(self.project, "hetNOE", [0.8] * 2, [0.04] * 2,
+                                ["G10N", "A11N"])
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        results = resp.json()["results"]
+
+        self.assertEqual(len(results["residues"]), 2)
+        excluded = {e["residue"]: e["reason"] for e in results["excluded_residues"]}
+        self.assertEqual(len(excluded), 2)
+        self.assertIn("missing hetNOE", excluded["L12N"])
+        self.assertIn("missing R2", excluded["V13N"])
+        self.assertIn("missing hetNOE", excluded["V13N"])
+        self.assertEqual(results["summary"]["n_excluded"], 2)
+
+    def test_no_common_residues_is_rejected(self):
+        r1 = self._make_source(self.project, "R1", [1.3], [0.03], ["G10N"])
+        r2 = self._make_source(self.project, "R2", [12.0], [0.3], ["A11N"])
+        noe = self._make_source(self.project, "hetNOE", [0.8], [0.04], ["L12N"])
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("nothing to map", resp.json()["detail"]["message"])
+
+    # -- 5.1.5 negative NOE is valid --------------------------------------
+
+    def test_negative_noe_is_mapped_and_flagged_not_filtered(self):
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03],
+                               assignments)
+        r2 = self._make_source(self.project, "R2", [12.0, 4.0], [0.3, 0.2],
+                               assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.78, -0.55],
+                                [0.04, 0.08], assignments)
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        results = resp.json()["results"]
+        self.assertEqual(len(results["residues"]), 2)
+
+        by_res = {r["assignment"]: r for r in results["residues"]}
+        self.assertIn("negative_noe", by_res["A11N"]["flags"])
+        self.assertEqual(by_res["G10N"]["flags"], [])
+        # Flag descriptions travel with the summary so the UI can explain them.
+        self.assertIn("negative_noe", results["summary"]["flag_descriptions"])
+
+    # -- source state validation ------------------------------------------
+
+    def test_incomplete_source_is_rejected(self):
+        r1, r2, noe = self._standard_sources()
+        r1.status = "RUNNING"
+        self.db.commit()
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("COMPLETED", resp.json()["detail"]["message"])
+
+    def test_unknown_source_uuid_is_404(self):
+        r1, r2, noe = self._standard_sources()
+        resp = self._run(self._create_body(r1, r2, noe, source_r1_analysis_uuid="does-not-exist"))
+        self.assertEqual(resp.status_code, 404)
+
+    # -- scoping ----------------------------------------------------------
+
+    def test_cross_user_isolation(self):
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        # User B owns a different project and must not reach A's analysis.
+        self.assertEqual(
+            self.client.get(url, headers=self._auth(self.token_b)).status_code, 403
+        )
+        self.assertEqual(
+            self.client.get(f"{url}/{uuid}/sdm/results",
+                            headers=self._auth(self.token_b)).status_code, 403
+        )
+        self.assertEqual(
+            self.client.delete(f"{url}/{uuid}",
+                               headers=self._auth(self.token_b)).status_code, 403
+        )
+        self.assertEqual(
+            self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                            headers=self._auth(self.token_b)).status_code, 403
+        )
+
+    def test_unauthenticated_access_is_rejected(self):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        self.assertEqual(self.client.get(url).status_code, 401)
+        self.assertEqual(self.client.post(url, json={}).status_code, 401)
+
+    def test_analysis_from_another_project_is_not_reachable(self):
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        other = ANALYSIS_URL.format(p=self.project_b.project_uuid)
+        # User B owns project_b, so this is a 404 on the analysis rather than
+        # a 403 on the project -- the analysis simply is not in that project.
+        self.assertEqual(
+            self.client.get(f"{other}/{uuid}/sdm/results",
+                            headers=self._auth(self.token_b)).status_code, 404
+        )
+
+    def test_sdm_endpoints_refuse_a_non_sdm_analysis(self):
+        """The shared routes serve any analysis; the SDM ones must not.
+
+        An R1 analysis is a perfectly valid analysis, so GET /analysis/{uuid}
+        returns it. Asking the SDM endpoints for it is a different matter --
+        they would otherwise try to read a spectral density payload out of a
+        relaxation run.
+        """
+        r1, _, _ = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        # The shared detail route serves it, as it should.
+        self.assertEqual(
+            self.client.get(f"{url}/{r1.analysis_uuid}",
+                            headers=self._auth(self.token_a)).status_code, 200
+        )
+
+        for path in ("sdm/results", "sdm/export.csv"):
+            resp = self.client.get(f"{url}/{r1.analysis_uuid}/{path}",
+                                   headers=self._auth(self.token_a))
+            self.assertEqual(resp.status_code, 404, path)
+            self.assertIn("not a spectral density", resp.json()["detail"])
+
+        run = self.client.post(
+            f"{url}/{r1.analysis_uuid}/sdm/run",
+            json=self._create_body(r1, r1, r1),
+            headers=self._auth(self.token_a),
+        )
+        self.assertEqual(run.status_code, 400)
+        self.assertIn("not a spectral density", run.json()["detail"])
+
+    # -- CSV export -------------------------------------------------------
+
+    def test_csv_export_contains_values_and_provenance(self):
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        resp = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("text/csv", resp.headers["content-type"])
+        text = resp.text
+        self.assertIn("J(0) [ns/rad]", text)
+        self.assertIn("Cov J0-JwN", text)
+        self.assertIn("variant=farrow1995", text)
+        self.assertIn("delta_sigma=-160.0 ppm", text)
+        self.assertIn("G10N", text)
+        # A non-experimental export carries no experimental marker.
+        self.assertNotIn("EXPERIMENTAL", text)
+
+    def test_csv_export_lists_excluded_residues(self):
+        r1 = self._make_source(self.project, "R1", [1.3] * 2, [0.03] * 2,
+                               ["G10N", "A11N"])
+        r2 = self._make_source(self.project, "R2", [12.0], [0.3], ["G10N"])
+        noe = self._make_source(self.project, "hetNOE", [0.8], [0.04], ["G10N"])
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        text = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                               headers=self._auth(self.token_a)).text
+        self.assertIn("# Excluded residues", text)
+        self.assertIn("A11N", text)
+
+    # -- 7. experimental Rex gate -----------------------------------------
+
+    def test_rex_request_is_rejected_when_flag_is_disabled(self):
+        r1, r2, noe = self._standard_sources()
+        resp = self._run(self._create_body( r1, r2, noe, rex_source="cpmg_analysis", rex_cpmg_analysis_uuid="some-cpmg-uuid", ))
+        self.assertEqual(resp.status_code, 422, resp.text)
+        # The refusal names the flag, so the operator knows what to set.
+        self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
+
+    def test_multi_field_rex_source_is_also_gated(self):
+        r1, r2, noe = self._standard_sources()
+        resp = self._run(self._create_body(r1, r2, noe, rex_source="multi_field"))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
+
+    def test_schema_accepts_rex_field_regardless_of_the_flag(self):
+        """Gating is at the API layer, so stored records still deserialise."""
+        from app.services.sdm.schemas import RexSource, SpectralDensityCreate
+
+        model = SpectralDensityCreate(
+            name="x", source_r1_analysis_uuid="a",
+            source_r2_analysis_uuid="b", source_noe_analysis_uuid="c",
+            rex_source="cpmg_analysis", rex_cpmg_analysis_uuid="d",
+        )
+        self.assertEqual(model.rex_source, RexSource.CPMG_ANALYSIS)
+
+    def test_default_request_is_not_experimental(self):
+        r1, r2, noe = self._standard_sources()
+        body = self._run(self._create_body(r1, r2, noe)).json()
+        self.assertFalse(body["experimental"])
+        self.assertIsNone(body["results"]["experimental_notice"])
+
+    # -- capabilities ------------------------------------------------------
+
+    def test_capabilities_reports_the_flag_state(self):
+        resp = self.client.get("/api/capabilities")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("features", body)
+        self.assertFalse(body["features"]["experimental_sdm_rex"])
+        # The flag name is advertised so the UI can tell the user what to set.
+        self.assertEqual(
+            body["flags"]["experimental_sdm_rex"], ENABLE_EXPERIMENTAL_SDM_REX
+        )
+
+    def test_capabilities_follows_the_environment(self):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        body = self.client.get("/api/capabilities").json()
+        self.assertTrue(body["features"]["experimental_sdm_rex"])
+
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "0"
+        body = self.client.get("/api/capabilities").json()
+        self.assertFalse(body["features"]["experimental_sdm_rex"])
+
+    # -- error method ------------------------------------------------------
+
+    def test_monte_carlo_error_method_produces_comparable_errors(self):
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        analytic = self._run(self._create_body(r1, r2, noe)).json()["results"]
+        mc = self._run(self._create_body( r1, r2, noe, name="mc", error_method="monte_carlo", n_replicates=20000, seed=11, )).json()["results"]
+
+        self.assertEqual(mc["error_method"], "monte_carlo")
+        for key in ("j0_err", "j_wn_err", "j_h_err"):
+            a = analytic["residues"][0][key]
+            m = mc["residues"][0][key]
+            self.assertAlmostEqual(a, m, delta=0.05 * abs(a))
+        # Point estimates stay analytic; MC only replaces the covariance.
+        self.assertAlmostEqual(
+            analytic["residues"][0]["j0"], mc["residues"][0]["j0"], places=12
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestSpectralDensityReport(TestSpectralDensityApi):
+    """PDF report generation goes through the shared generator, not a fork."""
+
+    def test_report_renders_a_pdf_with_the_section(self):
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        resp = self.client.post(f"{url}/{uuid}/sdm/report",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(resp.headers["content-type"], "application/pdf")
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+        self.assertGreater(len(resp.content), 5000)
+
+    def test_report_html_contains_the_spectral_density_section(self):
+        """Assert on the rendered HTML, where the section content is legible."""
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        created = self._run(self._create_body(r1, r2, noe)).json()
+
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == created["analysis_uuid"])
+            .first()
+        )
+        run_dir = os.path.dirname(analysis.results_path)
+        model = build_report_model(run_dir, analysis.name, analysis_type="SDM")
+        html = render_html(model, style="screen")
+
+        self.assertIn("Reduced Spectral Density Mapping", html)
+        self.assertIn("J(&omega;<sub>N</sub>) vs J(0) Correlation", html)
+        self.assertIn("Per-Residue Spectral Densities", html)
+        self.assertIn("ns", html)
+        # The J(0) exchange caveat is in the report as well as the UI.
+        self.assertIn("assumes no chemical exchange", html)
+        # The systematic band is described separately from statistical error.
+        self.assertIn("not</em> included in the per-residue", html)
+        # A non-experimental report carries no marker.
+        self.assertNotIn("experimental-marker", html)
+
+    def test_report_is_refused_for_an_incomplete_analysis(self):
+        r1, r2, noe = self._standard_sources()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        analysis.status = "RUNNING"
+        self.db.commit()
+        resp = self.client.post(f"{url}/{uuid}/sdm/report",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_experimental_report_carries_the_footer_marker(self):
+        """An experimental result must not escape looking validated.
+
+        The marker is a page string, so it lands in EVERY page footer -- not
+        just the cover someone might not print.
+        """
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        # A genuine two-field run, so the marker is exercised on a real
+        # experimental result rather than on a request that merely asked to be
+        # one.
+        assignments = ["G10N", "A11N"]
+        r1, r2, noe = self._standard_sources(assignments=assignments)
+        n = len(assignments)
+        b1 = self._make_source(self.project, "R1", [1.30] * n, [0.03] * n,
+                               assignments, b0=800.20)
+        b2 = self._make_source(self.project, "R2", [16.4] * n, [0.40] * n,
+                               assignments, b0=800.20)
+        b3 = self._make_source(self.project, "hetNOE", [0.80] * n, [0.04] * n,
+                               assignments, b0=800.20)
+
+        created = self._run(self._create_body( r1, r2, noe, rex_source="multi_field", additional_field_sources=[{ "source_r1_analysis_uuid": b1.analysis_uuid, "source_r2_analysis_uuid": b2.analysis_uuid, "source_noe_analysis_uuid": b3.analysis_uuid, }], ))
+        self.assertEqual(created.status_code, 200, created.text)
+        body = created.json()
+        self.assertTrue(body["experimental"])
+        self.assertIn("EXPERIMENTAL", body["experimental_notice"])
+
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == body["analysis_uuid"]).first()
+        )
+        self.assertTrue(analysis.experimental)
+
+        model = build_report_model(
+            os.path.dirname(analysis.results_path), analysis.name, analysis_type="SDM"
+        )
+        html = render_html(model, style="screen")
+        self.assertIn("experimental-marker", html)
+        self.assertIn("EXPERIMENTAL", html)
+
+        csv_text = self.client.get(f"{url}/{body['analysis_uuid']}/sdm/export.csv",
+                                   headers=self._auth(self.token_a)).text
+        self.assertTrue(csv_text.startswith("#"))
+        self.assertIn("EXPERIMENTAL", csv_text.split("\n")[0])
+
+
+class TestCpmgR2Provenance(TestSpectralDensityApi):
+    """R2,0 from a CPMG fit as an alternative R2 provenance.
+
+    ChemEx's fitted R2_A already has exchange removed by the fitted model, so
+    this needs no Rex subtraction and is a PRODUCTION path -- it is not gated
+    by the experimental flag and does not mark the analysis experimental.
+    """
+
+    def _make_cpmg(self, project, blocks, status="COMPLETED"):
+        """Create a CPMG analysis whose fitted.toml holds R2_A blocks.
+
+        Args:
+            blocks: {field_label_or_None: {residue_key: (value, err)}}
+        """
+        analysis = models.Analysis(
+            name="CPMG run", analysis_type="CPMG",
+            project_id=project.id, status=status,
+        )
+        self.db.add(analysis)
+        self.db.commit()
+        self.db.refresh(analysis)
+
+        run_dir = os.path.join(self.tmp.name, "cpmg_fitting", analysis.analysis_uuid)
+        os.makedirs(os.path.join(run_dir, "Parameters"), exist_ok=True)
+        lines = ["[DW_AB]", '15N = 2.13116e+00 # ±2.13113e-02', ""]
+        for field, residues in blocks.items():
+            lines.append(f'["R2_A, B0->{field}"]' if field else "[R2_A]")
+            for res, (value, err) in residues.items():
+                lines.append(f"{res} = {value:.5e} # ±{err:.5e}")
+            lines.append("")
+        with open(os.path.join(run_dir, "Parameters", "fitted.toml"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("\n".join(lines))
+
+        analysis.results_path = os.path.join(run_dir, "results.json")
+        self.db.commit()
+        self.db.refresh(analysis)
+        return analysis
+
+    def test_echo_decay_is_the_default_provenance(self):
+        r1, r2, noe = self._standard_sources()
+        body = self._run(self._create_body(r1, r2, noe)).json()
+        self.assertEqual(body["results"]["r2_provenance"], "echo_decay")
+
+    def test_cpmg_r2_0_is_used_when_requested(self):
+        r1, _, noe = self._standard_sources()
+        cpmg = self._make_cpmg(self.project, {"600.13MHZ": {"15N": (8.4, 0.21)}})
+        # The R1/NOE sources must carry residue 15 for the intersection.
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        results = resp.json()["results"]
+        self.assertEqual(results["r2_provenance"], "cpmg_r2_0")
+        self.assertEqual(len(results["residues"]), 1)
+        # The exchange-free R2,0 is what reached the mapping.
+        self.assertAlmostEqual(results["residues"][0]["r2"], 8.4, places=4)
+        self.assertAlmostEqual(results["residues"][0]["r2_err"], 0.21, places=4)
+
+    def test_cpmg_r2_0_is_not_experimental(self):
+        """R2,0 is exchange-free by construction, not an Rex correction."""
+        cpmg = self._make_cpmg(self.project, {"600.13MHZ": {"15N": (8.4, 0.21)}})
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+
+        # The experimental Rex flag is off (setUp clears it) and this still works.
+        body = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0")).json()
+        self.assertFalse(body["experimental"])
+        self.assertEqual(body["results"]["rex_source"], "none")
+        self.assertIsNone(body["results"]["experimental_notice"])
+
+    def test_multi_field_cpmg_selects_the_matching_block(self):
+        """The critical case: a 500/800 fit must not hand back the wrong field.
+
+        The same residue differs by two thirds between blocks, and the general
+        ChemEx parser collapses them because it strips the B0 qualifier. This
+        asserts the field-aware selection actually selects.
+        """
+        cpmg = self._make_cpmg(self.project, {
+            "500.0MHZ": {"15N": (4.00996, 0.227191)},
+            "800.0MHZ": {"15N": (6.67323, 0.342271)},
+        })
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=800.0)
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=800.0)
+
+        body = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(body.status_code, 200, body.text)
+        row = body.json()["results"]["residues"][0]
+        self.assertAlmostEqual(row["r2"], 6.67323, places=4)
+        self.assertNotAlmostEqual(row["r2"], 4.00996, places=2)
+
+        # And the 500 MHz mapping picks the other block.
+        r1_500 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=500.0)
+        noe_500 = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=500.0)
+        row_500 = self._run(self._create_body(r1_500, cpmg, noe_500, name="500", r2_provenance="cpmg_r2_0")).json()["results"]["residues"][0]
+        self.assertAlmostEqual(row_500["r2"], 4.00996, places=4)
+
+    def test_missing_field_block_is_rejected_with_the_available_fields(self):
+        cpmg = self._make_cpmg(self.project, {
+            "500.0MHZ": {"15N": (4.00996, 0.227191)},
+            "800.0MHZ": {"15N": (6.67323, 0.342271)},
+        })
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"], b0=600.13)
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"], b0=600.13)
+
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(resp.status_code, 422, resp.text)
+        detail = resp.json()["detail"]
+        self.assertIn("no R2,0 at 600.13 MHz", detail["message"])
+        self.assertEqual(detail["available_mhz"], [500.0, 800.0])
+
+    def test_single_field_block_without_a_qualifier_is_accepted(self):
+        cpmg = self._make_cpmg(self.project, {None: {"15N": (8.4, 0.21)}})
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertAlmostEqual(resp.json()["results"]["residues"][0]["r2"], 8.4, places=4)
+
+    def test_cpmg_without_r2_a_is_rejected(self):
+        cpmg = self._make_cpmg(self.project, {})
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("no fitted R2_A", resp.json()["detail"]["message"])
+
+    def test_incomplete_cpmg_is_rejected(self):
+        cpmg = self._make_cpmg(self.project, {"600.13MHZ": {"15N": (8.4, 0.21)}},
+                               status="RUNNING")
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G15N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G15N"])
+        resp = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0"))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("COMPLETED", resp.json()["detail"]["message"])
+
+    def test_peak_assignments_intersect_chemex_spin_keys(self):
+        """"G15N" from peak fitting must match ChemEx's "15N".
+
+        Matching on the symbol-carrying canonical form would drop every
+        residue as "missing R2" while looking like a legitimate empty
+        intersection.
+        """
+        cpmg = self._make_cpmg(self.project, {
+            "600.13MHZ": {"10N": (8.4, 0.21), "11N": (9.1, 0.22)},
+        })
+        r1 = self._make_source(self.project, "R1", [1.35, 1.3], [0.03, 0.03],
+                               ["G10N", "A11N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78, 0.75], [0.04, 0.04],
+                                ["G10N", "A11N"])
+        results = self._run(self._create_body(r1, cpmg, noe, r2_provenance="cpmg_r2_0")).json()["results"]
+
+        self.assertEqual(len(results["residues"]), 2)
+        self.assertEqual(results["excluded_residues"], [])
+        # The informative spelling survives into the table, not the bare key.
+        self.assertEqual(
+            sorted(r["assignment"] for r in results["residues"]), ["A11N", "G10N"]
+        )
+
+    def test_symbol_disagreement_between_sources_is_excluded(self):
+        """Symbol-free matching must not silently merge two different residues.
+
+        Residue 10 is G in R1/hetNOE but A in R2 -- matching on the bare
+        number would fuse them. Residue 11 agrees everywhere and must still
+        map, so the conflict costs only the residue it affects.
+        """
+        r1 = self._make_source(self.project, "R1", [1.35, 1.30], [0.03, 0.03],
+                               ["G10N", "A11N"])
+        r2 = self._make_source(self.project, "R2", [12.1, 12.5], [0.30, 0.30],
+                               ["A10N", "A11N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78, 0.75], [0.04, 0.04],
+                                ["G10N", "A11N"])
+        results = self._run(self._create_body(r1, r2, noe)).json()["results"]
+
+        self.assertEqual([r["assignment"] for r in results["residues"]], ["A11N"])
+        self.assertEqual(len(results["excluded_residues"]), 1)
+        excluded = results["excluded_residues"][0]
+        self.assertIn("symbol disagrees", excluded["reason"])
+        self.assertIn("A", excluded["reason"])
+        self.assertIn("G", excluded["reason"])
+
+    def test_total_symbol_disagreement_leaves_nothing_to_map(self):
+        r1 = self._make_source(self.project, "R1", [1.35], [0.03], ["G10N"])
+        r2 = self._make_source(self.project, "R2", [12.1], [0.30], ["A10N"])
+        noe = self._make_source(self.project, "hetNOE", [0.78], [0.04], ["G10N"])
+        resp = self._run(self._create_body(r1, r2, noe))
+        self.assertEqual(resp.status_code, 422)
+        detail = resp.json()["detail"]
+        self.assertIn("nothing to map", detail["message"])
+        self.assertIn("symbol disagrees", detail["excluded_residues"][0]["reason"])
+
+
+class TestMultiFieldConsistency(TestSpectralDensityApi):
+    """EXPERIMENTAL multi-field consistency and the chi-square exchange test."""
+
+    def _field_sources(self, mhz, assignments, r2_values=None):
+        n = len(assignments)
+        r2_values = r2_values or [12.1] * n
+        r1 = self._make_source(self.project, "R1", [1.35] * n, [0.03] * n,
+                               assignments, b0=mhz)
+        r2 = self._make_source(self.project, "R2", r2_values, [0.30] * n,
+                               assignments, b0=mhz)
+        noe = self._make_source(self.project, "hetNOE", [0.78] * n, [0.04] * n,
+                                assignments, b0=mhz)
+        return r1, r2, noe
+
+    def test_multi_field_is_gated_by_the_flag(self):
+        assignments = ["G10N", "A11N"]
+        a1, a2, a3 = self._field_sources(600.13, assignments)
+        b1, b2, b3 = self._field_sources(800.20, assignments)
+        resp = self._run(self._create_body( a1, a2, a3, rex_source="multi_field", additional_field_sources=[{ "source_r1_analysis_uuid": b1.analysis_uuid, "source_r2_analysis_uuid": b2.analysis_uuid, "source_noe_analysis_uuid": b3.analysis_uuid, }], ))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
+
+    def _run_multifield(self, fields, assignments, r2_by_field=None):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        triples = [
+            self._field_sources(
+                mhz, assignments,
+                (r2_by_field or {}).get(mhz),
+            )
+            for mhz in fields
+        ]
+        primary = triples[0]
+        extra = [
+            {
+                "source_r1_analysis_uuid": t[0].analysis_uuid,
+                "source_r2_analysis_uuid": t[1].analysis_uuid,
+                "source_noe_analysis_uuid": t[2].analysis_uuid,
+            }
+            for t in triples[1:]
+        ]
+        return self._run(self._create_body( *primary, rex_source="multi_field", additional_field_sources=extra ))
+
+    def test_multi_field_runs_and_reports_the_exchange_test(self):
+        resp = self._run_multifield([600.13, 800.20], ["G10N", "A11N"])
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        self.assertTrue(body["experimental"])
+
+        results = body["results"]
+        self.assertEqual(results["mode"], "multi_field")
+        self.assertEqual(results["summary"]["n_fields"], 2)
+        # dof = n - 1: the surplus IS the shared-J(0) assumption.
+        self.assertEqual(results["summary"]["dof"], 1)
+        self.assertEqual(len(results["residues"]), 2)
+
+        row = results["residues"][0]
+        for key in ("j0", "j0_err", "chi2", "p_value", "per_field"):
+            self.assertIn(key, row)
+        self.assertEqual(len(row["per_field"]), 2)
+        for actual, expected in zip(
+            [e["b0_h_mhz"] for e in row["per_field"]], [600.13, 800.20]
+        ):
+            self.assertAlmostEqual(actual, expected, places=6)
+        # The caveat about what the test cannot see travels with the result.
+        self.assertIn("does not vary", results["multifield_caveat"])
+
+    def test_two_fields_cannot_report_a_scaling_exponent(self):
+        results = self._run_multifield([600.13, 800.20], ["G10N"]).json()["results"]
+        self.assertFalse(results["summary"]["scaling_available"])
+        self.assertIn(
+            "not identifiable", results["summary"]["scaling_unavailable_reason"]
+        )
+        self.assertIsNone(results["residues"][0]["scaling_exponent"])
+
+    def test_three_fields_report_a_fitted_exponent(self):
+        results = self._run_multifield(
+            [500.10, 650.15, 800.20], ["G10N"]
+        ).json()["results"]
+        self.assertTrue(results["summary"]["scaling_available"])
+        self.assertEqual(results["summary"]["dof"], 2)
+        scaling = results["residues"][0]["scaling_exponent"]
+        self.assertIsNotNone(scaling)
+        # alpha is FITTED in [0, 2], never assumed to be 2.
+        self.assertGreaterEqual(scaling["alpha"], 0.0)
+        self.assertLessEqual(scaling["alpha"], 2.0)
+
+    def test_repeated_field_is_rejected(self):
+        resp = self._run_multifield([600.13, 600.13], ["G10N"])
+        self.assertEqual(resp.status_code, 422, resp.text)
+        self.assertIn("genuinely different fields", resp.json()["detail"]["message"])
+
+    def test_residues_missing_at_one_field_are_excluded(self):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        a1, a2, a3 = self._field_sources(600.13, ["G10N", "A11N", "L12N"])
+        b1, b2, b3 = self._field_sources(800.20, ["G10N", "A11N"])
+        results = self._run(self._create_body( a1, a2, a3, rex_source="multi_field", additional_field_sources=[{ "source_r1_analysis_uuid": b1.analysis_uuid, "source_r2_analysis_uuid": b2.analysis_uuid, "source_noe_analysis_uuid": b3.analysis_uuid, }], )).json()["results"]
+
+        self.assertEqual(len(results["residues"]), 2)
+        reasons = [e["reason"] for e in results["excluded_residues"]]
+        self.assertIn("not measured at every field", reasons)
+
+    def test_multi_field_csv_carries_the_experimental_marker(self):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        created = self._run_multifield([600.13, 800.20], ["G10N"]).json()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        text = self.client.get(f"{url}/{created['analysis_uuid']}/sdm/export.csv",
+                               headers=self._auth(self.token_a)).text
+        self.assertIn("EXPERIMENTAL", text.split("\n")[0])
+        self.assertIn("p-value", text)
+        self.assertIn("R2 residual@600", text)
+
+    def test_multi_field_requires_a_second_field(self):
+        os.environ[ENABLE_EXPERIMENTAL_SDM_REX] = "true"
+        r1, r2, noe = self._standard_sources()
+        resp = self._run(self._create_body(r1, r2, noe, rex_source="multi_field"))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("nothing for the chi-square to test",
+                      resp.json()["detail"]["message"])
+
+    def test_flag_gate_answers_before_the_shape_check(self):
+        """With the flag OFF, the refusal must name the flag.
+
+        Schema validation runs before the router, so putting the
+        "needs a second field" rule in the pydantic model would answer a
+        disabled-feature request with a confusing shape error instead.
+        """
+        r1, r2, noe = self._standard_sources()
+        resp = self._run(self._create_body(r1, r2, noe, rex_source="multi_field"))
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn(ENABLE_EXPERIMENTAL_SDM_REX, resp.json()["detail"])
+
+
+class TestResidueExclusion(TestSpectralDensityApi):
+    """Residue exclusion, stored and toggled the way every module does it."""
+
+    def _exclude(self, analysis_uuid, residues):
+        """Set the exclusion list through the shared analysis PUT."""
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.put(
+            f"{url}/{analysis_uuid}",
+            json={"parameters": json.dumps({"excludedResidues": residues})},
+            headers=self._auth(self.token_a),
+        )
+
+    def _results(self, analysis_uuid):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.get(f"{url}/{analysis_uuid}/sdm/results",
+                               headers=self._auth(self.token_a)).json()["results"]
+
+    def _spread_dataset(self):
+        """Four residues, one with a markedly elevated R2 and so J(0)."""
+        assignments = ["G10N", "A11N", "L12N", "V13N"]
+        r1 = self._make_source(self.project, "R1", [1.35] * 4, [0.03] * 4, assignments)
+        r2 = self._make_source(self.project, "R2", [12.1, 12.3, 12.0, 28.0],
+                               [0.30] * 4, assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.78] * 4, [0.04] * 4,
+                                assignments)
+        return r1, r2, noe
+
+    def test_excluded_residue_is_marked_not_dropped(self):
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self.assertEqual(self._exclude(uuid, ["A11N"]).status_code, 200)
+
+        results = self._results(uuid)
+        # Still present, so the table can grey it out and the export account
+        # for it -- excluding is not the same as never having measured it.
+        self.assertEqual(len(results["residues"]), 4)
+        by_res = {r["assignment"]: r for r in results["residues"]}
+        self.assertTrue(by_res["A11N"]["excluded"])
+        self.assertEqual(by_res["A11N"]["exclusion_reason"], "excluded by user")
+        self.assertFalse(by_res["G10N"]["excluded"])
+        self.assertIsNone(by_res["G10N"]["exclusion_reason"])
+
+    def test_exclusion_updates_the_summary_counts(self):
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 4)
+
+        self._exclude(uuid, ["A11N", "L12N"])
+        summary = self._results(uuid)["summary"]
+        self.assertEqual(summary["n_residues"], 2)
+        self.assertEqual(summary["n_excluded_by_user"], 2)
+
+    def test_exclusion_changes_the_tau_c_estimate(self):
+        """The summary must describe the residues actually shown.
+
+        tau_m is refitted over the kept residues, so leaving an excluded
+        outlier in the aggregate would put a number on the summary card that
+        does not match the table underneath it.
+        """
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        before = self._results(uuid)["summary"]
+
+        self._exclude(uuid, ["V13N"])
+        after = self._results(uuid)["summary"]
+
+        self.assertNotAlmostEqual(
+            before["j0_trimmed_mean"], after["j0_trimmed_mean"], places=6
+        )
+        self.assertIsNotNone(after["tau_c_estimate_ns"])
+
+    def test_tau_m_and_its_roots_stay_one_derivation_after_exclusion(self):
+        """The card's tau_m must be a root of the cubic printed beside it.
+
+        The recompute used to re-derive tau_m from the trimmed-mean
+        J(0)/J(wN) ratio while leaving the fit from the full set in place,
+        so the summary reported a number none of its own roots implied.
+        """
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        before = self._results(uuid)["summary"]["correlation_fit"]
+
+        self._exclude(uuid, ["V13N"])
+        summary = self._results(uuid)["summary"]
+        fit = summary["correlation_fit"]
+
+        self.assertIsNotNone(fit)
+        # Refitted, not carried over from the full set.
+        self.assertNotEqual(before["roots_ns"], fit["roots_ns"])
+        self.assertIn(
+            round(summary["tau_c_estimate_ns"], 9),
+            [round(t, 9) for t in fit["roots_ns"]],
+        )
+
+    def test_per_residue_values_are_untouched_by_exclusion(self):
+        """Each residue is an independent solve; excluding one cannot move another."""
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        before = {r["assignment"]: r["j0"] for r in self._results(uuid)["residues"]}
+
+        self._exclude(uuid, ["V13N"])
+        after = {r["assignment"]: r["j0"] for r in self._results(uuid)["residues"]}
+
+        for assignment, value in before.items():
+            self.assertAlmostEqual(value, after[assignment], places=12, msg=assignment)
+
+    def test_outlier_flags_are_relative_to_the_kept_set(self):
+        """J(0) outlier flags are defined against the other residues.
+
+        Excluding the outlier must not leave the remaining residues flagged
+        against a scale the excluded one set.
+        """
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["V13N"])
+
+        results = self._results(uuid)
+        kept = [r for r in results["residues"] if not r["excluded"]]
+        # The excluded outlier carries no flags of its own any more.
+        excluded_row = next(r for r in results["residues"] if r["excluded"])
+        self.assertEqual(excluded_row["flags"], [])
+        # And the flag counts only describe kept residues.
+        self.assertEqual(
+            results["summary"]["n_flagged"], sum(1 for r in kept if r["flags"])
+        )
+
+    def test_input_derived_flags_survive_exclusion(self):
+        """negative_noe is a property of the residue, not of the cohort."""
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03], assignments)
+        r2 = self._make_source(self.project, "R2", [12.0, 4.0], [0.3, 0.2], assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.78, -0.55],
+                                [0.04, 0.08], assignments)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._exclude(uuid, ["G10N"])
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertIn("negative_noe", by_res["A11N"]["flags"])
+
+    def test_exclusion_needs_no_rerun(self):
+        """Toggling applies on read, so the numbers update immediately."""
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._exclude(uuid, ["V13N"])
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 3)
+        self._exclude(uuid, [])
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 4)
+
+    def test_exclusion_matches_across_assignment_spellings(self):
+        """"10N" must exclude "G10N", as residue matching does elsewhere."""
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["10N"])
+
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertTrue(by_res["G10N"]["excluded"])
+
+    def test_exclusion_survives_a_rerun(self):
+        """Running again must not silently clear the user's exclusions."""
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["A11N"])
+
+        self._run(self._create_body(r1, r2, noe), analysis_uuid=uuid)
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertTrue(by_res["A11N"]["excluded"])
+
+    def test_csv_export_reflects_exclusions(self):
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._exclude(uuid, ["A11N"])
+
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        text = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                               headers=self._auth(self.token_a)).text
+        self.assertIn("# Excluded residues", text)
+        self.assertIn("excluded by user", text)
+
+    def test_report_reflects_exclusions(self):
+        """The PDF must drop excluded residues, not merely render.
+
+        Asserting only that a PDF came back is what let the report ignore the
+        exclusion list in the first place, so this checks the rendered
+        content.
+        """
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        r1, r2, noe = self._spread_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        run_dir = os.path.dirname(analysis.results_path)
+
+        before = render_html(
+            build_report_model(run_dir, analysis.name, analysis_type="SDM"),
+            style="screen",
+        )
+        self.assertIn("V13N", before)
+
+        self._exclude(uuid, ["V13N"])
+        self.db.expire_all()
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        after = render_html(
+            build_report_model(
+                run_dir, analysis.name, analysis_type="SDM",
+                excluded_residues=["V13N"],
+            ),
+            style="screen",
+        )
+        # It must leave the results table but be named in the excluded list,
+        # so a reader can see it was dropped rather than never measured.
+        head, _, tail = after.partition("Excluded Residues")
+        self.assertNotIn("V13N", head)
+        self.assertIn("V13N", tail)
+        self.assertIn("excluded by user", tail)
+
+        resp = self.client.post(f"{url}/{uuid}/sdm/report",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+
+    def test_report_contains_every_plot_section(self):
+        """J(w), the rates, R2/R1 and R1*R2 all reach the report."""
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        html = render_html(
+            build_report_model(os.path.dirname(analysis.results_path),
+                               analysis.name, analysis_type="SDM"),
+            style="screen",
+        )
+
+        for heading in (
+            "Spectral Densities",
+            "Measured Relaxation Rates",
+            "R<sub>2</sub>/R<sub>1</sub>",
+            "R<sub>1</sub>&middot;R<sub>2</sub>",
+            "J(&omega;<sub>N</sub>) vs J(0) Correlation",
+        ):
+            self.assertIn(heading, html, heading)
+
+        # Five distinct figures, not one repeated. Asserted on the section's
+        # own context rather than by counting <svg> in the whole document,
+        # which also picks up the shared report furniture.
+        from app.services.reporting.render import build_spectral_density_data
+
+        section = build_spectral_density_data(
+            build_report_model(os.path.dirname(analysis.results_path),
+                               analysis.name, analysis_type="SDM")
+        )
+        figures = [
+            section["profile_svg"], section["rates_svg"],
+            section["r2_over_r1_svg"], section["r1r2_svg"],
+            section["correlation_svg"],
+        ]
+        self.assertTrue(all(f.startswith("<svg") for f in figures))
+        self.assertEqual(len(set(figures)), 5)
+
+        # The derived plots carry their interpretation, since R2/R1 is not
+        # exchange-free and the product is what discriminates.
+        self.assertIn("not</em> exchange-free", html)
+        self.assertIn("less sensitive to diffusion anisotropy", html)
+
+
+class TestSharedReportEndpoints(TestSpectralDensityApi):
+    """SDM must work through the shared report routes, like every other type.
+
+    These are the endpoints the interactive report page uses; SDM was missing
+    from their allowlists, so the page refused to render it.
+    """
+
+    def _completed(self):
+        r1, r2, noe = self._standard_sources()
+        return self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+    def test_interactive_html_report_renders(self):
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.get(f"{url}/{uuid}/report.html?style=screen",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:400])
+        self.assertIn("Reduced Spectral Density Mapping", resp.text)
+        self.assertIn("Measured Relaxation Rates", resp.text)
+
+    def test_report_json_renders(self):
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.get(f"{url}/{uuid}/report.json",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:400])
+        self.assertEqual(resp.json()["analysis_type"], "SDM")
+
+    def test_report_pdf_renders(self):
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.get(f"{url}/{uuid}/report.pdf",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:400])
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+
+    def _noe_spread_sources(self):
+        """Eight residues whose hetNOE straddles the 0.65 default and 0.75.
+
+        The two cutoffs must keep different sets, or the test would pass on a
+        report that ignored the setting entirely. R2 varies so the kept
+        residues carry a spread in J(0) and the correlation line can be fitted.
+        """
+        assignments = [f"G{i}N" for i in range(10, 18)]
+        noes = [0.88, 0.85, 0.82, 0.79, 0.72, 0.70, 0.68, 0.66]
+        r2s = [11.4, 11.8, 12.2, 12.6, 13.0, 13.4, 13.8, 14.2]
+        n = len(assignments)
+        r1 = self._make_source(self.project, "R1", [1.35] * n, [0.03] * n, assignments)
+        r2 = self._make_source(self.project, "R2", r2s, [0.30] * n, assignments)
+        noe = self._make_source(self.project, "hetNOE", noes, [0.04] * n, assignments)
+        return r1, r2, noe
+
+    def _summary(self, uuid):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.get(f"{url}/{uuid}/sdm/results",
+                               headers=self._auth(self.token_a)).json()["results"]["summary"]
+
+    def _put_params(self, uuid, params):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.put(f"{url}/{uuid}", json={"parameters": json.dumps(params)},
+                               headers=self._auth(self.token_a))
+
+    def _report_section_at(self, uuid, threshold):
+        """The spectral density section the report builds at a given cutoff."""
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import build_spectral_density_data
+        from app.routers.analysis import _extract_excluded_residues
+
+        analysis = self.db.query(models.Analysis).filter(
+            models.Analysis.analysis_uuid == uuid).one()
+        model = build_report_model(
+            analysis_dir=os.path.dirname(analysis.results_path),
+            analysis_name=analysis.name,
+            analysis_type="SDM",
+            excluded_residues=_extract_excluded_residues(analysis),
+            noe_threshold=threshold,
+        )
+        return build_spectral_density_data(model)
+
+    def _report_section(self, uuid):
+        """The spectral density section as the shared report routes build it."""
+        from app.routers.analysis import _sdm_noe_threshold
+
+        analysis = self.db.query(models.Analysis).filter(
+            models.Analysis.analysis_uuid == uuid).one()
+        return self._report_section_at(uuid, _sdm_noe_threshold(analysis))
+
+    def test_report_filters_at_the_analysis_hetnoe_cutoff(self):
+        """The report must describe the residues the results page shows.
+
+        The report routes used to build without the analysis's cutoff, so it
+        filtered at the default while the analysis was set to something else.
+        tau_m is refitted over whatever survives the filter, so the two pages
+        printed different tumbling times for one analysis.
+        """
+        r1, r2, noe = self._noe_spread_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._put_params(uuid, {"noeThreshold": 0.75})
+        summary = self._summary(uuid)
+        section = self._report_section(uuid)
+
+        self.assertEqual(section["n_residues"], summary["n_residues"])
+        self.assertEqual(section["noe_threshold"], 0.75)
+        self.assertAlmostEqual(section["tau_c_ns"], summary["tau_c_estimate_ns"],
+                               places=9)
+        self.assertEqual(section["correlation_fit"]["roots_ns"],
+                         summary["correlation_fit"]["roots_ns"])
+
+        # The fixture has to straddle the two cutoffs, or this test would
+        # pass just as well against the bug it exists to catch.
+        default_section = self._report_section_at(uuid, NOE_THRESHOLD_UNSET)
+        self.assertGreater(default_section["n_residues"], section["n_residues"])
+        self.assertNotAlmostEqual(default_section["tau_c_ns"],
+                                  section["tau_c_ns"], places=6)
+
+    def test_report_honours_a_disabled_hetnoe_filter(self):
+        """An explicit null turns the filter off; it is not "unset"."""
+        r1, r2, noe = self._noe_spread_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        self._put_params(uuid, {"noeThreshold": None})
+        summary = self._summary(uuid)
+        section = self._report_section(uuid)
+
+        self.assertIsNone(section["noe_threshold"])
+        self.assertEqual(section["n_residues"], summary["n_residues"])
+        self.assertAlmostEqual(section["tau_c_ns"], summary["tau_c_estimate_ns"],
+                               places=9)
+
+    def test_plot_archive_refuses_with_a_reason(self):
+        """The one shared export SDM genuinely cannot serve.
+
+        The archive packages per-residue decay and dispersion figures, which
+        a spectral density analysis does not produce, so enabling it would
+        hand back a ZIP with none of the SDM plots in it.
+        """
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        resp = self.client.post(f"{url}/{uuid}/export/plots/async",
+                                headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 400)
+        detail = resp.json()["detail"]
+        self.assertIn("does not produce", detail)
+        self.assertIn("interactive reports instead", detail)
+
+    def test_sdm_report_endpoint_is_reachable_as_a_link(self):
+        """The results table links to it with an <a href>, so GET must work."""
+        uuid = self._completed()
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        for method in (self.client.get, self.client.post):
+            resp = method(f"{url}/{uuid}/sdm/report",
+                          headers=self._auth(self.token_a))
+            self.assertEqual(resp.status_code, 200, method.__name__)
+            self.assertTrue(resp.content.startswith(b"%PDF"))
+
+
+class TestFrontendUrlsMatchRoutes(TestSpectralDensityApi):
+    """The URLs the UI builds must exist on the server.
+
+    A stale link survived the move from /spectral-density/... to
+    /analysis/{uuid}/sdm/... and shipped as a 404 in the browser, because
+    nothing checked the two against each other.
+    """
+
+    def test_every_sdm_url_in_the_manager_resolves(self):
+        import re
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "frontend" / "src" / "components" / "SdmAnalysisManager.tsx"
+        ).read_text()
+
+        # Template literals of the form `/api/projects/${x}/...`
+        found = re.findall(r"`(/api/[^`]*)`", source)
+        self.assertTrue(found, "no API URLs found in the manager")
+
+        registered = {
+            r.path for r in app.routes if getattr(r, "path", "").startswith("/api/")
+        }
+
+        for raw in found:
+            # ${expr} -> the route's own parameter placeholder
+            path = re.sub(r"\$\{[^}]+\}", "{x}", raw).split("?")[0]
+            normalised = re.sub(r"\{[^}]+\}", "{x}", path)
+            matches = {re.sub(r"\{[^}]+\}", "{x}", r) for r in registered}
+            self.assertIn(normalised, matches, f"{raw} does not match any route")
+
+
+class TestSdmReportOmitsInapplicableSections(TestSpectralDensityApi):
+    """The report must not render sections a spectral density analysis cannot fill.
+
+    Going through the shared report machinery meant SDM inherited the whole
+    ChemEx/relaxation document: a residue index of em-dashes, a "Global
+    Relaxation & Exchange Parameters" table with nothing in it, and a page of
+    empty NOT_IN_MODEL profile plots. Empty scaffolding reads as missing data
+    rather than as inapplicable, so those sections are skipped outright.
+    """
+
+    def _html(self):
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        r1, r2, noe = self._standard_sources()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        analysis = (
+            self.db.query(models.Analysis)
+            .filter(models.Analysis.analysis_uuid == uuid).first()
+        )
+        return render_html(
+            build_report_model(os.path.dirname(analysis.results_path),
+                               analysis.name, analysis_type="SDM"),
+            style="screen",
+        )
+
+    def test_no_empty_chemex_sections(self):
+        html = self._html()
+        for absent in (
+            "NOT_IN_MODEL",                    # empty per-residue profile plots
+            "Residue Profiles",                # their heading
+            "Global Relaxation",               # the empty exchange-parameter table
+            "Uncertainty Legend",              # legend for uncertainties SDM has none of
+            "Kinetic Model",                   # SDM fits no kinetic model
+            "Scanning Grid",                   # no grid search
+        ):
+            self.assertNotIn(absent, html, f"{absent!r} should not be in an SDM report")
+
+    def test_no_residue_index_of_dashes(self):
+        """The shared index table's columns are all inapplicable to SDM."""
+        html = self._html()
+        for column in ("R<sub>2A</sub>", "R<sub>2B</sub>", "R<sub>1A</sub>",
+                       "&Delta;&omega; (ppm)"):
+            self.assertNotIn(column, html, column)
+
+    def test_the_sections_that_do_apply_are_present(self):
+        """Suppression must not have taken the real content with it."""
+        html = self._html()
+        for present in (
+            "Reduced Spectral Density Mapping Report",   # title, not "SDM Analysis Report"
+            "Reduced Spectral Density Mapping",          # the section
+            "Measured Relaxation Rates",
+            "R<sub>2</sub>/R<sub>1</sub>",
+            "R<sub>1</sub>&middot;R<sub>2</sub>",
+            "Per-Residue Spectral Densities",
+            "Provenance",
+        ):
+            self.assertIn(present, html, present)
+
+    def test_other_analysis_types_keep_their_sections(self):
+        """The suppression must be SDM-only, not a change to every report."""
+        from pathlib import Path
+        from app.services.reporting.model import build_report_model
+        from app.services.reporting.render import render_html
+
+        fixture = (Path(__file__).parent / "fixtures" / "chemex_trees" / "single_step")
+        html = render_html(
+            build_report_model(fixture, "cpmg demo", analysis_type="CPMG"),
+            style="screen",
+        )
+        self.assertIn("Global Relaxation", html)
+        self.assertIn("Kinetic Model", html)
+
+
+class TestCorrelationPlotReference(TestSpectralDensityApi):
+    """J(0) on the abscissa, with the tau_c sweep and the fitted line.
+
+    This is the conventional orientation: exchange contaminates J(0) alone,
+    so it displaces a residue horizontally. The dashed tau_c sweep locates
+    the family in the plane; the solid line is the least-squares fit the
+    analysis solved its cubic for, and it is drawn only when the analysis
+    supplies one -- a locus computed here instead would be a second
+    derivation, disagreeing with the tau_m printed beside it.
+    """
+
+    OMEGA_N = -3.8226e8
+    TAU_C = 9e-9
+
+    def _rows(self, n=12):
+        slope = 1.0 / (1.0 + (abs(self.OMEGA_N) * self.TAU_C) ** 2)
+        return [
+            {"assignment": f"G{i}N", "res_num": i,
+             "j0": 3.3, "j_wn": 3.3 * slope, "j_h": 0.004,
+             "j0_err": 0.05, "j_wn_err": 0.004, "j_h_err": 0.0005,
+             "covariance": [[0.0025, 0.0, 0.0], [0.0, 1.6e-5, 0.0],
+                            [0.0, 0.0, 2.5e-7]],
+             "r1": 1.35, "r1_err": 0.03, "r2": 12.0, "r2_err": 0.3,
+             "noe": 0.78, "noe_err": 0.04, "flags": [], "excluded": False}
+            for i in range(10, 10 + n)
+        ]
+
+    def _capture(self, rows, **kwargs):
+        """Render and return the labelled reference lines, by label.
+
+        Both linestyles are collected now that the fit is the solid one --
+        capturing only dashes would report an empty plot as a passing one.
+        """
+        import numpy as np
+        from app.services.reporting import figures
+
+        captured = {}
+        original = figures._svg
+
+        def capture(fig):
+            ax = fig.axes[0]
+            captured["lines"] = {
+                line.get_label(): (
+                    np.asarray(line.get_xdata(), dtype=float),
+                    np.asarray(line.get_ydata(), dtype=float),
+                )
+                for line in ax.get_lines()
+                if not str(line.get_label()).startswith("_")
+            }
+            captured["texts"] = [t.get_text() for t in ax.texts]
+            captured["xlabel"] = ax.get_xlabel()
+            captured["ylabel"] = ax.get_ylabel()
+            captured["xlim"] = ax.get_xlim()
+            captured["ylim"] = ax.get_ylim()
+            return original(fig)
+
+        figures._svg = capture
+        try:
+            figures.spectral_density_correlation_plot(rows, self.OMEGA_N, **kwargs)
+        finally:
+            figures._svg = original
+        return captured
+
+    def test_j0_is_on_the_abscissa(self):
+        captured = self._capture(self._rows())
+        self.assertIn("J(0)", captured["xlabel"])
+        self.assertIn("J(", captured["ylabel"])
+        self.assertNotIn("J(0)", captured["ylabel"])
+
+    def test_the_sweep_is_drawn_and_the_fit_beside_it(self):
+        fit = {"alpha": 0.0772, "beta_ns_rad": 0.2182, "r": 0.218}
+        labels = list(self._capture(self._rows(), correlation_fit=fit)["lines"])
+        self.assertEqual(len(labels), 2, labels)
+        self.assertTrue(any("sweep" in v for v in labels), labels)
+        self.assertTrue(any(v.startswith("fit:") for v in labels), labels)
+
+    def test_sweep_peaks_at_omega_tau_equals_one(self):
+        import numpy as np
+
+        lines = self._capture(self._rows())["lines"]
+        x, y = next(v for k, v in lines.items() if "sweep" in k)
+        peak = int(np.argmax(y))
+        self.assertGreater(peak, 0)
+        self.assertLess(peak, len(y) - 1)
+        # J(0) = (2/5) tau, so the maximum sits at J(0) = (2/5)/omega_N.
+        self.assertAlmostEqual(
+            float(x[peak]), 0.4 / abs(self.OMEGA_N) * 1e9, places=1
+        )
+
+    def test_the_fitted_line_is_the_one_the_analysis_supplied(self):
+        """Plotted as y = alpha x + beta, not refitted from the points."""
+        import numpy as np
+
+        fit = {"alpha": 0.0772, "beta_ns_rad": 0.2182, "r": 0.218}
+        lines = self._capture(self._rows(), correlation_fit=fit)["lines"]
+        x, y = next(v for k, v in lines.items() if k.startswith("fit:"))
+
+        self.assertTrue(np.allclose(
+            y, fit["alpha"] * x + fit["beta_ns_rad"], rtol=1e-9, atol=1e-12))
+        self.assertTrue(np.all(np.diff(x) > 0))
+
+    def test_origin_is_on_the_axes(self):
+        """Both references pass through it, so hiding it misleads."""
+        captured = self._capture(self._rows())
+        self.assertLessEqual(captured["xlim"][0], 0.0)
+        self.assertLessEqual(captured["ylim"][0], 0.0)
+
+    def test_no_second_line_is_invented_without_a_fit(self):
+        """tau_m comes from the analysis's cubic, so the plot draws no rival.
+
+        The figure used to fall back to a locus built from the trimmed-mean
+        J(0)/J(wN) ratio, which is a different derivation of the same
+        quantity and disagreed with the tau_m annotated on the same axes.
+        """
+        labels = list(self._capture(self._rows())["lines"])
+        self.assertEqual(len(labels), 1, labels)
+        self.assertIn("sweep", labels[0])
+
+    def test_the_annotated_tau_m_is_the_one_supplied(self):
+        """Never recomputed here: the report's number and the plot's agree."""
+        texts = self._capture(self._rows(), tau_c_s=self.TAU_C)["texts"]
+        self.assertTrue(any("9.00" in t for t in texts), texts)
+
+        # And nothing is annotated when the analysis derived no tau_m.
+        bare = self._capture(self._rows())["texts"]
+        self.assertFalse(any("τ$_m$" in t for t in bare), bare)
+
+
+class TestHetNoeFilter(TestSpectralDensityApi):
+    """Residues below a hetNOE threshold are excluded.
+
+    A low hetNOE marks a flexible tail or loop. Those residues carry enormous
+    relative error in J(0.87 wH), because the NOE error propagates into it
+    almost entirely, and they should not be setting an overall tumbling time
+    that describes the folded core.
+
+    The filter is applied on read like the manual exclusion list, so the
+    threshold can be changed without re-running, and excluded residues stay
+    in the payload with a reason naming the cutoff -- "measured and set
+    aside" has to be distinguishable from "never measured".
+    """
+
+    def _mixed_dataset(self):
+        """Four residues: two above 0.65, one below, one well below."""
+        assignments = ["G10N", "A11N", "L12N", "V13N"]
+        noes = [0.78, 0.71, 0.55, 0.20]
+        r1 = self._make_source(self.project, "R1", [1.35] * 4, [0.03] * 4, assignments)
+        r2 = self._make_source(self.project, "R2", [12.1] * 4, [0.30] * 4, assignments)
+        noe = self._make_source(self.project, "hetNOE", noes, [0.04] * 4, assignments)
+        return r1, r2, noe
+
+    def _results(self, uuid):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.get(f"{url}/{uuid}/sdm/results",
+                               headers=self._auth(self.token_a)).json()["results"]
+
+    def _set_threshold(self, uuid, value):
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        return self.client.put(
+            f"{url}/{uuid}",
+            json={"parameters": json.dumps({"noeThreshold": value})},
+            headers=self._auth(self.token_a),
+        )
+
+    def test_default_threshold_excludes_low_noe_residues(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        results = self._results(uuid)
+
+        by_res = {r["assignment"]: r for r in results["residues"]}
+        self.assertFalse(by_res["G10N"]["excluded"])
+        self.assertFalse(by_res["A11N"]["excluded"])
+        self.assertTrue(by_res["L12N"]["excluded"])
+        self.assertTrue(by_res["V13N"]["excluded"])
+
+        self.assertEqual(results["summary"]["n_residues"], 2)
+        self.assertEqual(results["summary"]["n_excluded_by_noe"], 2)
+        self.assertEqual(results["summary"]["noe_threshold"], 0.65)
+
+    def test_the_reason_names_the_value_and_the_threshold(self):
+        """A reader must be able to see why, not just that."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+
+        reason = by_res["L12N"]["exclusion_reason"]
+        self.assertIn("0.550", reason)
+        self.assertIn("0.65", reason)
+        self.assertIn("below threshold", reason)
+
+    def test_excluded_residues_keep_their_values(self):
+        """Filtered is not the same as unmeasured."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+
+        self.assertEqual(len(by_res), 4)
+        for key in ("j0", "j_wn", "j_h", "r1", "r2", "noe"):
+            self.assertIsNotNone(by_res["V13N"][key])
+
+    def test_threshold_is_adjustable_without_a_rerun(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 2)
+
+        self._set_threshold(uuid, 0.5)
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 3)
+
+        self._set_threshold(uuid, 0.75)
+        self.assertEqual(self._results(uuid)["summary"]["n_residues"], 1)
+
+    def test_null_threshold_disables_the_filter(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        self._set_threshold(uuid, None)
+
+        results = self._results(uuid)
+        self.assertEqual(results["summary"]["n_residues"], 4)
+        self.assertEqual(results["summary"]["n_excluded_by_noe"], 0)
+        self.assertIsNone(results["summary"]["noe_threshold"])
+        self.assertTrue(all(not r["excluded"] for r in results["residues"]))
+
+    def test_manual_and_threshold_exclusions_are_both_reported(self):
+        """Picking one reason and hiding the other would misinform."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        self.client.put(
+            f"{url}/{uuid}",
+            json={"parameters": json.dumps(
+                {"noeThreshold": 0.65, "excludedResidues": ["G10N", "L12N"]}
+            )},
+            headers=self._auth(self.token_a),
+        )
+
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertEqual(by_res["G10N"]["exclusion_reason"], "excluded by user")
+        self.assertIn("below threshold", by_res["V13N"]["exclusion_reason"])
+        # L12N is both: manual, and under the cutoff.
+        both = by_res["L12N"]["exclusion_reason"]
+        self.assertIn("excluded by user", both)
+        self.assertIn("below threshold", both)
+
+    def test_the_filter_moves_tau_m(self):
+        """Which is the point: flexible tails should not set the tumbling time."""
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        filtered = self._results(uuid)["summary"]
+
+        self._set_threshold(uuid, None)
+        unfiltered = self._results(uuid)["summary"]
+
+        self.assertNotEqual(unfiltered["n_residues"], filtered["n_residues"])
+        self.assertNotAlmostEqual(
+            unfiltered["j0_trimmed_mean"], filtered["j0_trimmed_mean"], places=6
+        )
+
+    def test_threshold_reaches_the_csv_and_the_report(self):
+        r1, r2, noe = self._mixed_dataset()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        csv_text = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                                   headers=self._auth(self.token_a)).text
+        self.assertIn("below threshold", csv_text)
+        self.assertIn("# Excluded residues", csv_text)
+
+        pdf = self.client.post(f"{url}/{uuid}/sdm/report",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(pdf.status_code, 200, pdf.text[:300])
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+
+    def test_negative_noe_is_caught_by_the_default_threshold(self):
+        """The spec kept negative NOE unfiltered; this filter is opt-out.
+
+        Negative hetNOE is physically valid, and the mapping still produces
+        values for it -- the row keeps them. But it is far below any sensible
+        cutoff, so the default threshold sets it aside, and the reason says
+        so rather than the residue silently vanishing.
+        """
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03], assignments)
+        r2 = self._make_source(self.project, "R2", [12.0, 4.0], [0.3, 0.2], assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.78, -0.55],
+                                [0.04, 0.08], assignments)
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+
+        by_res = {r["assignment"]: r for r in self._results(uuid)["residues"]}
+        self.assertTrue(by_res["A11N"]["excluded"])
+        self.assertIn("below threshold", by_res["A11N"]["exclusion_reason"])
+        self.assertIsNotNone(by_res["A11N"]["j0"])
+        self.assertIn("negative_noe", by_res["A11N"]["flags"])
+
+
+class TestEverythingExcluded(TestSpectralDensityApi):
+    """Excluding every residue must not crash the endpoint.
+
+    The hetNOE filter has a default, so an all-flexible dataset can empty the
+    kept set without anyone asking for it. The trimmed means are then
+    undefined, and NaN is not JSON -- returning it 500s the request.
+    """
+
+    def _all_low_noe(self):
+        assignments = ["G10N", "A11N"]
+        r1 = self._make_source(self.project, "R1", [1.3, 1.3], [0.03, 0.03], assignments)
+        r2 = self._make_source(self.project, "R2", [12.0, 4.0], [0.3, 0.2], assignments)
+        noe = self._make_source(self.project, "hetNOE", [0.30, -0.55],
+                                [0.04, 0.08], assignments)
+        return r1, r2, noe
+
+    def test_results_still_serialise(self):
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        resp = self.client.get(f"{url}/{uuid}/sdm/results",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(resp.status_code, 200, resp.text[:300])
+
+        summary = resp.json()["results"]["summary"]
+        self.assertEqual(summary["n_residues"], 0)
+        # None, not NaN: there is no value, rather than an unrepresentable one.
+        self.assertIsNone(summary["j0_trimmed_mean"])
+        self.assertIsNone(summary["tau_c_estimate_ns"])
+
+    def test_rows_and_reasons_survive(self):
+        """The residues are still there, with why they were set aside."""
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        results = self.client.get(f"{url}/{uuid}/sdm/results",
+                                  headers=self._auth(self.token_a)).json()["results"]
+
+        self.assertEqual(len(results["residues"]), 2)
+        for row in results["residues"]:
+            self.assertTrue(row["excluded"])
+            self.assertIn("below threshold", row["exclusion_reason"])
+
+    def test_csv_and_report_still_render(self):
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+
+        csv_resp = self.client.get(f"{url}/{uuid}/sdm/export.csv",
+                                   headers=self._auth(self.token_a))
+        self.assertEqual(csv_resp.status_code, 200)
+        self.assertIn("below threshold", csv_resp.text)
+
+        pdf = self.client.post(f"{url}/{uuid}/sdm/report",
+                               headers=self._auth(self.token_a))
+        self.assertEqual(pdf.status_code, 200, pdf.text[:300])
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+
+    def test_lowering_the_threshold_brings_them_back(self):
+        r1, r2, noe = self._all_low_noe()
+        uuid = self._run(self._create_body(r1, r2, noe)).json()["analysis_uuid"]
+        url = ANALYSIS_URL.format(p=self.project.project_uuid)
+        self.client.put(
+            f"{url}/{uuid}",
+            json={"parameters": json.dumps({"noeThreshold": None})},
+            headers=self._auth(self.token_a),
+        )
+        results = self.client.get(f"{url}/{uuid}/sdm/results",
+                                  headers=self._auth(self.token_a)).json()["results"]
+        self.assertEqual(results["summary"]["n_residues"], 2)
+        self.assertIsNotNone(results["summary"]["j0_trimmed_mean"])

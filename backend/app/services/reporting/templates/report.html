@@ -9,8 +9,10 @@
       {% include "_step_section.html" %}
     {% endfor %}
   {% else %}
+    {% if index_data %}
     <div class="page-break"></div>
     {% include "_index.html" %}
+    {% endif %}
 
     {% if kinetic_data %}
     <div class="page-break"></div>
@@ -29,6 +31,11 @@
 
     {% if detailed_residues %}
     {% include "_residuals.html" %}
+    {% endif %}
+
+    {% if spectral_density_data %}
+    <div class="page-break"></div>
+    {% include "_spectral_density.html" %}
     {% endif %}
 
     {% if statistics_data %}

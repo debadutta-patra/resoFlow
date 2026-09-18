@@ -9,6 +9,7 @@ from app.services.reporting.figures import (
     dispersion_curve,
     residuals_strip,
     detailed_residue_plot,
+    report_shows_residuals,
     kinetic_correlation_plot,
     parameter_distribution_plot,
     covariance_distribution_plot,
@@ -50,6 +51,25 @@ def sample_residue_record():
     }
 
 
+@pytest.fixture
+def sample_relaxation_record():
+    """An R2 decay: a handful of delay points and the fitted curve."""
+    return {
+        "display_name": "10N",
+        "dw": MockParam(2.5),
+        "csa": MockParam(118.5),
+        "csb": MockParam(121.0),
+        "decay_curve_data": {
+            "times": [0.01, 0.05, 0.10, 0.20],
+            "intensities": [1.00, 0.61, 0.37, 0.14],
+            "intensities_err": [0.02, 0.02, 0.02, 0.02],
+            "residuals": [0.01, -0.02, 0.015, -0.005],
+            "fit_times_dense": [0.01, 0.10, 0.20],
+            "fit_intensities_dense": [0.99, 0.37, 0.14],
+        },
+    }
+
+
 def test_format_param_label():
     assert "k_ex" in format_param_label("kex_ab")
     assert "p_b" in format_param_label("pb")
@@ -78,6 +98,31 @@ def test_detailed_residue_plot_svg(sample_residue_record):
     assert isinstance(svg, str)
     assert svg.startswith("<svg")
     assert "</svg>" in svg
+    # CEST keeps the strip: residuals across offset are how a wrong exchange
+    # model shows itself.
+    assert 'id="axes_2"' in svg
+
+
+@pytest.mark.parametrize("analysis_type", ["R1", "R2", "HETNOE"])
+def test_relaxation_detail_plot_carries_no_residuals_strip(
+    sample_relaxation_record, analysis_type
+):
+    """The report shows the decay alone for a relaxation analysis.
+
+    RMSD and chi2_red sit in the table beside the curve, so the strip added
+    a panel saying nothing the numbers did not.
+    """
+    assert not report_shows_residuals(analysis_type)
+    svg = detailed_residue_plot(sample_relaxation_record, analysis_type=analysis_type)
+    assert svg.startswith("<svg")
+    assert 'id="axes_1"' in svg
+    assert 'id="axes_2"' not in svg
+
+
+def test_cest_and_cpmg_keep_their_residuals():
+    assert report_shows_residuals("CEST")
+    assert report_shows_residuals("CPMG")
+    assert report_shows_residuals(None)
 
 
 def test_kinetic_correlation_plot_png_and_svg():

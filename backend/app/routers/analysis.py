@@ -21,6 +21,7 @@ from ..services.fitting.relaxation import (
     fit_exponential_decay,
 )
 from ..services.fitting.relaxation_tasks import run_relaxation_analysis_task
+from ..services.fitting.sdm_runner import NOE_THRESHOLD_UNSET, stored_noe_threshold
 from .deps import get_project, get_analysis
 from ..celery_app import celery_app
 from ..services.fitting.cest_report import generate_cest_pdf_report
@@ -44,6 +45,8 @@ def _get_analysis_run_dir(analysis: models.Analysis) -> str:
     atype = (analysis.analysis_type or "").upper()
     if atype == "CPMG":
         folder_name = "cpmg_fitting"
+    elif atype == "SDM":
+        folder_name = "sdm_fitting"
     elif atype in ("R1", "R2", "HETNOE"):
         folder_name = f"{analysis.analysis_type.lower()}_fitting"
     else:
@@ -1234,6 +1237,20 @@ def restore_cest_analysis(
 
 
 
+def _sdm_noe_threshold(analysis: models.Analysis):
+    """The hetNOE cutoff a report must filter at.
+
+    Only SDM analyses have one; everything else passes the sentinel so the
+    shared builder leaves the setting alone. Without this the report filtered
+    at the default while the analysis was set to something else, refitting the
+    J(wN)-J(0) line over a different residue set and printing a tau_m that
+    disagreed with the results page.
+    """
+    if (analysis.analysis_type or "").upper() != "SDM":
+        return NOE_THRESHOLD_UNSET
+    return stored_noe_threshold(analysis)
+
+
 def _extract_excluded_residues(analysis: models.Analysis) -> Optional[List[str]]:
     if not analysis.parameters:
         return None
@@ -1250,10 +1267,10 @@ def _render_analysis_html(
     palette: Optional[str] = None,
 ) -> HTMLResponse:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=400,
-            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
@@ -1267,6 +1284,7 @@ def _render_analysis_html(
             analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
             excluded_residues=excluded,
+            noe_threshold=_sdm_noe_threshold(analysis),
         )
         html_str = render_html(model, style=style, palette=palette)
         return HTMLResponse(content=html_str)
@@ -1277,10 +1295,10 @@ def _render_analysis_html(
 
 def _render_analysis_json(analysis: models.Analysis) -> Response:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=400,
-            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Interactive reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
@@ -1294,6 +1312,7 @@ def _render_analysis_json(analysis: models.Analysis) -> Response:
             analysis_type=report_atype,
             chemex_image_digest=analysis.chemex_image_digest,
             excluded_residues=excluded,
+            noe_threshold=_sdm_noe_threshold(analysis),
         )
         json_str = json.dumps(model.to_dict())
         return Response(content=json_str, media_type="application/json")
@@ -1308,10 +1327,10 @@ def _render_or_serve_pdf(
     palette: Optional[str] = None,
 ):
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=400,
-            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     run_dir = _get_analysis_run_dir(analysis)
     if not os.path.exists(run_dir):
@@ -1342,6 +1361,7 @@ def _render_or_serve_pdf(
             palette=palette,
             chemex_image_digest=analysis.chemex_image_digest,
             excluded_residues=excluded,
+            noe_threshold=_sdm_noe_threshold(analysis),
         )
         try:
             with open(pdf_path, "wb") as f:
@@ -1369,10 +1389,10 @@ def _trigger_pdf_async(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Publication reports are available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Publication reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
         )
     if analysis.status != "COMPLETED":
         raise HTTPException(
@@ -1437,7 +1457,7 @@ def _trigger_plots_export_async(
     if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Plot archive export is available for CPMG, CEST, R1, R2, and hetNOE analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
+            detail=f"Plot archive export is available for CPMG, CEST, R1, R2 and hetNOE analyses; it packages per-residue decay and dispersion figures, which a {analysis.analysis_type} analysis does not produce. Its plots are in the PDF and interactive reports instead.",
         )
     if analysis.status != "COMPLETED":
         raise HTTPException(

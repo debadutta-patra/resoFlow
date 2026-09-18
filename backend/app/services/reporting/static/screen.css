@@ -287,3 +287,16 @@ tr[id] {
   border-radius: 3px;
 }
 
+
+/* Field-labelled rates -- see print.css. */
+.rate-field {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.field-tag {
+  font-size: 0.7em;
+  color: #6B7280;
+  margin-left: 0.25em;
+  vertical-align: 0.35em;
+}

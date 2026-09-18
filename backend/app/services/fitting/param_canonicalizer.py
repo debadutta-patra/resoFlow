@@ -17,15 +17,39 @@ class CanonicalParamKey:
     def is_exchange(self) -> bool:
         return self.name in ('KEX_AB', 'KEX', 'PB', 'PA', 'KAB', 'KBA')
     
-    def matches(self, name: str, scope: str = 'global') -> bool:
-        """Check if this key matches a query (name, scope).
-        Both name and scope must match exactly (after normalization).
+    def matches(self, name: str, scope: str = 'global',
+                field: Optional[str] = None) -> bool:
+        """Check if this key matches a query (name, scope[, field]).
+
+        Name and scope must match exactly after normalization. `field` is
+        opt-in: passing None keeps the historical behaviour of ignoring it,
+        so existing callers are unaffected, while a caller that knows which
+        static field it wants can say so. Ignoring the field silently
+        matches whichever B0 block happens to come first, and for R2 across
+        500/800 MHz that is a difference of tens of percent.
         """
         if self.name != name.upper():
+            return False
+        if field is not None and not self.matches_field(field):
             return False
         if scope == 'global' and self.is_global:
             return True
         return self.scope == normalize_scope(scope)
+
+    def matches_field(self, field: str) -> bool:
+        """Whether this key belongs to the given static field.
+
+        Compares numerically where both sides parse, so "600.3MHZ",
+        "600.3mhz" and "600.3" agree. A key with no field qualifier matches
+        any request, since a single-field fit writes no qualifier at all.
+        """
+        if self.field is None:
+            return True
+        mine = parse_field_mhz(self.field)
+        theirs = parse_field_mhz(field)
+        if mine is None or theirs is None:
+            return str(self.field).upper() == str(field).upper()
+        return abs(mine - theirs) < 1e-6
     
     def __str__(self) -> str:
         parts = [self.name]
@@ -34,6 +58,17 @@ class CanonicalParamKey:
         if self.field:
             parts.append(f'B0->{self.field}')
         return ', '.join(parts)
+
+
+def parse_field_mhz(field: Optional[str]) -> Optional[float]:
+    """Turn a ChemEx B0 qualifier such as "600.3MHZ" into MHz."""
+    if field is None:
+        return None
+    text = str(field).upper().replace("MHZ", "").strip()
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
 
 def normalize_scope(scope: str) -> str:

@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import AnalysisManager from '../components/AnalysisManager';
 import CestAnalysisManager from '../components/CestAnalysisManager';
 import { CpmgAnalysisManager } from '../components/CpmgAnalysisManager';
+import SdmAnalysisManager from '../components/SdmAnalysisManager';
 
 const AnalysisDetails: React.FC = () => {
   const { projectUuid, analysisUuid } = useParams<{ projectUuid: string, analysisUuid: string }>();
@@ -75,7 +76,7 @@ const AnalysisDetails: React.FC = () => {
                   </h1>
                 </div>
             </div>
-            {selectedAnalysis.status === 'COMPLETED' && ['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE'].includes((selectedAnalysis.analysis_type || '').toUpperCase()) && (
+            {selectedAnalysis.status === 'COMPLETED' && ['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE', 'SDM'].includes((selectedAnalysis.analysis_type || '').toUpperCase()) && (
               <button
                 onClick={() => navigate(`/projects/${projectUuid}/analysis/${analysisUuid}/report`)}
                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all shadow-sm active:scale-[0.98]"
@@ -97,6 +98,19 @@ const AnalysisDetails: React.FC = () => {
             }}
             onClose={handleClose}
             onDelete={handleClose}
+          />
+        ) : selectedAnalysis.analysis_type === 'SDM' ? (
+          <SdmAnalysisManager
+            analysis={selectedAnalysis}
+            projectUuid={projectUuid!}
+            analyses={(project?.analyses || []).map((a: any) => ({
+              analysis_uuid: a.analysis_uuid,
+              name: a.name,
+              analysis_type: a.analysis_type,
+              status: a.status,
+              b0: (a.spectra || []).map((sp: any) => sp.b0).find((b: any) => b != null) ?? null,
+            }))}
+            onUpdate={fetchProjectDetails}
           />
         ) : selectedAnalysis.analysis_type === 'CPMG' ? (
           <CpmgAnalysisManager

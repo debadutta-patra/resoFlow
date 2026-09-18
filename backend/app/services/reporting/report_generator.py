@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+from ..fitting.sdm_runner import NOE_THRESHOLD_UNSET
 from .model import ReportModel, build_report_model
 from .render import render_pdf, render_html
 
@@ -83,6 +84,7 @@ def generate_modern_pdf_report(
     chemex_image_digest: Optional[str] = None,
     fixed_timestamp: Optional[str] = None,
     excluded_residues: Optional[Sequence[str]] = None,
+    noe_threshold: Any = NOE_THRESHOLD_UNSET,
 ) -> io.BytesIO:
     """
     Main public entry point for generating modern, publication-usable PDF reports.
@@ -95,6 +97,7 @@ def generate_modern_pdf_report(
         chemex_image_digest=chemex_image_digest,
         fixed_timestamp=fixed_timestamp,
         excluded_residues=excluded_residues,
+        noe_threshold=noe_threshold,
     )
     builder = ReportBuilder(model=model, style=style, palette=palette)
     return builder.render_pdf()

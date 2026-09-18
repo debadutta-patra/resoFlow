@@ -1,0 +1,361 @@
+<!-- backend/app/services/reporting/templates/_spectral_density.html -->
+{% if spectral_density_data.mode == "multi_field" %}
+<h2>Multi-Field Consistency &amp; Exchange Test</h2>
+
+<div class="callout callout-warn" style="border:1.2pt solid #B45309;background:#FEF3C7;padding:7pt 9pt;margin:8pt 0;border-radius:3pt;">
+  <strong>EXPERIMENTAL</strong> &mdash; {{ spectral_density_data.experimental_notice }}
+</div>
+
+<table class="pipeline-table">
+  <tbody>
+    <tr>
+      <td><strong>Fields</strong></td>
+      <td>{{ spectral_density_data.fields_mhz|map('round', 2)|join(' / ') }} MHz (<sup>1</sup>H)</td>
+      <td><strong>Degrees of freedom</strong></td>
+      <td>{{ spectral_density_data.dof }} &nbsp;(n<sub>fields</sub> &minus; 1)</td>
+    </tr>
+    <tr>
+      <td><strong>Residues</strong></td>
+      <td>{{ spectral_density_data.n_residues }} mapped, {{ spectral_density_data.n_excluded }} excluded</td>
+      <td><strong>p &lt; 0.05</strong></td>
+      <td>{{ spectral_density_data.n_exchange_flagged }} residues</td>
+    </tr>
+    <tr>
+      <td><strong>r<sub>NH</sub> / &Delta;&sigma;</strong></td>
+      <td>{{ "%.4g"|format(spectral_density_data.r_nh_angstrom) }} &Aring; / {{ "%.4g"|format(spectral_density_data.delta_sigma_ppm) }} ppm</td>
+      <td><strong>Median &chi;&sup2;</strong></td>
+      <td>{% if spectral_density_data.median_chi2 is not none %}{{ "%.2f"|format(spectral_density_data.median_chi2) }}{% else %}&mdash;{% endif %}</td>
+    </tr>
+  </tbody>
+</table>
+
+<p style="font-size:8pt;color:#4B5563;margin-top:4pt;">
+  The stacked system has 3n rows and 1 + 2n unknowns: one shared,
+  field-independent J(0) plus J(&omega;<sub>N</sub>) and J(0.87&omega;<sub>H</sub>)
+  at each field. The n &minus; 1 surplus degrees of freedom are exactly the
+  &ldquo;J(0) is the same at every field&rdquo; assumption. R<sub>1</sub> and the
+  NOE carry no exchange, so a small p-value implicates exchange.
+</p>
+
+<div class="callout" style="border-left:2.5pt solid #B45309;padding:5pt 9pt;margin:8pt 0;background:#FFFBEB;">
+  <strong>What this test cannot see.</strong> {{ spectral_density_data.multifield_caveat }}
+</div>
+
+{% if not spectral_density_data.scaling_available %}
+<div class="callout" style="border-left:2.5pt solid #6B7280;padding:5pt 9pt;margin:8pt 0;background:#F9FAFB;">
+  <strong>No scaling exponent.</strong> {{ spectral_density_data.scaling_unavailable_reason }}
+</div>
+{% else %}
+<p style="font-size:8pt;color:#4B5563;">
+  Median fitted exponent &alpha; =
+  {% if spectral_density_data.median_alpha is not none %}{{ "%.2f"|format(spectral_density_data.median_alpha) }}{% else %}&mdash;{% endif %}.
+  &alpha; is fitted freely in [0, 2] and reported, never fixed at 2:
+  R<sub>ex</sub> &prop; B<sub>0</sub>&sup2; holds only in the fast-exchange
+  limit, and &alpha; is itself the diagnostic of the exchange time scale.
+</p>
+{% endif %}
+
+<h3>Per-Residue Exchange Test</h3>
+<table class="residue-table">
+  <thead>
+    <tr>
+      <th>Residue</th>
+      <th class="num-right">J(0) [ns/rad]</th>
+      <th class="num-right">&chi;&sup2;</th>
+      <th class="num-right">p</th>
+      <th class="num-right">&alpha;</th>
+      {% for f in spectral_density_data.fields_mhz %}
+      <th class="num-right">R<sub>2</sub> resid. @{{ "%.0f"|format(f) }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in spectral_density_data.rows %}
+    <tr>
+      <td><strong>{{ row.assignment }}</strong></td>
+      <td class="num-right">{{ "%.3f"|format(row.j0) }} &plusmn; {{ "%.3f"|format(row.j0_err) }}</td>
+      <td class="num-right">{{ "%.2f"|format(row.chi2) }}</td>
+      <td class="num-right">{% if row.significant %}<strong>{{ "%.4f"|format(row.p_value) }}</strong>{% else %}{{ "%.3f"|format(row.p_value) }}{% endif %}</td>
+      <td class="num-right">{% if row.alpha is not none %}{{ "%.2f"|format(row.alpha) }}{% else %}&mdash;{% endif %}</td>
+      {% for entry in row.per_field %}
+      <td class="num-right">{{ "%.3f"|format(entry.r2_residual) }}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="font-size:8pt;color:#4B5563;">
+  Bold p-values are below 0.05. R<sub>2</sub> residuals are determined only up
+  to a field-independent constant that J(0) has absorbed, so differences
+  between fields are meaningful while absolute values are not.
+</p>
+
+{% if spectral_density_data.excluded_residues %}
+<h3>Excluded Residues</h3>
+<table class="residue-table">
+  <thead><tr><th style="width:25%;">Residue</th><th>Reason</th></tr></thead>
+  <tbody>
+    {% for item in spectral_density_data.excluded_residues %}
+    <tr><td><strong>{{ item.residue }}</strong></td><td>{{ item.reason }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% else %}
+<h2>Reduced Spectral Density Mapping</h2>
+
+{% if spectral_density_data.experimental %}
+<div class="callout callout-warn" style="border:1.2pt solid #B45309;background:#FEF3C7;padding:7pt 9pt;margin:8pt 0;border-radius:3pt;">
+  <strong>EXPERIMENTAL</strong> &mdash;
+  {{ spectral_density_data.experimental_notice }}
+</div>
+{% endif %}
+
+<table class="pipeline-table">
+  <tbody>
+    <tr>
+      <td><strong>Static field</strong></td>
+      <td>{{ "%.2f"|format(spectral_density_data.b0_h_mhz) }} MHz (<sup>1</sup>H)</td>
+      <td><strong>Variant</strong></td>
+      <td><code>{{ spectral_density_data.variant }}</code></td>
+    </tr>
+    <tr>
+      <td><strong>r<sub>NH</sub></strong></td>
+      <td>{{ "%.4g"|format(spectral_density_data.r_nh_angstrom) }} &Aring;</td>
+      <td><strong>&Delta;&sigma;</strong></td>
+      <td>{{ "%.4g"|format(spectral_density_data.delta_sigma_ppm) }} ppm</td>
+    </tr>
+    <tr>
+      <td><strong>Error method</strong></td>
+      <td>{{ spectral_density_data.error_method }}</td>
+      <td><strong>R<sub>2</sub> provenance</strong></td>
+      <td>{{ spectral_density_data.r2_provenance }}</td>
+    </tr>
+    <tr>
+      <td><strong>hetNOE cutoff</strong></td>
+      <td>
+        {% if spectral_density_data.noe_threshold is not none %}
+        &ge; {{ "%g"|format(spectral_density_data.noe_threshold) }}
+        {% else %}disabled{% endif %}
+        &nbsp;|&nbsp; R<sub>ex</sub>: {{ spectral_density_data.rex_source }}
+      </td>
+      <td><strong>Residues</strong></td>
+      <td>
+        {{ spectral_density_data.n_residues }} mapped,
+        {{ spectral_density_data.n_flagged }} flagged,
+        {{ spectral_density_data.n_excluded }} excluded
+        {%- if spectral_density_data.n_excluded_by_noe %},
+        {{ spectral_density_data.n_excluded_by_noe }} below the hetNOE cutoff
+        {%- endif %}
+        {%- if spectral_density_data.n_excluded_by_user %},
+        {{ spectral_density_data.n_excluded_by_user }} by hand
+        {%- endif %}
+      </td>
+    </tr>
+    {% if spectral_density_data.tau_c_ns %}
+    <tr>
+      <td><strong>&tau;<sub>m</sub> estimate</strong></td>
+      <td>
+        {{ "%.2f"|format(spectral_density_data.tau_c_ns) }} ns
+        <span style="font-size:7pt;color:#6B7280;">(root of the J(&omega;<sub>N</sub>)&ndash;J(0) cubic)</span>
+      </td>
+      <td><strong>Systematic band</strong></td>
+      <td>
+        J(0) &plusmn;{{ "%.1f"|format(spectral_density_data.systematic_band_pct.j0) }}%,
+        J(&omega;<sub>N</sub>) &plusmn;{{ "%.1f"|format(spectral_density_data.systematic_band_pct.j_wn) }}%,
+        J(0.87&omega;<sub>H</sub>) &plusmn;{{ "%.1f"|format(spectral_density_data.systematic_band_pct.j_h) }}%
+      </td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<p style="font-size:8pt;color:#4B5563;margin-top:4pt;">
+  The systematic band above comes from the r<sub>NH</sub> and &Delta;&sigma; choice
+  ({{ spectral_density_data.systematic_band.description }}). It shifts every residue
+  coherently in the same direction and is <em>not</em> included in the per-residue
+  error bars, which carry statistical uncertainty only.
+</p>
+
+{% if spectral_density_data.correlation_fit %}
+{% set fit = spectral_density_data.correlation_fit %}
+<h3>Overall Tumbling Time from the J(&omega;<sub>N</sub>)&ndash;J(0) Correlation</h3>
+<p style="font-size:8pt;color:#4B5563;">
+  Following Lef&egrave;vre, Dayie, Peng &amp; Wagner (1996), a least-squares
+  line J(&omega;<sub>N</sub>) = &alpha;J(0) + &beta; is fitted to the mapped
+  residues. Substituting the rigid-rotor forms J(0) = (2/5)&tau;<sub>m</sub>
+  and J(&omega;<sub>N</sub>) = (2/5)&tau;<sub>m</sub>/(1 +
+  (&omega;<sub>N</sub>&tau;<sub>m</sub>)&sup2;) into that line and clearing
+  denominators gives
+</p>
+<p style="text-align:center;font-size:9pt;margin:6pt 0;">
+  2&alpha;&omega;<sub>N</sub>&sup2;&tau;<sub>m</sub>&sup3;
+  + 5&beta;&omega;<sub>N</sub>&sup2;&tau;<sub>m</sub>&sup2;
+  + 2(&alpha;&minus;1)&tau;<sub>m</sub> + 5&beta; = 0
+</p>
+<table class="pipeline-table">
+  <tbody>
+    <tr>
+      <td><strong>&alpha;</strong></td><td>{{ "%.4f"|format(fit.alpha) }}</td>
+      <td><strong>&beta;</strong></td><td>{{ "%.4f"|format(fit.beta_ns_rad) }} ns rad<sup>&minus;1</sup></td>
+    </tr>
+    <tr>
+      <td><strong>Correlation r</strong></td>
+      <td>{{ "%.3f"|format(fit.r) }} &nbsp;(r&sup2; = {{ "%.1f"|format(100 * fit.r * fit.r) }}%)</td>
+      <td><strong>Roots</strong></td>
+      <td>{% for t in fit.roots_ns %}{{ "%.2f"|format(t) }}{% if not loop.last %}, {% endif %}{% endfor %} ns</td>
+    </tr>
+    <tr>
+      <td><strong>Selected</strong></td>
+      <td colspan="3" style="font-size:8pt;">{{ fit.selected_reason }}</td>
+    </tr>
+  </tbody>
+</table>
+<p style="font-size:8pt;color:#4B5563;">
+  A weak correlation is normal here and does not by itself invalidate
+  &tau;<sub>m</sub>: the residues crowd into a narrow range of J(0), so r is
+  small even when the line is a fair description. The source paper reports
+  21.8% for its own data. It is shown rather than hidden because it is the
+  honest measure of how well the line describes these residues, and
+  &tau;<sub>m</sub> is derived from that line alone.
+</p>
+{% endif %}
+
+{% if spectral_density_data.j0_caveat %}
+<div class="callout" style="border-left:2.5pt solid #6B7280;padding:5pt 9pt;margin:8pt 0;background:#F9FAFB;">
+  <strong>Interpreting J(0).</strong> {{ spectral_density_data.j0_caveat }}
+</div>
+{% endif %}
+
+<h3>Spectral Densities</h3>
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.profile_svg|safe }}
+</div>
+
+<div class="page-break"></div>
+<h3>Measured Relaxation Rates</h3>
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.rates_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  The three measurements the mapping consumes, on a shared residue axis so a
+  feature in a spectral density can be traced back to the rate that produced
+  it. A negative hetNOE is physically valid and marks flexible regions; it is
+  mapped rather than filtered, though J(0.87&omega;<sub>H</sub>) then carries
+  very large relative error.
+</p>
+
+<div class="page-break"></div>
+<h3>R<sub>2</sub>/R<sub>1</sub></h3>
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.r2_over_r1_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  The classic route to an overall correlation time without the NOE, but
+  <em>not</em> exchange-free: R<sub>ex</sub> inflates R<sub>2</sub> and so
+  inflates the ratio. An elevated point is ambiguous between slow tumbling,
+  diffusion anisotropy and chemical exchange, which is why the
+  R<sub>1</sub>&middot;R<sub>2</sub> product follows.
+</p>
+
+<div class="page-break"></div>
+<h3>R<sub>1</sub>&middot;R<sub>2</sub></h3>
+<div class="sequence-plot-container" style="margin: 12pt 0; text-align: center;">
+  {{ spectral_density_data.r1r2_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  The product is far less sensitive to diffusion anisotropy than
+  R<sub>2</sub>/R<sub>1</sub>, because the anisotropy dependences of
+  R<sub>1</sub> and R<sub>2</sub> largely cancel in it. A residue standing
+  above the trimmed mean therefore points at chemical exchange rather than at
+  an orientation effect (Kneller, Lu &amp; Bracken, <em>JACS</em> 2002). The
+  trimmed mean and &plusmn;2&sigma; band are an orientation aid, not a
+  hypothesis test &mdash; the multi-field &chi;&sup2; is the test this module
+  offers.
+</p>
+
+<div class="page-break"></div>
+<h3>J(&omega;<sub>N</sub>) vs J(0) Correlation</h3>
+<div class="sequence-plot-container" style="margin: 10pt 0; text-align: center;">
+  {{ spectral_density_data.correlation_svg|safe }}
+</div>
+<p style="font-size:8pt;color:#4B5563;">
+  J(0) is on the abscissa, so chemical exchange &mdash; which contaminates
+  J(0) alone &mdash; displaces a residue horizontally. The dashed
+  <strong>&tau;<sub>c</sub> sweep</strong> traces where an isotropic rotor of
+  any size would sit, rising to a maximum at &omega;<sub>N</sub>&tau; = 1 and
+  decaying after it, which locates the family in the plane. The solid line is
+  the <strong>least-squares fit</strong> above &mdash; the one line
+  &tau;<sub>m</sub> was derived from, so its quality can be judged by eye
+  next to the number it produced.
+</p>
+<p style="font-size:8pt;color:#4B5563;">
+  Ellipses are 1&sigma; contours from the full covariance, not independent error
+  bars: J(0) and J(&omega;<sub>N</sub>) are correlated by construction, so crossed
+  bars would misstate the plausible region.
+</p>
+
+<div class="page-break"></div>
+<h3>Per-Residue Spectral Densities</h3>
+<table class="residue-table">
+  <thead>
+    <tr>
+      <th>Residue</th>
+      <th class="num-right">J(0)</th>
+      <th class="num-right">J(&omega;<sub>N</sub>)</th>
+      <th class="num-right">J(0.87&omega;<sub>H</sub>)</th>
+      <th class="num-right">R<sub>1</sub></th>
+      <th class="num-right">R<sub>2</sub></th>
+      <th class="num-right">NOE</th>
+      <th>Flags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in spectral_density_data.rows %}
+    <tr>
+      <td><strong>{{ row.assignment }}</strong></td>
+      <td class="num-right">{{ "%.3f"|format(row.j0) }} &plusmn; {{ "%.3f"|format(row.j0_err) }}</td>
+      <td class="num-right">{{ "%.4f"|format(row.j_wn) }} &plusmn; {{ "%.4f"|format(row.j_wn_err) }}</td>
+      <td class="num-right">{{ "%.5f"|format(row.j_h) }} &plusmn; {{ "%.5f"|format(row.j_h_err) }}</td>
+      <td class="num-right">{{ "%.3f"|format(row.r1) }}</td>
+      <td class="num-right">{{ "%.3f"|format(row.r2) }}</td>
+      <td class="num-right">{{ "%.3f"|format(row.noe) }}</td>
+      <td style="font-size:7.5pt;">{{ row.flags|join(", ") }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="font-size:8pt;color:#4B5563;">
+  J values in ns&nbsp;rad<sup>&minus;1</sup>; R<sub>1</sub> and R<sub>2</sub> in
+  s<sup>&minus;1</sup>. Full 3&times;3 covariances are in the CSV export.
+</p>
+
+{% if spectral_density_data.flag_descriptions %}
+<h3>Flag Meanings</h3>
+<table class="residue-table">
+  <thead><tr><th style="width:22%;">Flag</th><th class="num-right" style="width:8%;">Count</th><th>Meaning</th></tr></thead>
+  <tbody>
+    {% for flag, description in spectral_density_data.flag_descriptions.items() %}
+    <tr>
+      <td><code>{{ flag }}</code></td>
+      <td class="num-right">{{ spectral_density_data.flag_counts.get(flag, 0) }}</td>
+      <td style="font-size:8pt;">{{ description }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if spectral_density_data.excluded_residues %}
+<h3>Excluded Residues</h3>
+<table class="residue-table">
+  <thead><tr><th style="width:25%;">Residue</th><th>Reason</th></tr></thead>
+  <tbody>
+    {% for item in spectral_density_data.excluded_residues %}
+    <tr><td><strong>{{ item.residue }}</strong></td><td>{{ item.reason }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}

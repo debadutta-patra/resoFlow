@@ -268,5 +268,147 @@ PB = 0.05 # (fixed)
             self.assertAlmostEqual(res["globals"]["pb"]["value"], 0.00352394, places=7)
 
 
+class TestFieldDependentParameters(unittest.TestCase):
+    """Field-dependent rates are a vector, not one arbitrarily chosen value.
+
+    ChemEx writes one section per field for R1_A/R1_B/R2_A/R2_B. Collapsing
+    them -- which extract_base_name does, since it strips every qualifier --
+    silently keeps whichever section came last in the file. For R2,0 across
+    500 and 800 MHz that is a difference of tens of percent, and it produces
+    a plausible number rather than an obvious failure.
+    """
+
+    MULTI_FIELD_TOML = """
+[GLOBAL]
+KEX_AB =  3.84732e+02 # ±2.18658e+01
+PB     =  7.16564e-02 # ±2.52130e-03
+
+[DW_AB]
+31N =  1.95915e+00 # ±4.19417e-02
+
+["R2_A, B0->800.0MHZ"]
+31N =  7.94425e+00 # ±4.02940e-01
+
+["R2_A, B0->500.0MHZ"]
+31N =  5.83417e+00 # ±2.58888e-01
+"""
+
+    def _parse(self, content):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, "fitted.toml"), "w") as f:
+                f.write(content)
+            return parse_chemex_run_parameters(tmp_dir)
+
+    def test_every_field_is_reported(self):
+        res = self._parse(self.MULTI_FIELD_TOML)
+        r2a = res["residues"]["31N"]["r2_a"]
+
+        self.assertTrue(r2a["multi_field"])
+        self.assertEqual(len(r2a["by_field"]), 2)
+        by_field = {e["field_mhz"]: e for e in r2a["by_field"]}
+        self.assertAlmostEqual(by_field[500.0]["value"], 5.83417, places=5)
+        self.assertAlmostEqual(by_field[500.0]["err"], 0.258888, places=6)
+        self.assertAlmostEqual(by_field[800.0]["value"], 7.94425, places=5)
+        self.assertAlmostEqual(by_field[800.0]["err"], 0.402940, places=6)
+
+    def test_by_field_is_sorted_ascending(self):
+        """Sections appear 800 then 500 in the source; order must not leak."""
+        res = self._parse(self.MULTI_FIELD_TOML)
+        fields = [e["field_mhz"] for e in res["residues"]["31N"]["r2_a"]["by_field"]]
+        self.assertEqual(fields, [500.0, 800.0])
+
+    def test_scalar_value_is_the_lowest_field_not_the_file_order(self):
+        """Previously this was whichever section came last. Now it is defined."""
+        res = self._parse(self.MULTI_FIELD_TOML)
+        r2a = res["residues"]["31N"]["r2_a"]
+        self.assertAlmostEqual(r2a["value"], 5.83417, places=5)
+        self.assertEqual(r2a["field_mhz"], 500.0)
+
+    def test_fields_are_listed_at_the_top_level(self):
+        res = self._parse(self.MULTI_FIELD_TOML)
+        self.assertEqual(res["fields_mhz"], [500.0, 800.0])
+
+    def test_field_independent_parameters_are_unchanged(self):
+        """cs_a, dw_ab and the globals must keep their original flat shape.
+
+        These are the parameters the inherit-parameters flow actually reads,
+        so the vector change must not reach them.
+        """
+        res = self._parse(self.MULTI_FIELD_TOML)
+        dw = res["residues"]["31N"]["dw_ab"]
+        self.assertEqual(set(dw), {"value", "err", "is_fixed"})
+        self.assertNotIn("by_field", dw)
+        self.assertNotIn("multi_field", dw)
+        self.assertAlmostEqual(dw["value"], 1.95915, places=5)
+
+        kex = res["globals"]["kex_ab"]
+        self.assertNotIn("by_field", kex)
+        self.assertAlmostEqual(kex["value"], 384.732, places=3)
+
+    def test_single_field_still_reports_a_vector_of_one(self):
+        res = self._parse("""
+["R2_A, B0->600.3MHZ"]
+31N =  6.10000e+00 # ±2.00000e-01
+""")
+        r2a = res["residues"]["31N"]["r2_a"]
+        self.assertFalse(r2a["multi_field"])
+        self.assertEqual(len(r2a["by_field"]), 1)
+        self.assertAlmostEqual(r2a["value"], 6.1, places=5)
+        self.assertEqual(r2a["field_mhz"], 600.3)
+        self.assertEqual(res["fields_mhz"], [600.3])
+
+    def test_unqualified_rate_keeps_the_flat_shape(self):
+        """A rate written without a B0 qualifier behaves exactly as before."""
+        res = self._parse("""
+[R2_A]
+31N =  6.10000e+00 # ±2.00000e-01
+""")
+        r2a = res["residues"]["31N"]["r2_a"]
+        self.assertEqual(set(r2a), {"value", "err", "is_fixed"})
+        self.assertAlmostEqual(r2a["value"], 6.1, places=5)
+        self.assertEqual(res["fields_mhz"], [])
+
+    def test_all_four_field_dependent_families_are_vectorised(self):
+        res = self._parse("""
+["R1_A, B0->500.0MHZ"]
+31N =  1.10000e+00
+["R1_A, B0->800.0MHZ"]
+31N =  1.40000e+00
+["R1_B, B0->500.0MHZ"]
+31N =  1.20000e+00
+["R1_B, B0->800.0MHZ"]
+31N =  1.50000e+00
+["R2_A, B0->500.0MHZ"]
+31N =  5.80000e+00
+["R2_A, B0->800.0MHZ"]
+31N =  7.90000e+00
+["R2_B, B0->500.0MHZ"]
+31N =  6.80000e+00
+["R2_B, B0->800.0MHZ"]
+31N =  8.90000e+00
+""")
+        for name in ("r1_a", "r1_b", "r2_a", "r2_b"):
+            entry = res["residues"]["31N"][name]
+            self.assertTrue(entry["multi_field"], name)
+            self.assertEqual(len(entry["by_field"]), 2, name)
+
+    def test_repeated_field_across_files_does_not_duplicate(self):
+        """A later file overriding the same field replaces, never appends."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with open(os.path.join(tmp_dir, "parameters.toml"), "w") as f:
+                f.write('["R2_A, B0->500.0MHZ"]\n31N = 5.00000e+00\n')
+            with open(os.path.join(tmp_dir, "fitted.toml"), "w") as f:
+                f.write('["R2_A, B0->500.0MHZ"]\n31N = 5.83417e+00\n')
+            res = parse_chemex_run_parameters(tmp_dir)
+
+        r2a = res["residues"]["31N"]["r2_a"]
+        self.assertEqual(len(r2a["by_field"]), 1)
+        # fitted.toml is processed last and wins, as it did before.
+        self.assertAlmostEqual(r2a["value"], 5.83417, places=5)
+        self.assertFalse(r2a["multi_field"])
+
+
 if __name__ == "__main__":
     unittest.main()

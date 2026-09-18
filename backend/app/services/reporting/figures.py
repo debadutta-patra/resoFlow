@@ -53,6 +53,10 @@ def format_param_label(p_raw: Any) -> str:
         return f"CS_B ({nuc})" if nuc else "CS_B (ppm)"
     elif base in ("R1_A", "R1A"):
         return f"R₁A ({nuc})" if nuc else "R₁A (s⁻¹)"
+    elif base in ("R2_A", "R2A"):
+        return f"R₂A ({nuc})" if nuc else "R₂A (s⁻¹)"
+    elif base in ("R2_B", "R2B"):
+        return f"R₂B ({nuc})" if nuc else "R₂B (s⁻¹)"
     elif base in ("R2", "RATE") and ("R2" in s.upper() or base == "R2"):
         return f"R₂ ({nuc})" if nuc else "R₂ (s⁻¹)"
     elif base in ("R1", "RATE") and ("R1" in s.upper() or base == "R1"):
@@ -571,32 +575,46 @@ def residuals_strip(
     return _svg(fig)
 
 
+def report_shows_residuals(analysis_type: Optional[str]) -> bool:
+    """Whether the report's per-residue figure carries a residuals strip.
+
+    A relaxation decay is a two-parameter fit to a handful of delay points,
+    and its goodness of fit is already reported as RMSD and chi2_red in the
+    table beside the curve. The strip added a panel that said nothing the
+    numbers did not, so relaxation reports carry the decay curve alone.
+    CEST and CPMG keep it: there the residuals across offset or nu_CPMG are
+    how a wrong exchange model shows itself.
+    """
+    return (analysis_type or "").upper() not in ("R1", "R2", "HETNOE")
+
+
 def detailed_residue_plot(
     rec: Any,
     analysis_type: str = "CEST",
     palette: Optional[str] = None,
 ) -> str:
-    """Generate composite SVG containing both profile and residuals strip."""
+    """Generate the report's per-residue SVG: profile, and residuals strip
+    beneath it for the analyses that report one."""
+    def _render():
+        if not report_shows_residuals(analysis_type):
+            fig, ax = plt.subplots(figsize=(6.4, 3.4))
+            _draw_dispersion_curve(ax, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
+            return _svg(fig)
+
+        fig = plt.figure(figsize=(6.4, 4.4))
+        gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
+        ax_profile = fig.add_subplot(gs[0])
+        ax_residual = fig.add_subplot(gs[1], sharex=ax_profile)
+
+        _draw_dispersion_curve(ax_profile, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
+        ax_profile.set_xlabel("")
+        _draw_residuals_strip(ax_residual, rec, analysis_type=analysis_type)
+        return _svg(fig)
+
     if palette:
         with apply_report_style(palette=palette):
-            fig = plt.figure(figsize=(6.4, 4.4))
-            gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
-            ax_profile = fig.add_subplot(gs[0])
-            ax_residual = fig.add_subplot(gs[1], sharex=ax_profile)
-
-            _draw_dispersion_curve(ax_profile, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
-            ax_profile.set_xlabel("")
-            _draw_residuals_strip(ax_residual, rec, analysis_type=analysis_type)
-            return _svg(fig)
-    fig = plt.figure(figsize=(6.4, 4.4))
-    gs = GridSpec(nrows=2, ncols=1, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25)
-    ax_profile = fig.add_subplot(gs[0])
-    ax_residual = fig.add_subplot(gs[1], sharex=ax_profile)
-
-    _draw_dispersion_curve(ax_profile, rec, analysis_type=analysis_type, show_anchors=True, compact=False)
-    ax_profile.set_xlabel("")
-    _draw_residuals_strip(ax_residual, rec, analysis_type=analysis_type)
-    return _svg(fig)
+            return _render()
+    return _render()
 
 
 def kinetic_correlation_plot(
@@ -767,3 +785,418 @@ def sequence_rate_plot(
             return _render()
     return _render()
 
+
+
+def _spectral_density_series(residues: List[Any]) -> Dict[str, np.ndarray]:
+    """Pull the J arrays out of SDM result rows, sorted along the sequence.
+
+    Excluded residues are dropped, so the figures show the same set the
+    summary describes.
+    """
+    nums, j0, jwn, jh, e0, ewn, eh, cov = [], [], [], [], [], [], [], []
+    for i, r in enumerate([r for r in residues if not r.get("excluded")]):
+        num = r.get("res_num")
+        if num is None:
+            digits = re.findall(r"\d+", str(r.get("assignment", "")))
+            num = int(digits[0]) if digits else i + 1
+        nums.append(num)
+        j0.append(r.get("j0", np.nan))
+        jwn.append(r.get("j_wn", np.nan))
+        jh.append(r.get("j_h", np.nan))
+        e0.append(r.get("j0_err", 0.0))
+        ewn.append(r.get("j_wn_err", 0.0))
+        eh.append(r.get("j_h_err", 0.0))
+        cov.append(r.get("covariance") or [[0.0] * 3 for _ in range(3)])
+
+    order = np.argsort(np.asarray(nums))
+    return {
+        "res_num": np.asarray(nums)[order],
+        "j0": np.asarray(j0, dtype=float)[order],
+        "jwn": np.asarray(jwn, dtype=float)[order],
+        "jh": np.asarray(jh, dtype=float)[order],
+        "j0_err": np.asarray(e0, dtype=float)[order],
+        "jwn_err": np.asarray(ewn, dtype=float)[order],
+        "jh_err": np.asarray(eh, dtype=float)[order],
+        "covariance": np.asarray(cov, dtype=float)[order],
+    }
+
+
+def spectral_density_profile_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """Three stacked panels: J(0), J(wN) and J(0.87 wH) against residue number.
+
+    Every axis is labelled with its unit, since a spectral density in
+    ns rad^-1 is easy to confuse with one in s rad^-1 or with a rate.
+    """
+    def _render():
+        data = _spectral_density_series(residues)
+        colors = get_current_palette()
+        fig, axes = plt.subplots(3, 1, figsize=(7.2, 6.6), sharex=True)
+
+        panels = [
+            (axes[0], data["j0"], data["j0_err"], "J(0)", colors[0]),
+            (axes[1], data["jwn"], data["jwn_err"], "J(ω$_N$)", colors[1 % len(colors)]),
+            (axes[2], data["jh"], data["jh_err"], "J(0.87ω$_H$)", colors[2 % len(colors)]),
+        ]
+        for ax, values, errors, label, color in panels:
+            ax.errorbar(
+                data["res_num"], values, yerr=errors,
+                fmt="o-", color=color, markersize=4.0, linewidth=1.1,
+                capsize=2.0, alpha=0.9, zorder=3,
+            )
+            finite = values[np.isfinite(values)]
+            if finite.size:
+                mean_v = float(np.mean(finite))
+                ax.axhline(mean_v, color="#6B7280", linestyle="--", linewidth=1.0,
+                           zorder=2, label=f"mean {mean_v:.3g}")
+                ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                          edgecolor="#E5E7EB", loc="upper right")
+            ax.set_ylabel(f"{label}\n(ns rad⁻¹)", fontsize=8.5)
+            ax.grid(True, linestyle=":", alpha=0.5)
+
+        axes[0].set_title("Reduced Spectral Density vs Residue Number",
+                          fontsize=11.0, fontweight="bold", pad=10)
+        axes[-1].set_xlabel("Residue Number", fontsize=9.0)
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+def spectral_density_correlation_plot(
+    residues: List[Any],
+    omega_n_rad_s: float,
+    tau_c_s: Optional[float] = None,
+    correlation_fit: Optional[Dict[str, Any]] = None,
+    palette: Optional[str] = None,
+) -> str:
+    """J(omega_N) against J(0), in the conventional orientation for this plot.
+
+    J(0) is on the ABSCISSA and J(omega_N) on the ordinate, matching the
+    published form. Exchange then displaces a residue horizontally, along
+    J(0) -- the axis it contaminates -- which is what makes the plot legible.
+
+    Two references are drawn, and they answer different questions:
+
+    * The rigid-rotor sweep (dark, dashed) is parametric in tau:
+          J(0)       = (2/5) tau
+          J(omega_N) = (2/5) tau / (1 + (omega_N tau)^2)
+      It rises to a maximum at omega_N tau = 1 and decays after it, tracing
+      where a rigid isotropic rotor of ANY size would sit. Residues of one
+      protein do not move along it -- they share a single tau_c -- but it
+      locates the family in the plane.
+
+    * The least-squares fit (coloured), J(omega_N) = alpha J(0) + beta.
+      This is the line the overall tumbling time is derived from, following
+      Lefevre, Dayie, Peng & Wagner (1996): substituting the rigid-rotor
+      forms into it gives a cubic in tau_m. Drawing the line the number came
+      from lets its quality be judged by eye, which matters here because the
+      correlation is routinely weak.
+
+    Error ELLIPSES rather than crossed bars: J(0) and J(omega_N) are
+    correlated by construction, so independent bars overstate the plausible
+    region along one diagonal and understate it along the other.
+
+    Args:
+        tau_c_s: overall correlation time in seconds, as the analysis derived
+            it from the cubic. Nothing is recomputed here: a second
+            derivation drawn beside the reported number would disagree with
+            it, so without one the annotation is simply omitted.
+    """
+    def _render():
+        data = _spectral_density_series(residues)
+        colors = get_current_palette()
+        fig, ax = plt.subplots(figsize=(5.4, 5.0))
+
+        j0 = data["j0"]
+        jwn = data["jwn"]
+        good = np.isfinite(j0) & np.isfinite(jwn)
+        if not good.any():
+            return _svg(fig)
+
+        omega_n = abs(float(omega_n_rad_s))
+
+        # Covariance is stored [J(0), J(wN), J_h] in ns^2 rad^-2, which is
+        # already the (x, y) order used here.
+        theta = np.linspace(0.0, 2.0 * np.pi, 48)
+        unit = np.vstack([np.cos(theta), np.sin(theta)])
+        for i in np.flatnonzero(good):
+            block = data["covariance"][i][np.ix_([0, 1], [0, 1])]
+            vals, vecs = np.linalg.eigh(0.5 * (block + block.T))
+            vals = np.clip(vals, 0.0, None)
+            offs = (vecs * np.sqrt(vals)) @ unit
+            ax.plot(j0[i] + offs[0], jwn[i] + offs[1],
+                    color=colors[0], linewidth=0.6, alpha=0.35, zorder=2)
+
+        ax.scatter(j0[good], jwn[good], s=18, color=colors[0],
+                   edgecolor="white", linewidth=0.4, zorder=3, label="Residues")
+
+        tau_c = tau_c_s
+        if tau_c is None or not np.isfinite(tau_c) or tau_c <= 0:
+            tau_c = None
+
+        x_max = float(np.nanmax(j0[good])) * 1.2
+
+        if omega_n > 0:
+            # Sampled in tau, then clipped to the plotted range, so the
+            # maximum at omega_N tau = 1 is resolved wherever it falls.
+            tau_max = max(2.5 * x_max * 1e-9, 4.0 / omega_n)
+            sweep_tau = np.linspace(1e-12, tau_max, 600)
+            sweep_j0 = 0.4 * sweep_tau * 1e9
+            sweep_jwn = sweep_j0 / (1.0 + (omega_n * sweep_tau) ** 2)
+            inside = sweep_j0 <= x_max
+            ax.plot(sweep_j0[inside], sweep_jwn[inside], color="#374151",
+                    linestyle="--", linewidth=1.3, zorder=1,
+                    label="Rigid rotor (τ$_c$ sweep)")
+
+        # The fitted line, in the plotted units (ns rad^-1).
+        fit = correlation_fit or {}
+        alpha = fit.get("alpha")
+        beta_ns = fit.get("beta_ns_rad")
+        if alpha is not None and beta_ns is not None:
+            line_x = np.linspace(0.0, x_max, 50)
+            label = f"fit: α={alpha:.4f}, β={beta_ns:.3f}"
+            if fit.get("r") is not None:
+                label += f", r={fit['r']:.2f}"
+            ax.plot(line_x, alpha * line_x + beta_ns,
+                    color=colors[1 % len(colors)], linestyle="-", linewidth=1.4,
+                    zorder=1, label=label)
+
+        if tau_c:
+            ax.annotate(
+                f"τ$_m$ = {tau_c * 1e9:.2f} ns",
+                xy=(0.03, 0.93), xycoords="axes fraction", fontsize=8.5,
+                color="#374151", va="top", fontweight="bold",
+            )
+
+        # The sweep starts at the origin and the fit is read at its
+        # intercept, so the origin belongs on the axes.
+        ax.set_xlim(left=0.0, right=x_max)
+        ax.set_ylim(bottom=0.0)
+
+        ax.set_xlabel("J(0) (ns rad⁻¹)", fontsize=9.0)
+        ax.set_ylabel("J(ω$_N$) (ns rad⁻¹)", fontsize=9.0)
+        ax.set_title("J(ω$_N$) vs J(0) Correlation", fontsize=11.0,
+                     fontweight="bold", pad=10)
+        ax.grid(True, linestyle=":", alpha=0.5)
+        ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                  edgecolor="#E5E7EB", loc="upper right")
+        ax.annotate(
+            "exchange → displaces along J(0)",
+            xy=(0.03, 0.05), xycoords="axes fraction", fontsize=7.5,
+            color="#6B7280", va="bottom",
+        )
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+
+def _rate_series(residues: List[Any]) -> Dict[str, np.ndarray]:
+    """Pull the measured rates out of SDM result rows, sorted along the sequence.
+
+    Excluded residues are dropped here rather than by the caller, so every
+    rate figure agrees with the spectral density ones and with the summary.
+    """
+    kept = [r for r in residues if not r.get("excluded")]
+    nums, r1, r1e, r2, r2e, noe, noee = [], [], [], [], [], [], []
+    for i, r in enumerate(kept):
+        num = r.get("res_num")
+        if num is None:
+            digits = re.findall(r"\d+", str(r.get("assignment", "")))
+            num = int(digits[0]) if digits else i + 1
+        nums.append(num)
+        r1.append(r.get("r1", np.nan))
+        r1e.append(r.get("r1_err", 0.0))
+        r2.append(r.get("r2", np.nan))
+        r2e.append(r.get("r2_err", 0.0))
+        noe.append(r.get("noe", np.nan))
+        noee.append(r.get("noe_err", 0.0))
+
+    order = np.argsort(np.asarray(nums)) if nums else np.array([], dtype=int)
+    take = lambda v: np.asarray(v, dtype=float)[order] if nums else np.array([])
+    return {
+        "res_num": np.asarray(nums)[order] if nums else np.array([]),
+        "r1": take(r1), "r1_err": take(r1e),
+        "r2": take(r2), "r2_err": take(r2e),
+        "noe": take(noe), "noe_err": take(noee),
+    }
+
+
+def _draw_sequence_panel(ax, x, y, yerr, ylabel, color, mean_label=True):
+    """One residue-number panel with error bars and a trimmed-mean line."""
+    ax.errorbar(
+        x, y, yerr=yerr, fmt="o-", color=color, markersize=4.0, linewidth=1.1,
+        capsize=2.0, alpha=0.9, zorder=3,
+    )
+    finite = y[np.isfinite(y)]
+    if finite.size and mean_label:
+        mean_v = float(np.mean(finite))
+        ax.axhline(mean_v, color="#6B7280", linestyle="--", linewidth=1.0,
+                   zorder=2, label=f"mean {mean_v:.3g}")
+        ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                  edgecolor="#E5E7EB", loc="upper right")
+    ax.set_ylabel(ylabel, fontsize=8.5)
+    ax.grid(True, linestyle=":", alpha=0.5)
+
+
+def relaxation_rates_profile_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """Three stacked panels: R1, R2 and the hetNOE against residue number.
+
+    These are the measured inputs to the mapping, plotted on a shared residue
+    axis so a feature in a spectral density can be traced back to whichever
+    rate produced it.
+    """
+    def _render():
+        data = _rate_series(residues)
+        if data["res_num"].size == 0:
+            return _svg(plt.subplots(figsize=(7.2, 1.0))[0])
+        colors = get_current_palette()
+        fig, axes = plt.subplots(3, 1, figsize=(7.2, 6.6), sharex=True)
+
+        panels = [
+            (axes[0], data["r1"], data["r1_err"], "R$_1$\n(s$^{-1}$)", colors[0]),
+            (axes[1], data["r2"], data["r2_err"], "R$_2$\n(s$^{-1}$)",
+             colors[1 % len(colors)]),
+            (axes[2], data["noe"], data["noe_err"], "hetNOE\n(I$_{sat}$/I$_{ref}$)",
+             colors[2 % len(colors)]),
+        ]
+        for ax, values, errors, label, color in panels:
+            _draw_sequence_panel(ax, data["res_num"], values, errors, label, color)
+
+        # The NOE is a ratio, and zero is a meaningful line on it: negative
+        # values are physically valid and mark flexible regions.
+        if np.any(data["noe"] < 0):
+            axes[2].axhline(0.0, color="#B45309", linestyle="-", linewidth=0.9,
+                            alpha=0.7, zorder=1)
+
+        axes[0].set_title("Measured Relaxation Rates vs Residue Number",
+                          fontsize=11.0, fontweight="bold", pad=10)
+        axes[-1].set_xlabel("Residue Number", fontsize=9.0)
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+def r2_over_r1_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """R2/R1 against residue number.
+
+    The ratio is the classic route to an overall correlation time without
+    needing the NOE, but it is NOT exchange-free: R_ex inflates R2 and so
+    inflates the ratio. Elevated points are therefore ambiguous between slow
+    tumbling, anisotropy and exchange -- which is exactly why the R1*R2
+    product is plotted alongside it.
+    """
+    def _render():
+        data = _rate_series(residues)
+        if data["res_num"].size == 0:
+            return _svg(plt.subplots(figsize=(7.2, 1.0))[0])
+        colors = get_current_palette()
+        fig, ax = plt.subplots(figsize=(7.2, 3.2))
+
+        r1, r2 = data["r1"], data["r2"]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = r2 / r1
+            # R1 and R2 are separate experiments, so their errors combine in
+            # quadrature on the relative scale.
+            rel = np.sqrt((data["r2_err"] / r2) ** 2 + (data["r1_err"] / r1) ** 2)
+            err = np.abs(ratio) * rel
+        ratio = np.where(np.isfinite(ratio), ratio, np.nan)
+        err = np.nan_to_num(err, nan=0.0, posinf=0.0)
+
+        _draw_sequence_panel(ax, data["res_num"], ratio, err,
+                             "R$_2$/R$_1$", colors[0])
+        ax.set_title("R$_2$/R$_1$ vs Residue Number", fontsize=11.0,
+                     fontweight="bold", pad=10)
+        ax.set_xlabel("Residue Number", fontsize=9.0)
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()
+
+
+def r1r2_product_plot(
+    residues: List[Any],
+    palette: Optional[str] = None,
+) -> str:
+    """R1*R2 against residue number.
+
+    The product is used as an exchange indicator because it is far less
+    sensitive to diffusion anisotropy than R2/R1 is: the anisotropy
+    dependences of R1 and R2 largely cancel in the product, so a residue
+    standing above the trimmed mean points at chemical exchange rather than
+    at an orientation effect. See Kneller, Lu & Bracken, JACS 2002.
+
+    A trimmed mean and a +2 sigma band are drawn as an orientation aid. They
+    are descriptive, not a hypothesis test -- the multi-field chi-square is
+    the test this package offers.
+    """
+    def _render():
+        data = _rate_series(residues)
+        if data["res_num"].size == 0:
+            return _svg(plt.subplots(figsize=(7.2, 1.0))[0])
+        colors = get_current_palette()
+        fig, ax = plt.subplots(figsize=(7.2, 3.2))
+
+        r1, r2 = data["r1"], data["r2"]
+        product = r1 * r2
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rel = np.sqrt((data["r1_err"] / r1) ** 2 + (data["r2_err"] / r2) ** 2)
+            err = np.abs(product) * rel
+        err = np.nan_to_num(err, nan=0.0, posinf=0.0)
+
+        _draw_sequence_panel(ax, data["res_num"], product, err,
+                             "R$_1$·R$_2$ (s$^{-2}$)", colors[0],
+                             mean_label=False)
+
+        finite = product[np.isfinite(product)]
+        if finite.size:
+            # Trimmed mean and a robust sigma, so the very residues being
+            # looked for do not set the reference they are judged against.
+            ordered = np.sort(finite)
+            k = int(np.floor(finite.size * 0.1))
+            core = ordered[k:finite.size - k] if 2 * k < finite.size else ordered
+            centre = float(np.mean(core))
+            mad = float(np.median(np.abs(finite - np.median(finite))))
+            sigma = mad * 1.4826 if mad > 0 else float(np.std(finite))
+
+            ax.axhline(centre, color="#6B7280", linestyle="--", linewidth=1.0,
+                       zorder=2, label=f"trimmed mean {centre:.3g}")
+            if sigma > 0:
+                ax.axhline(centre + 2 * sigma, color="#B45309", linestyle=":",
+                           linewidth=1.0, zorder=2, label="+2σ")
+            ax.legend(fontsize=7.5, frameon=True, facecolor="white",
+                      edgecolor="#E5E7EB", loc="upper right")
+
+        ax.set_title("R$_1$·R$_2$ vs Residue Number", fontsize=11.0,
+                     fontweight="bold", pad=10)
+        ax.set_xlabel("Residue Number", fontsize=9.0)
+        fig.tight_layout()
+        return _svg(fig)
+
+    if palette:
+        with apply_report_style("publication", palette=palette):
+            return _render()
+    return _render()

@@ -192,7 +192,15 @@ def extract_report_provenance(
     # Degrees of Freedom Accounting
     res_data = results_json or {}
     g_dict = res_data.get("global", {})
+    # ChemEx writes "residues" as a mapping of residue -> fit statistics.
+    # Other analysis types use the same key for a plain list of result rows
+    # (spectral density mapping does), which carries no DOF accounting, so
+    # treat anything that is not a mapping as absent rather than crashing.
     r_dict = res_data.get("residues", {})
+    if not isinstance(r_dict, dict):
+        r_dict = {}
+    if not isinstance(g_dict, dict):
+        g_dict = {}
 
     ndata_global = int(g_dict.get("ndata", g_dict.get("data_points", 0)))
     nvarys_global = int(g_dict.get("nvarys", g_dict.get("variables", 0)))
