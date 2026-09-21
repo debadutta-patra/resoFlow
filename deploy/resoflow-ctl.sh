@@ -43,12 +43,21 @@ Commands:
                        SERVICE: api | worker | web | postgres | redis
   url                  Print the web address
   browse-roots ...     Manage browsable directories (see: resoflow browse-roots help)
+  prune [OPTIONS]      Reclaim disk from container images an update replaced
+                       --keep N        superseded builds to keep (default: 1)
+                       --dry-run       list what would go, remove nothing
+                       --all-dangling  also sweep untagged images this project
+                                       did not label, e.g. from older releases
   help                 Show this message
+
+A restart prunes superseded images by itself once the web interface answers;
+set RESOFLOW_IMAGE_CLEANUP=0, or pass restart --no-cleanup, to leave them.
 
 Examples:
   resoflow status
   resoflow restart
   resoflow logs api
+  resoflow prune --dry-run
   resoflow browse-roots add /mnt/spectrometer
 EOF
 }
@@ -62,6 +71,15 @@ fi
 WEB_PORT="$(sed -n 's|^WEB_PORT=||p' "${ENV_FILE}" | tail -n 1)"
 WEB_PORT="${WEB_PORT:-8080}"
 BIND_HINT="127.0.0.1"
+
+# The install may run against a static Podman that is not the one on PATH;
+# image cleanup has to address the same store the services use.
+ENV_PODMAN="$(sed -n 's|^PODMAN_BIN=||p' "${ENV_FILE}" | tail -n 1)"
+if [ -n "${ENV_PODMAN}" ]; then
+    PODMAN_BIN="${ENV_PODMAN}"
+else
+    PODMAN_BIN="podman"
+fi
 
 # Which supervisor is actually in charge here?
 PLIST="${HOME}/Library/LaunchAgents/org.resoflow.pod.plist"
@@ -92,6 +110,29 @@ known_units() {
             printf '%s.service\n' "${unit}"
         fi
     done
+}
+
+# The cleanup library travels with the install; in a source checkout it sits
+# next to this script.
+load_image_cleanup() {
+    local candidate
+    for candidate in "${SCRIPT_DIR}/lib/image_cleanup.sh" "${SCRIPTS_DIR}/lib/image_cleanup.sh"; do
+        if [ -f "${candidate}" ]; then
+            # shellcheck source=lib/image_cleanup.sh
+            . "${candidate}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+do_prune() {
+    if ! load_image_cleanup; then
+        echo -e "${RED}lib/image_cleanup.sh not found.${NC}" >&2
+        exit 1
+    fi
+    echo -e "${BLUE}Reclaiming disk from superseded resoFlow images...${NC}"
+    rf_image_cleanup --podman "${PODMAN_BIN}" ${1+"$@"}
 }
 
 do_start() {
@@ -130,10 +171,34 @@ do_stop() {
     echo -e "${GREEN}✓ Stopped.${NC}"
 }
 
+# A restart is what actually frees the images an update replaced: until the
+# containers are recreated they still hold the previous `:latest`. So this is
+# where the sweep belongs, and only once the new stack answers -- a pod that
+# does not come back needs the old images to roll back to.
+restart_cleanup() {
+    case "${RESOFLOW_IMAGE_CLEANUP:-1}" in
+        0|no|false|off) return 0 ;;
+    esac
+    load_image_cleanup || return 0
+    if ! wait_for_web; then
+        echo -e "${YELLOW}Web interface did not answer; leaving superseded images in place.${NC}"
+        return 0
+    fi
+    echo -e "${BLUE}Reclaiming disk from superseded images...${NC}"
+    rf_image_cleanup --podman "${PODMAN_BIN}"
+}
+
 do_restart() {
+    local cleanup=true
+    if [ "${1:-}" = "--no-cleanup" ]; then
+        cleanup=false
+    fi
     if [ "${MODE}" = "launchd" ]; then
         mac_service restart
-        return
+        if [ "${cleanup}" = true ]; then
+            restart_cleanup
+        fi
+        return 0
     fi
     echo -e "${BLUE}Restarting resoFlow...${NC}"
     # Pick up any unit-file edits (e.g. new browse roots) before restarting.
@@ -146,6 +211,10 @@ do_restart() {
         systemctl --user restart "${units[@]}"
     fi
     echo -e "${GREEN}✓ Restarted.${NC}"
+    if [ "${cleanup}" = true ]; then
+        restart_cleanup
+    fi
+    return 0
 }
 
 wait_for_web() {
@@ -227,9 +296,10 @@ shift || true
 case "${COMMAND}" in
     start)   do_start ;;
     stop)    do_stop ;;
-    restart) do_restart ;;
+    restart) do_restart "${1:-}" ;;
     status)  do_status ;;
     logs)    do_logs "${1:-}" ;;
+    prune)   do_prune ${1+"$@"} ;;
     url)     echo "http://${BIND_HINT}:${WEB_PORT}" ;;
     browse-roots)
         for candidate in "${SCRIPT_DIR}/browse-roots.sh" "${SCRIPTS_DIR}/browse-roots.sh"; do

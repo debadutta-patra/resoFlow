@@ -326,6 +326,7 @@ resoflow logs              # follow api and worker
 resoflow logs api          # or: worker | web | postgres | redis
 resoflow url               # print the web address
 resoflow browse-roots ...  # see Extra browsable directories above
+resoflow prune             # reclaim disk from images an update replaced
 ```
 
 Start and stop walk the services in dependency order — Postgres and Redis come up first and go down last, so the database outlives its clients. Services absent from a partial install are skipped rather than reported as errors.
@@ -397,7 +398,7 @@ If the command is not on your PATH, it also lives at `~/.local/share/resoflow/sc
 
 ### Updating resoFlow
 
-There is no update script and no image registry: every resoFlow image is local (`localhost/...`) and the units are `Pull=never`. **Updating means rebuilding the images (or loading new ones) and restarting the pod.** Database migrations need no manual step — the API container runs `alembic upgrade head` on every start.
+There is no update script and no image registry: every resoFlow image is local (`localhost/...`) and the units are `Pull=never`. **Updating means rebuilding the images (or loading new ones) and restarting the pod.** Database migrations need no manual step — the API container runs `alembic upgrade head` on every start. The images the update replaces are cleaned up for you — see [Disk reclaimed automatically](#6-disk-reclaimed-automatically).
 
 #### 1. Back up first
 
@@ -415,13 +416,10 @@ For a normal release that doesn't change service definitions or add configuratio
 ```bash
 git pull
 ./containers/build.sh
-
-# then restart, per platform:
-systemctl --user restart resoflow-pod.service                    # Linux / WSL 2
-~/.local/share/resoflow/scripts/resoflow-service.sh restart      # macOS
+resoflow restart
 ```
 
-This works because `build.sh` re-points the `:latest` tags that the service units reference, and the restart recreates the containers from them.
+This works because `build.sh` re-points the `:latest` tags that the service units reference, and the restart recreates the containers from them. Restarting through `resoflow` rather than `systemctl --user restart resoflow-pod.service` (or `resoflow-service.sh restart` on macOS) is what triggers the image cleanup below; the raw supervisor commands still work and simply leave the old images on disk.
 
 #### 3. When unit files or configuration changed
 
@@ -461,9 +459,9 @@ cd resoflow-<version>-offline-bundle
 ./install.sh -y --port <WEB_PORT> --data-dir <RESOFLOW_HOST_DATA_ROOT> --skip-admin
 ```
 
-The bundled `images/` directory is loaded automatically, replacing the `:latest` tags.
+The bundled `images/` directory is loaded automatically, replacing the `:latest` tags, and the installer reclaims what the load superseded once the new pod answers.
 
-#### 5. Verify, then clean up
+#### 5. Verify
 
 ```bash
 systemctl --user status resoflow-pod.service     # or resoflow-service.sh status on macOS
@@ -472,12 +470,35 @@ journalctl --user -u resoflow-api -n 50
 
 Check the API logs specifically: if a migration fails, uvicorn never starts and the unit will restart in a loop. That log is where the reason appears.
 
-Once you're satisfied the update is good, reclaim disk. `build.sh` tags every image with a git-describe version as well as `:latest`, so previous builds stay on disk under their old version tags:
+#### 6. Disk reclaimed automatically
+
+`build.sh` tags every image with a git-describe version as well as `:latest`, and the multi-stage builds orphan their intermediate layers, so an update used to leave several gigabytes of superseded images behind. That cleanup now runs by itself, at each of the three points where images are replaced:
+
+| Step | What it sweeps |
+|---|---|
+| `./containers/build.sh` | after all five images build, never on a partial failure |
+| `resoflow restart` | once the web interface answers — this is where the containers finally let go of the previous `:latest` |
+| `./deploy/install.sh` | after the health check passes |
+
+It is deliberately narrow. Only images this project built are candidates: `localhost/resoflow-*` version tags, and untagged layers carrying the `io.resoflow.managed` label. `:latest` is never removed, one superseded build per component is kept as a rollback point, and base images — postgres, redis, python, node, caddy — are never touched, since on an air-gapped workstation they cannot be pulled back. An image some container still references is skipped and reclaimed by the next sweep.
+
+To run it by hand, keep more history, or turn it off:
 
 ```bash
-podman image prune                    # dangling layers
-podman images | grep resoflow         # then remove old version tags you no longer need
-podman rmi localhost/resoflow-api:<old-version-tag>
+resoflow prune                      # sweep now
+resoflow prune --dry-run            # list what would go, remove nothing
+resoflow prune --keep 3             # keep three superseded builds per component
+resoflow restart --no-cleanup       # restart, leave the old images alone
+./containers/build.sh --no-cleanup
+RESOFLOW_IMAGE_CLEANUP=0 ...        # disable it for any of the above
+RESOFLOW_KEEP_IMAGES=3 ...          # change the default retention
+```
+
+Images built before this labelling existed cannot be recognised as resoFlow's own once they lose their tags. Sweeping those is a one-off, and not limited to this project's leftovers:
+
+```bash
+resoflow prune --all-dangling --dry-run   # check what it proposes first
+resoflow prune --all-dangling
 ```
 
 ### Backing up and restoring

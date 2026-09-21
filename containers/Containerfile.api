@@ -1,4 +1,6 @@
 FROM localhost/resoflow-base:latest
+LABEL io.resoflow.managed="true" \
+      io.resoflow.component="api"
 
 WORKDIR /app
 COPY backend/app /app/app

@@ -25,6 +25,7 @@ NON_INTERACTIVE=false
 BIND_HOST="127.0.0.1"
 EXTRA_BROWSE_ROOTS=()
 EXTRA_ROOTS_GIVEN=false
+KEEP_IMAGES="${RESOFLOW_KEEP_IMAGES:-1}"
 
 # Podman binary and supervisor options
 PODMAN_CUSTOM_PATH="${PODMAN_BIN:-${PODMAN_PATH:-}}"
@@ -63,6 +64,10 @@ Options:
       --admin-password PWD Initial administrator account password
       --admin-name NAME    Initial administrator full name (default: "Administrator")
       --skip-admin         Skip administrator account creation
+      --keep-images N      Superseded container images to keep per component once
+                           the new ones are running (default: 1, i.e. one rollback
+                           point). Base images are never removed.
+      --no-image-cleanup   Leave superseded container images on disk
   -y, --non-interactive    Run non-interactively with provided flags or defaults
   -h, --help               Show this help message and exit
 
@@ -137,6 +142,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-admin|--no-admin)
             CREATE_ADMIN="false"
+            shift
+            ;;
+        --keep-images)
+            KEEP_IMAGES="$2"
+            if ! [[ "${KEEP_IMAGES}" =~ ^[0-9]+$ ]]; then
+                echo -e "${RED}--keep-images expects a number, got '${KEEP_IMAGES}'${NC}" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        --no-image-cleanup)
+            RESOFLOW_IMAGE_CLEANUP=0
             shift
             ;;
         -y|--non-interactive)
@@ -564,7 +581,7 @@ if [ ${#MISSING_IMAGES[@]} -gt 0 ]; then
         fi
         if [ "${DO_BUILD}" = "true" ]; then
             echo -e "\n${BLUE}Building container images via ${BUILD_SCRIPT}...${NC}"
-            "${BUILD_SCRIPT}"
+            PODMAN_BIN="${PODMAN_BIN}" "${BUILD_SCRIPT}" --keep "${KEEP_IMAGES}"
             echo -e "${GREEN}✓ Container images built successfully.${NC}"
         else
             echo -e "${RED}Error: Cannot start resoFlow without required container images.${NC}" >&2
@@ -665,6 +682,12 @@ if [ -f "${SCRIPT_DIR}/browse-roots.sh" ] && [ -f "${SCRIPT_DIR}/lib/browse_root
     if [ -d "${HOME}/.local/bin" ] || mkdir -p "${HOME}/.local/bin" 2>/dev/null; then
         ln -sf "${SCRIPTS_DIR}/browse-roots.sh" "${HOME}/.local/bin/resoflow-browse-roots"
     fi
+fi
+
+# Image cleanup, so `resoflow prune` works after install too.
+if [ -f "${SCRIPT_DIR}/lib/image_cleanup.sh" ]; then
+    mkdir -p "${SCRIPTS_DIR}/lib"
+    cp -f "${SCRIPT_DIR}/lib/image_cleanup.sh" "${SCRIPTS_DIR}/lib/image_cleanup.sh"
 fi
 
 # Service control command.
@@ -969,6 +992,17 @@ PYEOF
         echo -e "${YELLOW}${ADMIN_BOOTSTRAP_OUTPUT}${NC}"
         echo -e "${YELLOW}You can create one anytime with:${NC}"
         echo -e "  ${BOLD}${PODMAN_BIN} exec -it resoflow-api python create_superuser.py${NC}"
+    fi
+fi
+
+# 11. Reclaim disk from the images this update replaced. Gated on a healthy
+# stack: if the new images do not come up, the old ones are the way back.
+if [ "$READY" = true ] && [ -f "${SCRIPT_DIR}/lib/image_cleanup.sh" ]; then
+    # shellcheck source=lib/image_cleanup.sh
+    . "${SCRIPT_DIR}/lib/image_cleanup.sh"
+    if [ "${RESOFLOW_IMAGE_CLEANUP:-1}" != "0" ]; then
+        echo -e "\n${BLUE}Reclaiming disk from superseded container images...${NC}"
+        rf_image_cleanup --keep "${KEEP_IMAGES}" --podman "${PODMAN_BIN}" || true
     fi
 fi
 

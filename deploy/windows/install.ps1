@@ -16,6 +16,8 @@ param(
     [string]$AdminPassword = "",
     [string]$AdminName = "Administrator",
     [switch]$SkipAdmin,
+    [string]$KeepImages = "",
+    [switch]$NoImageCleanup,
     [Alias("y")]
     [switch]$NonInteractive,
     [switch]$Help
@@ -39,6 +41,9 @@ Options:
       -AdminPassword PWD   Initial administrator account password
       -AdminName NAME      Initial administrator full name (default: "Administrator")
       -SkipAdmin           Skip administrator account creation
+      -KeepImages N        Superseded container images to keep per component
+                           once the new ones are running (default: 1)
+      -NoImageCleanup      Leave superseded container images on disk
   -y, -NonInteractive      Run non-interactively without prompt stops
   -Help                    Show this help message
 
@@ -105,6 +110,8 @@ if ($AdminEmail) { $argsList += "--admin-email `"$AdminEmail`"" }
 if ($AdminPassword) { $argsList += "--admin-password `"$AdminPassword`"" }
 if ($AdminName) { $argsList += "--admin-name `"$AdminName`"" }
 if ($SkipAdmin) { $argsList += "--skip-admin" }
+if ($KeepImages) { $argsList += "--keep-images `"$KeepImages`"" }
+if ($NoImageCleanup) { $argsList += "--no-image-cleanup" }
 if ($NonInteractive) { $argsList += "-y" }
 
 $argsString = $argsList -join " "

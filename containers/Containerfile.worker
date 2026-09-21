@@ -1,4 +1,6 @@
 FROM localhost/resoflow-base:latest
+LABEL io.resoflow.managed="true" \
+      io.resoflow.component="worker"
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends podman && rm -rf /var/lib/apt/lists/*
