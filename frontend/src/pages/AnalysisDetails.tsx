@@ -7,6 +7,8 @@ import AnalysisManager from '../components/AnalysisManager';
 import CestAnalysisManager from '../components/CestAnalysisManager';
 import { CpmgAnalysisManager } from '../components/CpmgAnalysisManager';
 import SdmAnalysisManager from '../components/SdmAnalysisManager';
+import { ExchangeAnalysisManager } from '../components/ExchangeAnalysisManager';
+
 
 const AnalysisDetails: React.FC = () => {
   const { projectUuid, analysisUuid } = useParams<{ projectUuid: string, analysisUuid: string }>();
@@ -105,6 +107,13 @@ const AnalysisDetails: React.FC = () => {
             onUpdate={() => fetchProjectDetails(false)}
             onClose={handleClose}
             onDelete={handleClose}
+          />
+        ) : selectedAnalysis.analysis_type === 'EXCHANGE' ? (
+          <ExchangeAnalysisManager
+            analysis={selectedAnalysis}
+            projectUuid={projectUuid!}
+            spectra={project?.spectra || []}
+            onUpdate={() => fetchProjectDetails(false)}
           />
         ) : selectedAnalysis.analysis_type === 'SDM' ? (
           <SdmAnalysisManager

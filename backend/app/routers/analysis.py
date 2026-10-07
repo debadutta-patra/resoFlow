@@ -1,3 +1,4 @@
+from ..services.fitting.experiments.cest_builder import build_cest_experiment
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple, Dict, Any
@@ -45,6 +46,8 @@ def _get_analysis_run_dir(analysis: models.Analysis) -> str:
     atype = (analysis.analysis_type or "").upper()
     if atype == "CPMG":
         folder_name = "cpmg_fitting"
+    elif atype == "EXCHANGE":
+        folder_name = "exchange_fitting"
     elif atype == "SDM":
         folder_name = "sdm_fitting"
     elif atype in ("R1", "R2", "HETNOE"):
@@ -2631,23 +2634,10 @@ def generate_cest_files(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(security.get_current_user),
 ):
-    """
-    Generate CEST data files and experiment TOMLs from fitted spectra.
-
-    Reads peak-fitted results from selected CEST spectra, computes offsets
-    from f3list & carrier, and writes per-residue data files organized by B1.
-    Also generates experiment TOML files.
-
-    Expects JSON body:
-      - spectrum_ids: list[int]   (IDs of CEST spectra to include)
-      - use_height: bool          (use height instead of amplitude, default true)
-    """
     if analysis.analysis_type != "15N-CEST":
         raise HTTPException(status_code=400, detail="Only for 15N-CEST analyses")
 
     spectrum_ids = request.get("spectrum_ids", [])
-    use_height = request.get("use_height", True)
-
     if not spectrum_ids:
         raise HTTPException(status_code=400, detail="No spectra selected")
 
@@ -2660,333 +2650,119 @@ def generate_cest_files(
 
     spectra = db.query(models.Spectrum).filter(models.Spectrum.id.in_(spectrum_ids)).all()
     if not spectra:
-        raise HTTPException(status_code=404, detail="No spectra found with the given IDs")
-
-    val_field = "height" if use_height else "amp"
-    err_field = "height_err" if use_height else "amp_err"
+        raise HTTPException(status_code=404, detail="No spectra found")
 
     generated_data_files = {}
     experiment_tomls = []
-    all_residues = set()
-    residue_mapping = {}
+    metadata = {}
     skipped_reasons = []
 
+    config_path = os.path.join(run_dir, "config.json")
+    existing_cfg_temp = {}
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                existing_cfg_temp = json.load(f)
+        except Exception:
+            pass
+
+    module_name = request.get("selected_module") or request.get("module_name") or existing_cfg_temp.get("selected_module") or "cest_15n"
+    
+    param_cfg_temp = existing_cfg_temp.get("parameter_config") or {}
+    excluded_residues = list(set(
+        request.get("excluded_residues", [])
+        or param_cfg_temp.get("excludedResidues", [])
+        or existing_cfg_temp.get("excluded_residues", [])
+        or []
+    ))
+
+    base_block_settings = dict(request)
+    base_block_settings.update({
+        "module_name": module_name,
+    })
+
     for spectrum in spectra:
-        spec_label = f"Spectrum '{spectrum.name}' (ID: {spectrum.id})"
         b1 = getattr(spectrum, "b1", None)
         b0 = getattr(spectrum, "b0", None)
-        carrier = getattr(spectrum, "carrier", None)
-        t_relax = getattr(spectrum, "t_relax", None)
-
-        missing_params = []
-        if b1 is None: missing_params.append("B1 (Hz)")
-        if b0 is None: missing_params.append("B0 (MHz)")
-        if carrier is None: missing_params.append("Carrier (ppm)")
-        if t_relax is None: missing_params.append("T_relax (s)")
-        if missing_params:
-            skipped_reasons.append(f"{spec_label}: missing parameters ({', '.join(missing_params)})")
+        if b1 is None or b0 is None:
+            skipped_reasons.append(f"Spectrum '{spectrum.name}': missing B1 or B0")
             continue
 
-        if not spectrum.f3list_path or not os.path.exists(spectrum.f3list_path):
-            skipped_reasons.append(f"{spec_label}: f3list file not found at '{spectrum.f3list_path or ''}'")
-            continue
-
-        if not spectrum.results_json_path or not os.path.exists(spectrum.results_json_path):
-            skipped_reasons.append(f"{spec_label}: peak fitting results not found at '{spectrum.results_json_path or ''}'")
-            continue
-
-        # Calculate 15N Larmor frequency in MHz
-        n15_larmor_mhz = b0 * GAMMA_N15_RATIO
-
-        # Parse f3list (ppm values)
-        freq_list_ppm = _parse_f3list(spectrum.f3list_path)
-        if not freq_list_ppm:
-            skipped_reasons.append(f"{spec_label}: f3list file at '{spectrum.f3list_path}' is empty or invalid")
-            continue
-
-
-        import numpy as np
-        freq_arr = np.array(freq_list_ppm)
-        # Convert ppm offsets to Hz: (freq_ppm - carrier_ppm) * larmor_freq_MHz
-        offsets_hz = (freq_arr - carrier) * n15_larmor_mhz
-
-        # Create B1-specific data directory
-        b1_label = f"{b1:.0f}hz"
+        b1_label = f"{b0:.0f}MHz_{b1:.0f}hz"
         b1_dir = os.path.join(data_dir, b1_label)
-        os.makedirs(b1_dir, exist_ok=True)
-
-        # Load fitted results
-        with open(spectrum.results_json_path, "r") as f:
-            fit_data = json.load(f)
-
-        results = fit_data.get("results", [])
-
-        # Group by assignment to handle both flat and nested formats
-        assignments = {}
-        for peak in results:
-            ass = peak.get("assignment")
-            if not ass:
-                continue
-            if ass not in assignments:
-                assignments[ass] = {
-                    "res_num": peak.get("res_num") or peak.get("RES_NUM"),
-                    "res_name": peak.get("res_name") or peak.get("RES_NAME"),
-                    "planes": [],
-                }
-            # Nested format
-            if "planes" in peak:
-                for plane in sorted(peak["planes"], key=lambda p: p.get("plane", 0)):
-                    assignments[ass]["planes"].append(plane)
-            else:
-                assignments[ass]["planes"].append(peak)
-
-        # For each residue, write a data file
-        residue_files = {}
-        for ass, data in assignments.items():
-            planes = sorted(data["planes"], key=lambda p: p.get("plane", 0))
-
-            plane_offsets = list(offsets_hz)
-            if len(planes) > len(plane_offsets):
-                # Assume the extra initial planes are reference scans (offset = -100000.0 Hz)
-                num_refs = len(planes) - len(plane_offsets)
-                plane_offsets = [-100000.0] * num_refs + plane_offsets
-
-            if len(planes) != len(plane_offsets):
-                continue  # Still a mismatch, ignore this residue
-
-            # Amino acid mapping: 3-letter to single-letter
-            AA_MAP = {
-                'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D', 'CYS': 'C',
-                'GLU': 'E', 'GLN': 'Q', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
-                'LEU': 'L', 'LYS': 'K', 'MET': 'M', 'PHE': 'F', 'PRO': 'P',
-                'SER': 'S', 'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V'
-            }
-
-            res_num = data.get("res_num", "")
-            res_name = data.get("res_name", "")
-            
-            # Full residue label with 1-letter prefix (for UI tracking)
-            if res_num and res_name:
-                res_single = AA_MAP.get(res_name.upper(), res_name)
-                full_residue_label = f"{res_single}{res_num}N"
-            elif res_num:
-                full_residue_label = f"{res_num}N"
-            else:
-                full_residue_label = ass.replace(" ", "")
-
-            # Short residue label for ChemEx (no 1-letter prefix)
-            if res_num:
-                residue_label = f"{res_num}N"
-            else:
-                residue_label = full_residue_label
-
-            residue_mapping[residue_label] = full_residue_label
-            
-            filename = f"{residue_label}-HN.out"
-            filepath = os.path.join(b1_dir, filename)
-
-            lines = ["#Offset (Hz)        Intensity    Uncertainty"]
-            for i, plane in enumerate(planes):
-                offset = plane_offsets[i]
-                intensity = plane.get(val_field, 0.0)
-                uncertainty = plane.get(err_field, 0.0)
-                if uncertainty == 0.0:
-                    # Fallback: estimate as 1% of max intensity
-                    uncertainty = abs(intensity) * 0.01
-                lines.append(f"  {offset:12.3e}   {intensity:15.7e}  {uncertainty:13.7e}")
-
-            with open(filepath, "w") as f:
-                f.write("\n".join(lines) + "\n")
-
-            residue_files[residue_label] = filename
-            all_residues.add(residue_label)
-            generated_data_files[f"{residue_label}:{b1_label}"] = filepath
-
-        # Read excluded residues from request or existing config
-        config_path = os.path.join(run_dir, "config.json")
-        existing_cfg_temp = {}
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    existing_cfg_temp = json.load(f)
-            except Exception:
-                pass
-
-        param_cfg_temp = existing_cfg_temp.get("parameter_config") or {}
-        excluded_residues = set(
-            request.get("excluded_residues", [])
-            or param_cfg_temp.get("excludedResidues", [])
-            or existing_cfg_temp.get("excluded_residues", [])
-            or []
-        )
-
-        from ..services.fitting.spin_system import SpinSystemKey
-        parsed_exclusions = [SpinSystemKey.parse(str(r)) for r in excluded_residues]
-        excluded_nums = {sp.res_num for sp in parsed_exclusions if sp.res_num > 0}
-        excluded_canonical = {sp.canonical.upper() for sp in parsed_exclusions if sp.canonical}
-        excluded_raw = {str(r).strip().upper() for r in excluded_residues}
-
-        def is_res_excluded(res_str: str) -> bool:
-            if res_str.upper() in excluded_raw:
-                return True
-            sp = SpinSystemKey.parse(res_str)
-            if sp.canonical and sp.canonical.upper() in excluded_canonical:
-                return True
-            if sp.res_num and sp.res_num in excluded_nums:
-                return True
-            return False
-
-        # Generate experiment TOML for this B1 field
-        profiles_lines = []
-        for res, fname in sorted(residue_files.items()):
-            if is_res_excluded(res):
-                profiles_lines.append(f'# {res} = "{fname}"')
-            else:
-                profiles_lines.append(f'{res} = "{fname}"')
-        profiles_section = "\n".join(profiles_lines)
-
-        # Module name from request or config (defaults to cest_15n)
-        module_name = request.get("selected_module") or request.get("module_name") or existing_cfg_temp.get("selected_module") or "cest_15n"
-
-        # B1 distribution config (defaults to dephasing)
-        b1_dist = request.get("b1_distribution") or existing_cfg_temp.get("b1_distribution") or {"type": "dephasing"}
-        b1_dist_type = b1_dist.get("type", "dephasing") if isinstance(b1_dist, dict) else "dephasing"
-        b1_dist_lines = [f'  [experiment.b1_distribution]', f'  type = "{b1_dist_type}"']
-        if isinstance(b1_dist, dict):
-            if "scale" in b1_dist and b1_dist["scale"] is not None:
-                b1_dist_lines.append(f'  scale = {b1_dist["scale"]}')
-            if "res" in b1_dist and b1_dist["res"] is not None:
-                b1_dist_lines.append(f'  res = {b1_dist["res"]}')
-            if "skew" in b1_dist and b1_dist["skew"] is not None:
-                b1_dist_lines.append(f'  skew = {b1_dist["skew"]}')
-        b1_dist_section = "\n".join(b1_dist_lines)
-
-        # Extra module-specific fields
-        extra_exp_lines = []
-        if module_name == "cest_15n_cw":
-            carrier_dec = request.get("carrier_dec") if request.get("carrier_dec") is not None else existing_cfg_temp.get("carrier_dec", 8.5)
-            b1_frq_dec = request.get("b1_frq_dec") if request.get("b1_frq_dec") is not None else existing_cfg_temp.get("b1_frq_dec", 2000.0)
-            extra_exp_lines.append(f'carrier_dec  = {carrier_dec}')
-            extra_exp_lines.append(f'b1_frq_dec   = {b1_frq_dec}')
-        elif module_name == "cest_15n_tr":
-            antitrosy = request.get("antitrosy") if request.get("antitrosy") is not None else existing_cfg_temp.get("antitrosy", False)
-            extra_exp_lines.append(f'antitrosy    = {str(bool(antitrosy)).lower()}')
-        elif module_name in ("cest_1hn_ip_ap", "cest_ch3_1h_ip_ap"):
-            d1_val = request.get("d1") if request.get("d1") is not None else existing_cfg_temp.get("d1", 1.0)
-            taua_val = request.get("taua") if request.get("taua") is not None else existing_cfg_temp.get("taua", 0.002)
-            extra_exp_lines.append(f'd1           = {d1_val}')
-            extra_exp_lines.append(f'taua         = {taua_val}')
-            if module_name == "cest_1hn_ip_ap":
-                eta_block = request.get("eta_block") if request.get("eta_block") is not None else existing_cfg_temp.get("eta_block", False)
-                extra_exp_lines.append(f'eta_block    = {str(bool(eta_block)).lower()}')
-
-        extra_exp_str = ("\n" + "\n".join(extra_exp_lines)) if extra_exp_lines else ""
-
-        # Data filters and error type
-        # For filter_offsets: by default [0.0, float(b1)], distinct for each spectrum depending on its B1 field.
+        
         offsets_by_spec = request.get("filter_offsets_by_spectrum") or existing_cfg_temp.get("filter_offsets_by_spectrum")
         raw_filter_offsets = request.get("filter_offsets") or existing_cfg_temp.get("filter_offsets")
-
         spec_offsets = None
         if isinstance(offsets_by_spec, dict):
-            spec_offsets = offsets_by_spec.get(spectrum.id)
-            if spec_offsets is None:
-                spec_offsets = offsets_by_spec.get(str(spectrum.id))
-
+            spec_offsets = offsets_by_spec.get(spectrum.id) or offsets_by_spec.get(str(spectrum.id))
         if spec_offsets is None and isinstance(raw_filter_offsets, dict):
             spec_offsets = (
-                raw_filter_offsets.get(spectrum.id)
-                or raw_filter_offsets.get(str(spectrum.id))
-                or raw_filter_offsets.get(b1_label)
-                or raw_filter_offsets.get(str(b1))
-                or raw_filter_offsets.get(f"{b1:.0f}hz")
+                raw_filter_offsets.get(spectrum.id) or raw_filter_offsets.get(str(spectrum.id)) or
+                raw_filter_offsets.get(b1_label) or raw_filter_offsets.get(str(b1)) or
+                raw_filter_offsets.get(f"{b1:.0f}hz")
             )
-
+        
+        filter_offsets = None
         if spec_offsets is not None and isinstance(spec_offsets, list):
             filter_offsets = spec_offsets
         elif isinstance(raw_filter_offsets, list) and raw_filter_offsets:
-            # If a flat list is provided, adapt the carrier filter (offset 0) to this spectrum's B1 field
-            adapted_offsets = []
-            has_carrier_filter = False
+            adapted = []
+            has_carrier = False
             for pair in raw_filter_offsets:
                 if isinstance(pair, (list, tuple)) and len(pair) == 2:
-                    off_val, bw_val = pair
-                    if float(off_val) == 0.0:
-                        adapted_offsets.append([0.0, float(b1)])
-                        has_carrier_filter = True
+                    if float(pair[0]) == 0.0:
+                        adapted.append([0.0, float(b1)])
+                        has_carrier = True
                     else:
-                        adapted_offsets.append([float(off_val), float(bw_val)])
-            if not has_carrier_filter:
-                adapted_offsets.insert(0, [0.0, float(b1)])
-            filter_offsets = adapted_offsets
+                        adapted.append([float(pair[0]), float(pair[1])])
+            if not has_carrier:
+                adapted.insert(0, [0.0, float(b1)])
+            filter_offsets = adapted
+        
+        block_settings = dict(base_block_settings)
+        if filter_offsets is not None:
+            block_settings["filter_offsets"] = filter_offsets
         else:
-            # By default: 0 and the value of B1 field in Hz
-            filter_offsets = [[0.0, float(b1)]]
+            block_settings["filter_offsets"] = [[0.0, float(b1)]]
 
-        # Filter planes (optional per-spectrum or global)
-        planes_by_spec = request.get("filter_planes_by_spectrum") or existing_cfg_temp.get("filter_planes_by_spectrum")
-        if isinstance(planes_by_spec, dict):
-            filter_planes = planes_by_spec.get(spectrum.id) or planes_by_spec.get(str(spectrum.id))
-        elif isinstance(request.get("filter_planes"), dict):
-            filter_planes = request.get("filter_planes").get(spectrum.id) or request.get("filter_planes").get(str(spectrum.id))
-        else:
-            filter_planes = request.get("filter_planes") if request.get("filter_planes") is not None else existing_cfg_temp.get("filter_planes")
-
-        data_error = request.get("data_error") or existing_cfg_temp.get("data_error") or "scatter"
-
-        data_filter_lines = [f'error          = "{data_error}"', f'filter_offsets = {json.dumps(filter_offsets)}']
-        if filter_planes:
-            data_filter_lines.append(f'filter_planes  = {json.dumps(filter_planes)}')
-        data_filter_str = "\n".join(data_filter_lines)
-
-        exp_toml = f"""[experiment]
-name         = "{module_name}"
-time_t1      = {t_relax}
-carrier      = {carrier}
-b1_frq       = {b1}{extra_exp_str}
-{b1_dist_section}
-
-[conditions]
-h_larmor_frq = {b0}
-# temperature = {spectrum.temperature or 298.15}
-
-[data]
-path           = "../data/{b1_label}"
-{data_filter_str}
-  [data.profiles]
-{profiles_section}
-"""
         exp_filename = f"{module_name}_{b1_label}.toml"
         exp_path = os.path.join(experiments_dir, exp_filename)
-        with open(exp_path, "w") as f:
-            f.write(exp_toml)
-
-        experiment_tomls.append({
-            "b1": b1,
-            "b1_label": b1_label,
-            "filename": exp_filename,
-            "path": exp_path,
-            "toml_content": exp_toml,
-            "residue_count": len(residue_files),
-        })
-
-    # Collect metadata per B1 label (using standardized rounding for keys, exact floats for values)
-    metadata = {}
-    for spectrum in spectra:
-        b1_val = getattr(spectrum, "b1", 0.0)
-        b1_lbl = f"{b1_val:.0f}hz"
-        metadata[b1_lbl] = {
-            "b1": b1_val,
-            "b0": getattr(spectrum, "b0", 600.0),
-            "carrier": getattr(spectrum, "carrier", 0.0),
-        }
+        
+        try:
+            gen_exp = build_cest_experiment(
+                block_settings=block_settings,
+                spectrum=spectrum,
+                out_data_dir=b1_dir,
+                toml_path=exp_path,
+                include=[],
+                exclude=excluded_residues
+            )
+            
+            experiment_tomls.append({
+                "b1": b1,
+                "b1_label": b1_label,
+                "filename": exp_filename,
+                "path": exp_path,
+                "toml_content": gen_exp.toml_content,
+                "residue_count": len(gen_exp.written_data_files),
+            })
+            
+            for res_label, fp in gen_exp.written_data_files.items():
+                generated_data_files[f"{res_label}:{b1_label}"] = fp
+                
+            metadata[b1_label] = {
+                "b1": b1,
+                "b0": b0,
+                "carrier": getattr(spectrum, "carrier", 0.0),
+            }
+        except ValueError as e:
+            skipped_reasons.append(str(e))
 
     if not experiment_tomls or not generated_data_files:
-        error_detail = "Failed to generate CEST data files. " + " ".join(skipped_reasons) if skipped_reasons else "No matching peaks or planes found for the selected spectra."
+        error_detail = "Failed to generate CEST data files. " + " ".join(skipped_reasons)
         raise HTTPException(status_code=400, detail=error_detail)
 
-    # Save config with generated info
-    config_path = os.path.join(run_dir, "config.json")
     existing_config = {}
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
@@ -2998,16 +2774,15 @@ path           = "../data/{b1_label}"
     existing_config["spectrum_ids"] = spectrum_ids
     existing_config["generatedExperiments"] = experiment_tomls
     existing_config["metadata"] = metadata
-    existing_config["residue_mapping"] = residue_mapping
-    if request.get("filter_offsets_by_spectrum"):
-        existing_config["filter_offsets_by_spectrum"] = request.get("filter_offsets_by_spectrum")
-    if request.get("filter_offsets"):
-        existing_config["filter_offsets"] = request.get("filter_offsets")
 
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2)
 
+
+    # Update analysis parameters for frontend
     params = json.loads(analysis.parameters) if analysis.parameters else {}
+    params["experiments_dir"] = experiments_dir
+    params["data_dir"] = data_dir
     params["config_path"] = config_path
     analysis.parameters = json.dumps(params)
     db.commit()
@@ -3015,7 +2790,7 @@ path           = "../data/{b1_label}"
     return {
         "message": "CEST data files and experiment TOMLs generated",
         "experiments": experiment_tomls,
-        "total_residues": len(all_residues),
+        "total_residues": sum([e.get("residue_count", 0) for e in experiment_tomls]),
         "total_data_files": len(generated_data_files),
         "run_dir": run_dir,
     }

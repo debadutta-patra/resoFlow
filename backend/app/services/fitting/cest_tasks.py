@@ -361,7 +361,7 @@ def _parse_chemex_output(output_dir: str) -> dict:
         for res_key, res_model in primary_step.residues.items():
             params: dict = {}
             for p_sec, p_val in res_model.parameters.items():
-                sec_name = p_sec.split(",")[0].lower().strip().strip('"')
+                sec_name = p_sec.lower().strip().strip('"')
                 params[sec_name] = p_val.value
                 if p_val.has_stderr and p_val.stderr is not None:
                     params[f"{sec_name}_err"] = p_val.stderr

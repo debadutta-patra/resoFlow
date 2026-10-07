@@ -169,6 +169,7 @@ class GoodnessOfFitModel(BaseModel):
     aic: Optional[float] = None
     bic: Optional[float] = None
     extra: dict[str, Any] = Field(default_factory=dict)
+    experiment_stats: dict[str, 'GoodnessOfFitModel'] = Field(default_factory=dict)
 
 
 class GridGroupInfo(BaseModel):
@@ -281,6 +282,7 @@ class ResamplingDiagnostics(BaseModel):
     correlations_file: Optional[str] = None
     plots_file: Optional[str] = None
     extra: dict[str, Any] = Field(default_factory=dict)
+    experiment_stats: dict[str, 'GoodnessOfFitModel'] = Field(default_factory=dict)
 
 
 class McmcDiagnostics(BaseModel):
@@ -305,6 +307,7 @@ class McmcDiagnostics(BaseModel):
     autocorrelation_warning: Optional[str] = None
     timings: dict[str, float] = Field(default_factory=dict)
     extra: dict[str, Any] = Field(default_factory=dict)
+    experiment_stats: dict[str, 'GoodnessOfFitModel'] = Field(default_factory=dict)
 
 
 class ResamplingResultModel(BaseModel):
