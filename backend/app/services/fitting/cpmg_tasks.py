@@ -165,6 +165,9 @@ def run_cpmg_analysis_task(self, analysis_uuid: str, config: dict):
         return
 
     analysis.status = "RUNNING"
+    analysis.cancel_requested = False
+    analysis.completed_at = None
+    analysis.error_message = None
     analysis.celery_task_id = self.request.id if self.request else None
     
     # Record ChemEx container image digest and version

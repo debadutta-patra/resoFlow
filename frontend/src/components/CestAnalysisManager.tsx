@@ -12,6 +12,7 @@ import {
 import Plot, { PLOT_COLORS } from './Plot';
 import { formatUncertainty } from '../lib/uncertaintyFormatter';
 import { useTheme } from '../context/ThemeContext';
+import { useOptionalUserRuns } from '../context/RunsContext';
 import type { MethodConfig, Step } from '../lib/methodConfig';
 import { createDefaultMethodConfig, createDefaultStep, KINETIC_MODELS } from '../lib/methodConfig';
 import { configToToml, tomlToConfig } from '../lib/methodToml';
@@ -224,6 +225,7 @@ interface CestAnalysisManagerProps {
   availableSpectra: Spectrum[];
   allAnalyses: Analysis[];
   onStatusChange?: (status: string) => void;
+  onUpdate?: () => void;
   onDelete?: () => void;
   onClose?: () => void;
 }
@@ -246,15 +248,21 @@ const STATUS_COLORS: Record<string, string> = {
 // ── Component ───────────────────────────────────────────────────────────
 const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   analysis, projectUuid, availableSpectra: _availableSpectra, allAnalyses,
-  onStatusChange, onDelete: _onDelete, onClose: _onClose,
+  onStatusChange, onUpdate, onDelete: _onDelete, onClose: _onClose,
 }) => {
   const { theme } = useTheme();
+  const userRuns = useOptionalUserRuns();
   const isDarkTheme = theme === 'dark';
   const nmrSpectraIcon = isDarkTheme ? nmrSpectraDark : nmrSpectraLight;
   const atomSpinIcon = isDarkTheme ? atomSpinDark : atomSpinLight;
   const peakFittingIcon = isDarkTheme ? peakFittingDark : peakFittingLight;
   const fitParametersIcon = isDarkTheme ? fitParametersDark : fitParametersLight;
   const terminalLogsIcon = isDarkTheme ? terminalLogsDark : terminalLogsLight;
+
+  const cestSpectra = useMemo(
+    () => _availableSpectra.filter(s => s.experiment_type === 'CEST' && s.is_fitted),
+    [_availableSpectra]
+  );
 
   type TabKey = 'experiments' | 'pick_cest' | 'parameters' | 'methods' | 'logs' | 'results';
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
@@ -265,7 +273,19 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('resoFlow_sidebar_collapsed') === 'true');
   const [status, setStatus] = useState(analysis.status);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isRunning, setIsRunning] = useState(
+    analysis.status === 'RUNNING' || analysis.status === 'PENDING'
+  );
+  const isSubmittingRunRef = useRef(false);
+
+  useEffect(() => {
+    if (isSubmittingRunRef.current) return;
+    if (analysis.status && analysis.status !== status) {
+      setStatus(analysis.status);
+      setIsRunning(analysis.status === 'RUNNING' || analysis.status === 'PENDING');
+    }
+  }, [analysis.status]);
+
   const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -297,8 +317,41 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     type: 'dephasing',
   });
   const [filterOffsets, setFilterOffsets] = useState<Array<[number, number]>>([[0.0, 25.0]]);
+  const [filterOffsetsBySpectrum, setFilterOffsetsBySpectrum] = useState<Record<number, Array<[number, number]>>>({});
   const [filterPlanes, setFilterPlanes] = useState<number[]>([]);
   const [dataError, setDataError] = useState<'file' | 'scatter'>('scatter');
+
+  const handleUpdateFilterOffsetsForSpectrum = (spectrumId: number, offsets: Array<[number, number]>) => {
+    setFilterOffsetsBySpectrum(prev => ({
+      ...prev,
+      [spectrumId]: offsets,
+    }));
+    setFilterOffsets(offsets);
+  };
+
+  const handleResetFilterOffsetsForSpectrum = (spectrumId: number) => {
+    const s = cestSpectra.find(x => x.id === spectrumId);
+    const b1Val = s?.b1 != null ? Number(s.b1) : 25.0;
+    handleUpdateFilterOffsetsForSpectrum(spectrumId, [[0.0, b1Val]]);
+  };
+
+  useEffect(() => {
+    if (selectedSpectrumIds.length > 0 && cestSpectra.length > 0) {
+      setFilterOffsetsBySpectrum(prev => {
+        let changed = false;
+        const next = { ...prev };
+        selectedSpectrumIds.forEach(id => {
+          if (!next[id]) {
+            const s = cestSpectra.find(x => x.id === id);
+            const b1Val = s?.b1 != null ? Number(s.b1) : 25.0;
+            next[id] = [[0.0, b1Val]];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [selectedSpectrumIds, cestSpectra]);
 
   // ── Pick CEST State ──
   const [profiles, setProfiles] = useState<CestProfile[]>([]);
@@ -579,20 +632,31 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   };
 
   const fetchLogs = async () => {
+    if (isSubmittingRunRef.current) return;
     try {
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/logs`);
-      setLogs(res.data.logs || '');
-      if (res.data.progress) {
-        setProgressInfo(res.data.progress);
-      } else if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') {
-        setProgressInfo(null);
+      if (res.data.logs) {
+        setLogs(res.data.logs);
       }
-      if (res.data.status && res.data.status !== status) {
-        setStatus(res.data.status);
-        onStatusChange?.(res.data.status);
-        if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') {
-          setIsRunning(false);
-          setProgressInfo(null);
+      const incomingStatus = res.data.status;
+      const isTerminal = incomingStatus === 'COMPLETED' || incomingStatus === 'FAILED' || incomingStatus === 'CANCELLED';
+
+      if (res.data.progress && !isTerminal) {
+        setProgressInfo(res.data.progress);
+      } else if (isTerminal) {
+        setProgressInfo(null);
+        setIsRunning(false);
+      }
+
+      if (incomingStatus === 'RUNNING' || incomingStatus === 'PENDING') {
+        setIsRunning(true);
+      }
+
+      if (incomingStatus && incomingStatus !== status) {
+        setStatus(incomingStatus);
+        onStatusChange?.(incomingStatus);
+        onUpdate?.();
+        if (incomingStatus === 'COMPLETED') {
           loadResults();
         }
       }
@@ -643,6 +707,9 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         if (c.module_extra_values) setModuleExtraValues(c.module_extra_values);
         if (c.module_flags) setModuleFlags(c.module_flags);
         if (c.b1_distribution) setB1Distribution(c.b1_distribution);
+        if (c.filter_offsets_by_spectrum && typeof c.filter_offsets_by_spectrum === 'object') {
+          setFilterOffsetsBySpectrum(c.filter_offsets_by_spectrum);
+        }
         if (c.filter_offsets) setFilterOffsets(c.filter_offsets);
         if (c.filter_planes) setFilterPlanes(c.filter_planes);
         if (c.data_error) setDataError(c.data_error);
@@ -745,7 +812,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   };
 
   useEffect(() => {
-    if (status === 'COMPLETED' || status === 'FAILED') {
+    if (status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') {
       loadResults();
     }
   }, [status]);
@@ -769,7 +836,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         module_extra_values: moduleExtraValues,
         module_flags: moduleFlags,
         b1_distribution: b1Distribution,
-        filter_offsets: filterOffsets,
+        filter_offsets_by_spectrum: filterOffsetsBySpectrum,
+        filter_offsets: filterOffsetsBySpectrum,
         filter_planes: filterPlanes,
         data_error: dataError,
       });
@@ -812,7 +880,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         excluded_residues: parameterConfig.excludedResidues || [],
         selected_module: selectedModule,
         b1_distribution: b1Distribution,
-        filter_offsets: filterOffsets,
+        filter_offsets_by_spectrum: filterOffsetsBySpectrum,
+        filter_offsets: filterOffsetsBySpectrum,
         filter_planes: filterPlanes,
         data_error: dataError,
         ...moduleExtraValues,
@@ -926,15 +995,19 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
       setError(`Cannot run ChemEx: ${blockingErrors[0].message}`);
       return;
     }
+    if (isSubmittingRunRef.current) return;
     try {
       if (status === 'COMPLETED') {
         if (!window.confirm("Rerunning this analysis will overwrite your current results. A backup of the current results will be created. Proceed?")) {
           return;
         }
       }
+      isSubmittingRunRef.current = true;
       setIsRunning(true);
       setError('');
       setStatus('PENDING');
+      setProgressInfo(null);
+      setLogs(`[${new Date().toLocaleTimeString()}] Initiating ChemEx CEST fitting...\n`);
       onStatusChange?.('PENDING');
       setActiveTab('logs');
       const effectiveMethodToml = isRawEditMode ? methodToml : configToToml(methodConfig);
@@ -943,7 +1016,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
       setLastRunConfigHash(runHash);
       setLastRunTimestamp(runTime);
 
-      await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/run`, {
+      const res = await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/run`, {
         parameter_toml: effectiveParameterToml,
         parameter_config: isRawParamEditMode ? { ...parameterConfig, rawOverride: rawParamToml } : parameterConfig,
         method_toml: effectiveMethodToml,
@@ -953,11 +1026,23 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         last_run_hash: runHash,
         last_run_timestamp: runTime,
       });
+
+      const nextStatus = res.data?.status || 'PENDING';
+      setStatus(nextStatus);
+      setIsRunning(true);
+      onStatusChange?.(nextStatus);
+      onUpdate?.();
       loadSavedConfig();
+      userRuns?.refreshRuns();
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Failed to start ChemEx');
       setIsRunning(false);
       setStatus('FAILED');
+      onStatusChange?.('FAILED');
+      onUpdate?.();
+    } finally {
+      isSubmittingRunRef.current = false;
+      fetchLogs();
     }
   };
 
@@ -1049,6 +1134,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/logs`);
       setLogs(res.data.logs || '');
       setTimeout(() => setSuccessMsg(''), 3000);
+      userRuns?.refreshRuns();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Restore failed");
     } finally {
@@ -1068,12 +1154,15 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
       setStatus('CANCELLED');
       onStatusChange?.('CANCELLED');
       setIsRunning(false);
+      setProgressInfo(null);
       setTimeout(() => setSuccessMsg(''), 3000);
+      userRuns?.refreshRuns();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to stop analysis");
       setStatus('FAILED');
       onStatusChange?.('FAILED');
       setIsRunning(false);
+      setProgressInfo(null);
     } finally {
       setIsCancelling(false);
     }
@@ -1156,16 +1245,28 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const btnPrimary = 'px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-all shadow-sm disabled:opacity-50';
   const btnSecondary = 'px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-sm font-medium rounded-lg transition-all';
 
-  const cestSpectra = _availableSpectra.filter(s => s.experiment_type === 'CEST' && s.is_fitted);
+  const selectedCestSpectra = useMemo(
+    () => cestSpectra.filter(s => selectedSpectrumIds.includes(s.id)),
+    [cestSpectra, selectedSpectrumIds]
+  );
   const r1Analyses = (allAnalyses || []).filter(a => a.analysis_type === 'R1' && a.status === 'COMPLETED');
   const r2Analyses = (allAnalyses || []).filter(a => a.analysis_type === 'R2' && a.status === 'COMPLETED');
   const currentProfile = profiles[currentProfileIdx];
   const currentPick = currentProfile ? picks[currentProfile.residue] : null;
 
   const toggleSpectrumSelection = (id: number) => {
-    setSelectedSpectrumIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+    setSelectedSpectrumIds(prev => {
+      const isSelected = prev.includes(id);
+      if (!isSelected && !filterOffsetsBySpectrum[id]) {
+        const s = cestSpectra.find(x => x.id === id);
+        const b1Val = s?.b1 != null ? Number(s.b1) : 25.0;
+        setFilterOffsetsBySpectrum(curr => ({
+          ...curr,
+          [id]: [[0.0, b1Val]],
+        }));
+      }
+      return isSelected ? prev.filter(x => x !== id) : [...prev, id];
+    });
   };
 
   return (
@@ -1173,7 +1274,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${STATUS_COLORS[status] || ''}`}>
-            {(status === 'RUNNING' || status === 'CANCELLING') && <Loader2 className="w-3 h-3 animate-spin" />}
+            {(status === 'RUNNING' || status === 'PENDING' || status === 'CANCELLING' || isRunning) && <Loader2 className="w-3 h-3 animate-spin" />}
             {status === 'COMPLETED' && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
             <span>{status}</span>
           </span>
@@ -1273,7 +1374,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             </button>
           )}
 
-          {(status === 'COMPLETED' || status === 'FAILED') &&
+          {(status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') &&
             analysisResults?.steps &&
             Object.values(analysisResults.steps).some((s: any) => s?.has_grid) && (
             <button
@@ -1312,7 +1413,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             }
             className={`${btnPrimary} flex items-center gap-1`}
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
+            {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
             <span>{isRunning ? 'Running...' : 'Run ChemEx'}</span>
           </button>
         </div>
@@ -1344,7 +1445,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             <img src={terminalLogsIcon} className="w-7 h-7 min-w-[28px] aspect-square object-cover rounded-lg flex-shrink-0 shadow-sm border border-slate-200 dark:border-slate-700" alt="" />
             <span className={isSidebarCollapsed ? 'md:hidden' : 'md:inline'}>Logs</span>
           </button>
-          {(status === 'COMPLETED' || status === 'FAILED') && (
+          {(status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED' || analysisResults) && (
             <button onClick={() => setActiveTab('results')} className={tabCls('results')} title="Results">
               <img src={peakFittingIcon} className="w-7 h-7 min-w-[28px] aspect-square object-cover rounded-lg flex-shrink-0 shadow-sm border border-slate-200 dark:border-slate-700" alt="" />
               <span className={isSidebarCollapsed ? 'md:hidden' : 'md:inline'}>Results</span>
@@ -1462,6 +1563,10 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
                   onChangeDistribution={(d) => setB1Distribution(d)}
                 />
                 <ProfileFilterControls
+                  selectedSpectra={selectedCestSpectra}
+                  filterOffsetsBySpectrum={filterOffsetsBySpectrum}
+                  onChangeFilterOffsetsForSpectrum={handleUpdateFilterOffsetsForSpectrum}
+                  onResetOffsetsForSpectrum={handleResetFilterOffsetsForSpectrum}
                   filterOffsets={filterOffsets}
                   onChangeFilterOffsets={(offsets) => setFilterOffsets(offsets)}
                   filterPlanes={filterPlanes}

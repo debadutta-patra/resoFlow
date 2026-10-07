@@ -85,6 +85,8 @@ class SpectrumCreate(SpectrumBase):
     pass
 
 class SpectrumUpdate(BaseModel):
+    name: Optional[str] = None
+    file_path: Optional[str] = None
     experiment_type: Optional[str] = None
     peaklist_path: Optional[str] = None
     list_path: Optional[str] = None
@@ -110,6 +112,12 @@ class Spectrum(SpectrumBase):
     results_json_path: Optional[str] = None
     peaktable_json_path: Optional[str] = None
     has_backup: bool = False
+    file_path_exists: Optional[bool] = None
+    results_json_path_exists: Optional[bool] = None
+    peaklist_path_exists: Optional[bool] = None
+    vclist_path_exists: Optional[bool] = None
+    vdlist_path_exists: Optional[bool] = None
+    f3list_path_exists: Optional[bool] = None
     vclist_path: Optional[str] = None
     vdlist_path: Optional[str] = None
     f3list_path: Optional[str] = None

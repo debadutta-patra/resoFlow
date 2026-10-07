@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import api from "../services/api";
 import { useTheme } from "../context/ThemeContext";
+import { useOptionalUserRuns } from "../context/RunsContext";
 import nmrSpectraLight from "../assets/nmr_spectra_light.jpg";
 import nmrSpectraDark from "../assets/nmr_spectra_dark.jpg";
 import atomSpinLight from "../assets/atom_spin_light.jpg";
@@ -123,6 +124,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   onUpdate,
 }) => {
   const { theme } = useTheme();
+  const userRuns = useOptionalUserRuns();
   const isDarkTheme = theme === "dark";
   const nmrSpectraIcon = isDarkTheme ? nmrSpectraDark : nmrSpectraLight;
   const atomSpinIcon = isDarkTheme ? atomSpinDark : atomSpinLight;
@@ -138,7 +140,19 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   const [logs, setLogs] = useState("");
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
-  const [isFitting, setIsFitting] = useState(false);
+  const [isFitting, setIsFitting] = useState(
+    analysis.status === "RUNNING" || analysis.status === "PENDING"
+  );
+  const isSubmittingRunRef = useRef(false);
+
+  useEffect(() => {
+    if (isSubmittingRunRef.current) return;
+    if (analysis.status && analysis.status !== status) {
+      setStatus(analysis.status);
+      setIsFitting(analysis.status === "RUNNING" || analysis.status === "PENDING");
+    }
+  }, [analysis.status]);
+
   const [isCancelling, setIsCancelling] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ name: string; content: string } | null>(null);
   const [progressInfo, setProgressInfo] = useState<ProgressInfo | null>(null);
@@ -263,24 +277,32 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   }, [model, projectUuid, analysis.analysis_uuid]);
 
   const fetchLogs = async () => {
+    if (isSubmittingRunRef.current) return;
     try {
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/logs`);
       if (res.data.logs) setLogs(res.data.logs);
-      if (res.data.progress) {
+      const incomingStatus = res.data.status;
+      const isTerminal = incomingStatus === "COMPLETED" || incomingStatus === "FAILED" || incomingStatus === "CANCELLED";
+
+      if (res.data.progress && !isTerminal) {
         setProgressInfo(res.data.progress);
-      } else if (res.data.status === "COMPLETED" || res.data.status === "FAILED") {
+      } else if (isTerminal) {
         setProgressInfo(null);
+        setIsFitting(false);
       }
-      if (res.data.status && res.data.status !== status) {
-        setStatus(res.data.status);
-        if (res.data.status === "COMPLETED" || res.data.status === "FAILED") {
-          setIsFitting(false);
-          setProgressInfo(null);
+
+      if (incomingStatus === "RUNNING" || incomingStatus === "PENDING") {
+        setIsFitting(true);
+      }
+
+      if (incomingStatus && incomingStatus !== status) {
+        setStatus(incomingStatus);
+        if (incomingStatus === "COMPLETED") {
           await fetchResults();
-          if (res.data.status === "COMPLETED") {
-            setActiveTab("results");
-          }
-          if (onUpdate) onUpdate();
+          setActiveTab("results");
+          onUpdate?.();
+        } else if (incomingStatus === "FAILED" || incomingStatus === "CANCELLED" || incomingStatus === "RUNNING") {
+          onUpdate?.();
         }
       }
     } catch {
@@ -715,6 +737,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
       fetchResults();
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/logs`);
       setLogs(res.data.logs || '');
+      setProgressInfo(null);
+      userRuns?.refreshRuns();
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Restore failed");
@@ -821,11 +845,15 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
       setError(`Cannot run ChemEx: ${blockingErrors[0].message}`);
       return;
     }
+    if (isSubmittingRunRef.current) return;
     try {
+      isSubmittingRunRef.current = true;
       setIsFitting(true);
       setError("");
+      setStatus("PENDING");
+      setProgressInfo(null);
       setActiveTab("logs");
-      setLogs("Initiating ChemEx CPMG fitting...\n");
+      setLogs(`[${new Date().toLocaleTimeString()}] Initiating ChemEx CPMG fitting...\n`);
 
       const paramToml = configToCpmgToml(parameterConfig, selectedSpectraFields);
       const effectiveMethodToml = isRawEditMode ? methodToml : methodConfigToToml(methodConfig);
@@ -841,10 +869,19 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         parameter_config: parameterConfig,
       });
 
-      setStatus(res.data.status || "RUNNING");
+      const nextStatus = res.data?.status || "PENDING";
+      setStatus(nextStatus);
+      setIsFitting(true);
+      userRuns?.refreshRuns();
+      onUpdate?.();
     } catch (e: any) {
       setError(e.response?.data?.detail || "Failed to start fitting run");
       setIsFitting(false);
+      setStatus("FAILED");
+      onUpdate?.();
+    } finally {
+      isSubmittingRunRef.current = false;
+      fetchLogs();
     }
   };
 
@@ -858,6 +895,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
       setSuccessMsg("Analysis cancelled successfully.");
       setStatus("CANCELLED");
       setIsFitting(false);
+      setProgressInfo(null);
+      userRuns?.refreshRuns();
       onUpdate?.();
       setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err: any) {
@@ -964,7 +1003,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           )}
 
           {/* Use Grid Minimum as Starting */}
-          {(status === "COMPLETED" || status === "FAILED") &&
+          {(status === "COMPLETED" || status === "FAILED" || status === "CANCELLED") &&
             analysisResults?.steps &&
             Object.values(analysisResults.steps).some((s: any) => s?.has_grid) && (
               <button
@@ -1072,7 +1111,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             <span className={isSidebarCollapsed ? "md:hidden" : "md:inline"}>Logs</span>
           </button>
 
-          {(status === "COMPLETED" || status === "FAILED") && (
+          {(status === "COMPLETED" || status === "FAILED" || status === "CANCELLED") && (
             <button onClick={() => setActiveTab("results")} className={tabCls("results")} title="Results">
               <img
                 src={peakFittingIcon}

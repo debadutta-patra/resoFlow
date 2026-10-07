@@ -396,3 +396,44 @@ def create_directory(
     except OSError:
         logger.exception("Failed to create directory %s", full_path)
         raise HTTPException(status_code=500, detail="Failed to create directory")
+
+
+class ValidatePathRequest(BaseModel):
+    path: str
+
+
+class ValidatePathResponse(BaseModel):
+    path: str
+    exists: bool
+    resolved_path: Optional[str] = None
+    is_file: bool = False
+    is_dir: bool = False
+
+
+@router.post("/validate-path", response_model=ValidatePathResponse)
+def validate_path(
+    request: ValidatePathRequest,
+    current_user: models.User = Depends(security.get_current_user)
+):
+    from ..services.path_utils import find_existing_path
+    raw_path = request.path.strip() if request.path else ""
+    if not raw_path:
+        return ValidatePathResponse(path="", exists=False)
+
+    resolved = find_existing_path(raw_path)
+    if resolved and os.path.exists(resolved):
+        return ValidatePathResponse(
+            path=raw_path,
+            exists=True,
+            resolved_path=resolved,
+            is_file=os.path.isfile(resolved),
+            is_dir=os.path.isdir(resolved),
+        )
+    return ValidatePathResponse(
+        path=raw_path,
+        exists=False,
+        resolved_path=None,
+        is_file=False,
+        is_dir=False,
+    )
+

@@ -74,6 +74,51 @@ class Spectrum(Base):
         bak_path = self.results_json_path.replace(".json", "_bak.json")
         return os.path.exists(bak_path)
 
+    @property
+    def file_path_exists(self) -> bool:
+        from .services.path_utils import check_path_exists
+        return check_path_exists(self.file_path)
+
+    @property
+    def results_json_path_exists(self) -> bool:
+        if not self.results_json_path:
+            return False
+        from .services.path_utils import check_path_exists
+        base_dir = self.project.local_directory_path if self.project else None
+        return check_path_exists(self.results_json_path, base_dir)
+
+    @property
+    def peaklist_path_exists(self) -> bool:
+        if not self.peaklist_path:
+            return False
+        from .services.path_utils import check_path_exists
+        base_dir = self.project.local_directory_path if self.project else None
+        return check_path_exists(self.peaklist_path, base_dir)
+
+    @property
+    def vclist_path_exists(self) -> bool:
+        if not self.vclist_path:
+            return False
+        from .services.path_utils import check_path_exists
+        base_dir = self.project.local_directory_path if self.project else None
+        return check_path_exists(self.vclist_path, base_dir)
+
+    @property
+    def vdlist_path_exists(self) -> bool:
+        if not self.vdlist_path:
+            return False
+        from .services.path_utils import check_path_exists
+        base_dir = self.project.local_directory_path if self.project else None
+        return check_path_exists(self.vdlist_path, base_dir)
+
+    @property
+    def f3list_path_exists(self) -> bool:
+        if not self.f3list_path:
+            return False
+        from .services.path_utils import check_path_exists
+        base_dir = self.project.local_directory_path if self.project else None
+        return check_path_exists(self.f3list_path, base_dir)
+
     project = relationship("Project", back_populates="spectra")
     jobs = relationship("Job", back_populates="spectrum", cascade="all, delete-orphan")
 

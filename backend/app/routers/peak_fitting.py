@@ -282,9 +282,21 @@ def get_fitting_results(
     
     if not spectrum.is_fitted or not spectrum.results_json_path:
         raise HTTPException(status_code=404, detail="Fitting results not found for this spectrum")
-        
-    if not os.path.exists(spectrum.results_json_path):
-        raise HTTPException(status_code=404, detail="Fitting results JSON file not found on disk")
+
+    from ..services.path_utils import find_existing_path
+    base_dir = spectrum.project.local_directory_path if spectrum.project else None
+    resolved = find_existing_path(spectrum.results_json_path, base_dir)
+    if resolved and os.path.exists(resolved):
+        if resolved != spectrum.results_json_path:
+            spectrum.results_json_path = resolved
+            db.commit()
+            from ..services.json_sync import sync_project_to_json
+            sync_project_to_json(db, spectrum.project)
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Fitting results JSON file not found on disk: {spectrum.results_json_path}"
+        )
         
     try:
         import json

@@ -146,6 +146,39 @@ def update_spectrum_in_project(spectrum_update: schemas.SpectrumUpdate, spectrum
     project = spectrum.project
 
     update_data = spectrum_update.model_dump(exclude_unset=True)
+
+    # Handle file_path update
+    if "file_path" in update_data:
+        raw_fp = update_data["file_path"]
+        if raw_fp:
+            from ..services.path_utils import find_existing_path
+            resolved_fp = find_existing_path(raw_fp) or raw_fp
+            update_data["file_path"] = resolved_fp
+            # Auto-update spectrum name if name wasn't explicitly changed
+            if "name" not in update_data:
+                old_base = os.path.basename(spectrum.file_path) if spectrum.file_path else ""
+                if not spectrum.name or spectrum.name == old_base:
+                    update_data["name"] = os.path.basename(resolved_fp)
+        else:
+            update_data["file_path"] = ""
+
+    # Handle results_json_path and is_fitted
+    if "results_json_path" in update_data:
+        raw_rjp = update_data["results_json_path"]
+        if raw_rjp:
+            from ..services.path_utils import find_existing_path
+            resolved_rjp = find_existing_path(raw_rjp, project.local_directory_path) or raw_rjp
+            update_data["results_json_path"] = resolved_rjp
+            if "is_fitted" not in update_data:
+                update_data["is_fitted"] = os.path.exists(resolved_rjp)
+        else:
+            update_data["results_json_path"] = None
+            if "is_fitted" not in update_data:
+                update_data["is_fitted"] = False
+
+    if update_data.get("is_fitted") is False:
+        update_data["results_json_path"] = None
+
     for key, value in update_data.items():
         setattr(spectrum, key, value)
     
@@ -166,10 +199,21 @@ def get_spectrum_data(
     base_level: float = Query(0.0),
     multiplier: float = Query(1.8),
     number_contours: int = Query(10),
-    spectrum: models.Spectrum = Depends(get_spectrum)
+    spectrum: models.Spectrum = Depends(get_spectrum),
+    db: Session = Depends(database.get_db),
 ):
+    from ..services.path_utils import find_existing_path
+    resolved = find_existing_path(spectrum.file_path) if spectrum.file_path else None
+    if resolved and resolved != spectrum.file_path:
+        spectrum.file_path = resolved
+        db.commit()
+        sync_project_to_json(db, spectrum.project)
+
     if not spectrum.file_path or not os.path.exists(spectrum.file_path):
-        raise HTTPException(status_code=404, detail="Spectrum file does not exist on host")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Spectrum file does not exist on disk: {spectrum.file_path or 'No path specified'}"
+        )
         
     try:
         import nmrglue as ng

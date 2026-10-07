@@ -97,7 +97,7 @@ const SpectraAnalysis: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   
   const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false);
-  const [activeBrowserField, setActiveBrowserField] = useState<'peaklist' | 'vclist' | 'vdlist' | 'f3list'>('peaklist');
+  const [activeBrowserField, setActiveBrowserField] = useState<'peaklist' | 'vclist' | 'vdlist' | 'f3list' | 'filepath' | 'results_json'>('peaklist');
   
   const [activeTab, setActiveTab] = useState<'general' | 'viewer' | 'fitting' | 'logs'>('general');
   
@@ -107,6 +107,8 @@ const SpectraAnalysis: React.FC = () => {
   const [numContours, setNumContours] = useState<number>(20);
   
   const [formData, setFormData] = useState({
+    file_path: '',
+    results_json_path: '',
     experiment_type: '',
     peaklist_path: '',
     vclist_path: '',
@@ -469,6 +471,8 @@ const SpectraAnalysis: React.FC = () => {
       }
       setSpectrum(spec);
       setFormData({
+        file_path: spec.file_path || '',
+        results_json_path: spec.results_json_path || '',
         experiment_type: spec.experiment_type || '',
         peaklist_path: spec.peaklist_path || '',
         vclist_path: spec.vclist_path || '',
@@ -591,6 +595,8 @@ const SpectraAnalysis: React.FC = () => {
 
       const payload = {
         ...formData,
+        file_path: formData.file_path ? formData.file_path.trim() : undefined,
+        results_json_path: formData.results_json_path ? formData.results_json_path.trim() : null,
         delay: formData.delay !== null && formData.delay !== '' ? parseFloat(String(formData.delay)) : null,
         t_relax: formData.t_relax !== null && formData.t_relax !== '' ? parseFloat(String(formData.t_relax)) : null,
         b1: formData.b1 !== null && formData.b1 !== '' ? parseFloat(String(formData.b1)) : null,
@@ -603,20 +609,54 @@ const SpectraAnalysis: React.FC = () => {
       setSpectrum(response.data);
       setSuccessMsg('Spectrum information updated!');
       setTimeout(() => setSuccessMsg(''), 3000);
+
+      // If fitting results were linked, re-fetch them
+      if (response.data.is_fitted && response.data.results_json_path) {
+        await fetchFittingResults();
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to save spectrum info.');
     } finally {
       setIsSaving(false);
     }
   };
+
+  const handleUnlinkFittingData = async () => {
+    if (!window.confirm("Are you sure you want to unlink fitting results from this spectrum? This resets the fitted status and clears the results JSON path.")) return;
+    try {
+      setIsSaving(true);
+      setError('');
+      const payload = {
+        ...formData,
+        is_fitted: false,
+        results_json_path: null,
+      };
+      const response = await api.put(`/api/projects/${projectUuid}/spectra/${spectrumUuid}`, payload);
+      setSpectrum(response.data);
+      setFormData(prev => ({ ...prev, results_json_path: '' }));
+      setFitResults([]);
+      setFitSummary(null);
+      setFitLog('');
+      setSuccessMsg('Fitting results unlinked successfully.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to unlink fitting data.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
   
-  const openFileBrowser = (field: 'peaklist' | 'vclist' | 'vdlist' | 'f3list') => {
+  const openFileBrowser = (field: 'peaklist' | 'vclist' | 'vdlist' | 'f3list' | 'filepath' | 'results_json') => {
     setActiveBrowserField(field);
     setIsFileBrowserOpen(true);
   };
 
   const handleFileSelect = (path: string) => {
-    if (activeBrowserField === 'peaklist') {
+    if (activeBrowserField === 'filepath') {
+      setFormData(prev => ({ ...prev, file_path: path }));
+    } else if (activeBrowserField === 'results_json') {
+      setFormData(prev => ({ ...prev, results_json_path: path }));
+    } else if (activeBrowserField === 'peaklist') {
       setFormData(prev => ({ ...prev, peaklist_path: path }));
     } else if (activeBrowserField === 'vclist') {
       setFormData(prev => ({ ...prev, vclist_path: path }));
@@ -1524,6 +1564,34 @@ const SpectraAnalysis: React.FC = () => {
     );
   };
 
+  const renderPathBadge = (savedPath?: string | null, currentPath?: string, exists?: boolean | null) => {
+    if (!currentPath) return null;
+    if (savedPath !== undefined && currentPath !== savedPath) {
+      return (
+        <span className="inline-flex items-center text-[11px] font-medium text-blue-600 dark:text-blue-400 ml-2">
+          (Unsaved)
+        </span>
+      );
+    }
+    if (exists === true) {
+      return (
+        <span className="inline-flex items-center text-[11px] font-medium text-emerald-600 dark:text-emerald-400 ml-2">
+          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+          Verified on disk
+        </span>
+      );
+    }
+    if (exists === false) {
+      return (
+        <span className="inline-flex items-center text-[11px] font-medium text-amber-600 dark:text-amber-400 ml-2">
+          <AlertCircle className="w-3.5 h-3.5 mr-1" />
+          File not found on disk
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1544,9 +1612,33 @@ const SpectraAnalysis: React.FC = () => {
                       </span>
                     )}
                   </h1>
-                  <p className="text-slate-500 text-sm mt-1 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono inline-block">
-                    {spectrum?.file_path}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <p className="text-slate-500 text-sm border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono inline-block">
+                      {spectrum?.file_path || 'No file path configured'}
+                    </p>
+                    {spectrum?.file_path && spectrum?.file_path_exists === false && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                        <AlertCircle className="w-3 h-3 mr-1 text-amber-600" />
+                        File not found on disk
+                      </span>
+                    )}
+                    {spectrum?.file_path && spectrum?.file_path_exists === true && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                        Verified on disk
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('general');
+                        openFileBrowser('filepath');
+                      }}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium ml-1"
+                    >
+                      Update Path
+                    </button>
+                  </div>
                 </div>
             </div>
             
@@ -1562,9 +1654,32 @@ const SpectraAnalysis: React.FC = () => {
 
         {/* Alerts */}
         {error && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-center text-red-700 dark:text-red-400 text-sm">
-                <div className="w-2 h-2 bg-red-500 rounded-full mr-3"></div>
-                {error}
+            <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-red-700 dark:text-red-400 text-sm">
+                <div className="flex items-center">
+                    <div className="w-2 h-2 bg-red-500 rounded-full mr-3 flex-shrink-0"></div>
+                    <span>{error}</span>
+                </div>
+                {(error.toLowerCase().includes('fitting results') || error.toLowerCase().includes('results json') || error.toLowerCase().includes('not found on disk')) && (
+                    <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('general');
+                            openFileBrowser('results_json');
+                          }}
+                          className="px-3 py-1 bg-white dark:bg-slate-800 border border-red-300 dark:border-red-700 text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-slate-700 text-red-700 dark:text-red-300 transition-colors shadow-sm"
+                        >
+                          Browse for Results File
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleUnlinkFittingData}
+                          className="px-3 py-1 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+                        >
+                          Unlink Fitting Data
+                        </button>
+                    </div>
+                )}
             </div>
         )}
         {successMsg && (
@@ -1644,6 +1759,36 @@ const SpectraAnalysis: React.FC = () => {
                 {!isLoading && activeTab === 'general' && (
                     <div className="space-y-6 max-w-2xl animate-in fade-in">
                         <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                  Spectrum File Path
+                                  {renderPathBadge(spectrum?.file_path, formData.file_path, spectrum?.file_path_exists)}
+                                </label>
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                  type="text"
+                                  name="file_path"
+                                  value={formData.file_path}
+                                  onChange={handleInputChange}
+                                  placeholder="/path/to/spectrum.ft2"
+                                  className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => openFileBrowser('filepath')}
+                                className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
+                                title="Browse spectrum file"
+                              >
+                                <Search className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Path to NMRPipe processed spectrum (.ft2) or Bruker pdata directory.
+                            </p>
+                        </div>
+
+                        <div>
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Experiment Type</label>
                             <select
                                 name="experiment_type"
@@ -1689,19 +1834,22 @@ const SpectraAnalysis: React.FC = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Peaklist Path</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                              Peaklist Path
+                              {renderPathBadge(spectrum?.peaklist_path, formData.peaklist_path, spectrum?.peaklist_path_exists)}
+                            </label>
                             <div className="flex gap-2">
                               <input
                                   type="text"
                                   name="peaklist_path"
                                   value={formData.peaklist_path}
                                   onChange={handleInputChange}
-                                  className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg"
+                                  className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg font-mono text-sm"
                               />
                               <button
                                 type="button"
                                 onClick={() => openFileBrowser('peaklist')}
-                                className="px-3 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-300 rounded-lg"
+                                className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
                               >
                                 <Search className="w-4 h-4" />
                               </button>
@@ -1711,19 +1859,22 @@ const SpectraAnalysis: React.FC = () => {
                         {/* Conditional Fields based on Experiment Type */}
                         {formData.experiment_type === 'T2' && (
                           <div>
-                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">VC List Path</label>
+                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                VC List Path
+                                {renderPathBadge(spectrum?.vclist_path, formData.vclist_path, spectrum?.vclist_path_exists)}
+                              </label>
                               <div className="flex gap-2">
                                 <input
                                     type="text"
                                     name="vclist_path"
                                     value={formData.vclist_path}
                                     onChange={handleInputChange}
-                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg"
+                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg font-mono text-sm"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => openFileBrowser('vclist')}
-                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-300 rounded-lg"
+                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
                                 >
                                   <Search className="w-4 h-4" />
                                 </button>
@@ -1736,6 +1887,7 @@ const SpectraAnalysis: React.FC = () => {
                             <div>
                               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                                 VC List Path <span className="text-xs text-slate-400 font-normal">(Number of CPMG cycles)</span>
+                                {renderPathBadge(spectrum?.vclist_path, formData.vclist_path, spectrum?.vclist_path_exists)}
                               </label>
                               <div className="flex gap-2">
                                 <input
@@ -1744,12 +1896,12 @@ const SpectraAnalysis: React.FC = () => {
                                     value={formData.vclist_path}
                                     placeholder="e.g. vclist with 0, 2, 4, 8... (optional if VD List provided)"
                                     onChange={handleInputChange}
-                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-sm"
+                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-mono"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => openFileBrowser('vclist')}
-                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-300 rounded-lg"
+                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
                                 >
                                   <Search className="w-4 h-4" />
                                 </button>
@@ -1758,6 +1910,7 @@ const SpectraAnalysis: React.FC = () => {
                             <div>
                               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                                 VD List Path <span className="text-xs text-slate-400 font-normal">(Frequencies in Hz or delays in s)</span>
+                                {renderPathBadge(spectrum?.vdlist_path, formData.vdlist_path, spectrum?.vdlist_path_exists)}
                               </label>
                               <div className="flex gap-2">
                                 <input
@@ -1766,12 +1919,12 @@ const SpectraAnalysis: React.FC = () => {
                                     value={formData.vdlist_path}
                                     placeholder="e.g. vdlist with 0, 50, 100, 200... (optional if VC List provided)"
                                     onChange={handleInputChange}
-                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-sm"
+                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-mono"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => openFileBrowser('vdlist')}
-                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-300 rounded-lg"
+                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
                                 >
                                   <Search className="w-4 h-4" />
                                 </button>
@@ -1785,19 +1938,22 @@ const SpectraAnalysis: React.FC = () => {
 
                         {formData.experiment_type === 'T1' && (
                           <div>
-                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">VD List Path</label>
+                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                VD List Path
+                                {renderPathBadge(spectrum?.vdlist_path, formData.vdlist_path, spectrum?.vdlist_path_exists)}
+                              </label>
                               <div className="flex gap-2">
                                 <input
                                     type="text"
                                     name="vdlist_path"
                                     value={formData.vdlist_path}
                                     onChange={handleInputChange}
-                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg"
+                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg font-mono text-sm"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => openFileBrowser('vdlist')}
-                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-300 rounded-lg"
+                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
                                 >
                                   <Search className="w-4 h-4" />
                                 </button>
@@ -1808,19 +1964,22 @@ const SpectraAnalysis: React.FC = () => {
 
                         {formData.experiment_type === 'CEST' && (
                           <div>
-                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">F3 List Path</label>
+                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                F3 List Path
+                                {renderPathBadge(spectrum?.f3list_path, formData.f3list_path, spectrum?.f3list_path_exists)}
+                              </label>
                               <div className="flex gap-2">
                                 <input
                                     type="text"
                                     name="f3list_path"
                                     value={formData.f3list_path}
                                     onChange={handleInputChange}
-                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg"
+                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg font-mono text-sm"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => openFileBrowser('f3list')}
-                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-300 rounded-lg"
+                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
                                 >
                                   <Search className="w-4 h-4" />
                                 </button>
@@ -1919,6 +2078,63 @@ const SpectraAnalysis: React.FC = () => {
                               </select>
                           </div>
                         )}
+
+                        {/* Peak Fitting Results Configuration */}
+                        <div className="pt-6 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                                  Peak Fitting Results Data
+                                  {spectrum?.is_fitted && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                      Fitted
+                                    </span>
+                                  )}
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  Linked results JSON file containing fitted peak parameters, linewidths, and clusters.
+                                </p>
+                              </div>
+                              {(spectrum?.is_fitted || formData.results_json_path) && (
+                                <button
+                                  type="button"
+                                  onClick={handleUnlinkFittingData}
+                                  className="px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                                  title="Unlink and clear fitting results from this spectrum"
+                                >
+                                  Unlink Fitting Data
+                                </button>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                Results JSON Path
+                                {renderPathBadge(spectrum?.results_json_path, formData.results_json_path, spectrum?.results_json_path_exists)}
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    name="results_json_path"
+                                    value={formData.results_json_path}
+                                    placeholder="/path/to/peak_fitting_results.json"
+                                    onChange={handleInputChange}
+                                    className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg font-mono text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => openFileBrowser('results_json')}
+                                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 transition-colors"
+                                  title="Browse JSON results file"
+                                >
+                                  <Search className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                Path to peak fitting output JSON. Updating and saving will link the results to this spectrum.
+                              </p>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -2049,6 +2265,7 @@ const SpectraAnalysis: React.FC = () => {
         isOpen={isFileBrowserOpen}
         onClose={() => setIsFileBrowserOpen(false)}
         selectType="file"
+        fileExtension={activeBrowserField === 'results_json' ? '.json' : undefined}
         onSelect={handleFileSelect}
       />
 

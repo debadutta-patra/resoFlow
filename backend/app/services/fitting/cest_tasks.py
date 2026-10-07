@@ -229,9 +229,17 @@ def _backup_output_directory(run_dir: str):
         try:
             if os.path.exists(log_bak):
                 os.remove(log_bak)
-            shutil.move(log_path, log_bak)
+            shutil.copy2(log_path, log_bak)
         except Exception as e:
             logger.warning(f"Failed to backup chemex.log: {e}")
+
+    # Remove stale progress.json
+    progress_path = os.path.join(run_dir, "progress.json")
+    if os.path.exists(progress_path):
+        try:
+            os.remove(progress_path)
+        except Exception:
+            pass
 
 
 
@@ -465,6 +473,7 @@ def run_cest_analysis_task(self, analysis_uuid: str, config: dict):
         return
 
     analysis.status = "RUNNING"
+    analysis.cancel_requested = False
     analysis.completed_at = None
     analysis.error_message = None
     analysis.celery_task_id = self.request.id if self.request else None

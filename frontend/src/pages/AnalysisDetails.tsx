@@ -19,12 +19,14 @@ const AnalysisDetails: React.FC = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchProjectDetails();
+    fetchProjectDetails(true);
   }, [projectUuid, analysisUuid]);
 
-  const fetchProjectDetails = async () => {
+  const fetchProjectDetails = async (initial = false) => {
     try {
-      setIsLoading(true);
+      if (initial || !selectedAnalysis) {
+        setIsLoading(true);
+      }
       const response = await api.get(`/api/projects/${projectUuid}`);
       setProject(response.data);
       const analysis = response.data.analyses.find((a: any) => a.analysis_uuid === analysisUuid);
@@ -34,9 +36,13 @@ const AnalysisDetails: React.FC = () => {
         setError('Analysis not found');
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load analysis details');
+      if (initial || !selectedAnalysis) {
+        setError(err.response?.data?.detail || 'Failed to load analysis details');
+      }
     } finally {
-      setIsLoading(false);
+      if (initial || !selectedAnalysis) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -96,6 +102,7 @@ const AnalysisDetails: React.FC = () => {
             onStatusChange={(status) => {
                 setSelectedAnalysis({ ...selectedAnalysis, status });
             }}
+            onUpdate={() => fetchProjectDetails(false)}
             onClose={handleClose}
             onDelete={handleClose}
           />
@@ -110,14 +117,14 @@ const AnalysisDetails: React.FC = () => {
               status: a.status,
               b0: (a.spectra || []).map((sp: any) => sp.b0).find((b: any) => b != null) ?? null,
             }))}
-            onUpdate={fetchProjectDetails}
+            onUpdate={() => fetchProjectDetails(false)}
           />
         ) : selectedAnalysis.analysis_type === 'CPMG' ? (
           <CpmgAnalysisManager
             analysis={selectedAnalysis}
             projectUuid={projectUuid!}
             spectra={project?.spectra || []}
-            onUpdate={fetchProjectDetails}
+            onUpdate={() => fetchProjectDetails(false)}
           />
         ) : (
           <AnalysisManager 

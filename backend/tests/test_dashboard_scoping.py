@@ -299,3 +299,48 @@ class TestDashboardAndScoping(unittest.TestCase):
         updated_p = self.db.query(models.Project).filter(models.Project.project_uuid == target_p['project_uuid']).first()
         self.assertFalse(updated_p.is_archived)
 
+    def test_pending_orphan_reconciliation(self):
+        """Orphaned runs in PENDING state older than 60s without Celery task are reconciled to FAILED."""
+        old_pending = models.Analysis(
+            name="Orphaned Pending Analysis",
+            analysis_type="15N-CEST",
+            status="PENDING",
+            project_id=self.proj_a.id,
+            created_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        )
+        self.db.add(old_pending)
+        self.db.commit()
+
+        reconcile_orphaned_runs(self.db, self.user_a.id)
+
+        self.db.refresh(old_pending)
+        self.assertEqual(old_pending.status, "FAILED")
+        self.assertIn("never started", old_pending.error_message.lower())
+
+    def test_cancelled_run_in_terminal_runs_and_logs(self):
+        """Cancelled run appears in recent runs list and suppresses active progress in logs endpoint."""
+        # Cancel analysis_a
+        headers_a = self._login(self.user_a.email, "password123")
+        cancel_resp = self.client.post(
+            f"/api/users/me/runs/{self.analysis_a.analysis_uuid}/cancel",
+            headers=headers_a,
+        )
+        self.assertEqual(cancel_resp.status_code, 200)
+
+        # Check dashboard returns it in runs
+        dash_resp = self.client.get("/api/users/me/dashboard", headers=headers_a)
+        self.assertEqual(dash_resp.status_code, 200)
+        dash_data = dash_resp.json()
+        cancelled_run = next((r for r in dash_data["runs"] if r["uuid"] == self.analysis_a.analysis_uuid), None)
+        self.assertIsNotNone(cancelled_run)
+        self.assertEqual(cancelled_run["status"], "CANCELLED")
+
+        # Check cest logs endpoint suppresses active progress
+        logs_resp = self.client.get(
+            f"/api/projects/{self.proj_a.project_uuid}/analysis/{self.analysis_a.analysis_uuid}/cest/logs",
+            headers=headers_a,
+        )
+        self.assertEqual(logs_resp.status_code, 200)
+        self.assertIsNone(logs_resp.json().get("progress"))
+
+

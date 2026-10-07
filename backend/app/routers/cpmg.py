@@ -512,6 +512,9 @@ def get_cpmg_logs(
         except Exception:
             pass
 
+    if analysis and analysis.status in ("COMPLETED", "FAILED", "CANCELLED"):
+        progress_data = None
+
     try:
         file_size = os.path.getsize(analysis.log_path)
         if file_size > 500 * 1024:
@@ -786,9 +789,27 @@ def run_cpmg_analysis(
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2)
 
+    # Clean up stale progress.json from prior run
+    stale_progress = os.path.join(run_dir, "progress.json")
+    if os.path.exists(stale_progress):
+        try:
+            os.remove(stale_progress)
+        except OSError:
+            pass
+
     analysis.log_path = os.path.join(run_dir, "chemex.log")
     analysis.results_path = os.path.join(run_dir, "results.json")
     analysis.status = "PENDING"
+    analysis.cancel_requested = False
+    analysis.completed_at = None
+    analysis.error_message = None
+
+    # Initialize / clear log for the new run
+    try:
+        with open(analysis.log_path, "w") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] CPMG analysis queued: {analysis.name} (UUID: {analysis.analysis_uuid})\n")
+    except Exception:
+        pass
 
     task_id = str(uuid.uuid4())
     params = json.loads(analysis.parameters) if analysis.parameters else {}

@@ -340,3 +340,23 @@ def test_browse_reports_permitted_roots(tmp_path, monkeypatch):
     assert by_name["projects"].path == str(data.resolve())
     # Without a host mapping, display mirrors the canonical path.
     assert by_name["spectra"].display_path == str(spectra.resolve())
+
+
+def test_validate_path_endpoint(tmp_path):
+    """Verify validate-path endpoint accurately checks existence and type."""
+    from app.routers.fs import validate_path, ValidatePathRequest
+    from app.models import User
+
+    test_file = tmp_path / "test.json"
+    test_file.write_text("{}")
+    mock_user = User(id=1, email="test@lab.org", is_active=True)
+
+    res_valid = validate_path(ValidatePathRequest(path=str(test_file)), current_user=mock_user)
+    assert res_valid.exists is True
+    assert res_valid.is_file is True
+    assert res_valid.is_dir is False
+
+    res_invalid = validate_path(ValidatePathRequest(path=str(tmp_path / "missing.json")), current_user=mock_user)
+    assert res_invalid.exists is False
+    assert res_invalid.resolved_path is None
+

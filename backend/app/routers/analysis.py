@@ -191,6 +191,7 @@ def run_analysis(
     analysis.parameters = json.dumps(params)
     
     analysis.status = "RUNNING"
+    analysis.cancel_requested = False
     analysis.error_message = None
     db.commit()
 
@@ -201,6 +202,14 @@ def run_analysis(
     os.makedirs(run_dir, exist_ok=True)
     analysis.log_path = os.path.join(run_dir, "analysis.log")
     
+    # Clean up stale progress.json from prior run
+    stale_progress = os.path.join(run_dir, "progress.json")
+    if os.path.exists(stale_progress):
+        try:
+            os.remove(stale_progress)
+        except OSError:
+            pass
+
     # Initialize / clear log
     try:
         with open(analysis.log_path, "w") as f:
@@ -254,6 +263,9 @@ def get_analysis_logs(
                 break
             except Exception:
                 pass
+
+    if analysis and analysis.status in ("COMPLETED", "FAILED", "CANCELLED"):
+        progress_data = None
 
     if not log_file or not os.path.exists(log_file):
         return {
@@ -467,13 +479,29 @@ def run_cest_analysis(
     import uuid
     task_id = str(uuid.uuid4())
 
+    # Clean up stale progress.json from prior run
+    stale_progress = os.path.join(run_dir, "progress.json")
+    if os.path.exists(stale_progress):
+        try:
+            os.remove(stale_progress)
+        except OSError:
+            pass
+
     # Set up log and results paths
     analysis.log_path = os.path.join(run_dir, "chemex.log")
     analysis.results_path = os.path.join(run_dir, "results.json")
     analysis.status = "PENDING"
+    analysis.cancel_requested = False
     analysis.completed_at = None
     analysis.error_message = None
     analysis.celery_task_id = task_id
+
+    # Initialize / clear log for the new run
+    try:
+        with open(analysis.log_path, "w") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] CEST analysis queued: {analysis.name} (UUID: {analysis.analysis_uuid})\n")
+    except Exception:
+        pass
 
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params["config_path"] = config_path
@@ -487,7 +515,7 @@ def run_cest_analysis(
         task_id=task_id
     )
 
-    return {"message": "CEST analysis started", "analysis_uuid": analysis.analysis_uuid, "task_id": task_id}
+    return {"message": "CEST analysis started", "analysis_uuid": analysis.analysis_uuid, "task_id": task_id, "status": "PENDING"}
 
 
 @router.post("/{analysis_uuid}/cest/stop")
@@ -555,6 +583,9 @@ def get_cest_logs(
                 progress_data = json.load(pf)
         except Exception:
             pass
+
+    if analysis and analysis.status in ("COMPLETED", "FAILED", "CANCELLED"):
+        progress_data = None
 
     try:
         file_size = os.path.getsize(analysis.log_path)
@@ -2852,8 +2883,55 @@ def generate_cest_files(
         extra_exp_str = ("\n" + "\n".join(extra_exp_lines)) if extra_exp_lines else ""
 
         # Data filters and error type
-        filter_offsets = request.get("filter_offsets") or existing_cfg_temp.get("filter_offsets") or [[0.0, float(b1)]]
-        filter_planes = request.get("filter_planes") if request.get("filter_planes") is not None else existing_cfg_temp.get("filter_planes")
+        # For filter_offsets: by default [0.0, float(b1)], distinct for each spectrum depending on its B1 field.
+        offsets_by_spec = request.get("filter_offsets_by_spectrum") or existing_cfg_temp.get("filter_offsets_by_spectrum")
+        raw_filter_offsets = request.get("filter_offsets") or existing_cfg_temp.get("filter_offsets")
+
+        spec_offsets = None
+        if isinstance(offsets_by_spec, dict):
+            spec_offsets = offsets_by_spec.get(spectrum.id)
+            if spec_offsets is None:
+                spec_offsets = offsets_by_spec.get(str(spectrum.id))
+
+        if spec_offsets is None and isinstance(raw_filter_offsets, dict):
+            spec_offsets = (
+                raw_filter_offsets.get(spectrum.id)
+                or raw_filter_offsets.get(str(spectrum.id))
+                or raw_filter_offsets.get(b1_label)
+                or raw_filter_offsets.get(str(b1))
+                or raw_filter_offsets.get(f"{b1:.0f}hz")
+            )
+
+        if spec_offsets is not None and isinstance(spec_offsets, list):
+            filter_offsets = spec_offsets
+        elif isinstance(raw_filter_offsets, list) and raw_filter_offsets:
+            # If a flat list is provided, adapt the carrier filter (offset 0) to this spectrum's B1 field
+            adapted_offsets = []
+            has_carrier_filter = False
+            for pair in raw_filter_offsets:
+                if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                    off_val, bw_val = pair
+                    if float(off_val) == 0.0:
+                        adapted_offsets.append([0.0, float(b1)])
+                        has_carrier_filter = True
+                    else:
+                        adapted_offsets.append([float(off_val), float(bw_val)])
+            if not has_carrier_filter:
+                adapted_offsets.insert(0, [0.0, float(b1)])
+            filter_offsets = adapted_offsets
+        else:
+            # By default: 0 and the value of B1 field in Hz
+            filter_offsets = [[0.0, float(b1)]]
+
+        # Filter planes (optional per-spectrum or global)
+        planes_by_spec = request.get("filter_planes_by_spectrum") or existing_cfg_temp.get("filter_planes_by_spectrum")
+        if isinstance(planes_by_spec, dict):
+            filter_planes = planes_by_spec.get(spectrum.id) or planes_by_spec.get(str(spectrum.id))
+        elif isinstance(request.get("filter_planes"), dict):
+            filter_planes = request.get("filter_planes").get(spectrum.id) or request.get("filter_planes").get(str(spectrum.id))
+        else:
+            filter_planes = request.get("filter_planes") if request.get("filter_planes") is not None else existing_cfg_temp.get("filter_planes")
+
         data_error = request.get("data_error") or existing_cfg_temp.get("data_error") or "scatter"
 
         data_filter_lines = [f'error          = "{data_error}"', f'filter_offsets = {json.dumps(filter_offsets)}']
@@ -2921,6 +2999,10 @@ path           = "../data/{b1_label}"
     existing_config["generatedExperiments"] = experiment_tomls
     existing_config["metadata"] = metadata
     existing_config["residue_mapping"] = residue_mapping
+    if request.get("filter_offsets_by_spectrum"):
+        existing_config["filter_offsets_by_spectrum"] = request.get("filter_offsets_by_spectrum")
+    if request.get("filter_offsets"):
+        existing_config["filter_offsets"] = request.get("filter_offsets")
 
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2)

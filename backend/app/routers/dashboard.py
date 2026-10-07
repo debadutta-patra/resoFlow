@@ -19,18 +19,18 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
     """
     Detect and reconcile any runs left in 'RUNNING' state where the worker/container has died.
     """
-    # 1. Check running analyses
-    running_analyses = (
+    # 1. Check running or pending analyses
+    active_analyses = (
         db.query(models.Analysis)
         .join(models.Project)
         .filter(
             models.Project.user_id == user_id,
-            models.Analysis.status == "RUNNING",
+            models.Analysis.status.in_(["RUNNING", "PENDING"]),
         )
         .all()
     )
 
-    if not running_analyses:
+    if not active_analyses:
         active_celery_task_ids = set()
     else:
         # Check Celery active/reserved tasks
@@ -49,7 +49,7 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
         except Exception as e:
             logger.debug(f"Could not inspect Celery active tasks: {e}")
 
-    for analysis in running_analyses:
+    for analysis in active_analyses:
         project = analysis.project
         run_dir = os.path.dirname(analysis.log_path) if analysis.log_path else None
         
@@ -61,7 +61,20 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
         if is_chemex_container_running(analysis.analysis_uuid):
             continue
 
-        # 1c. Check legacy PID file liveness (if running outside container)
+        # 1c. If PENDING and not in Celery or container:
+        if analysis.status == "PENDING":
+            if analysis.created_at:
+                created_tz = analysis.created_at.replace(tzinfo=timezone.utc) if analysis.created_at.tzinfo is None else analysis.created_at
+                now_tz = datetime.now(timezone.utc)
+                if (now_tz - created_tz).total_seconds() < 60:
+                    continue
+            analysis.status = "FAILED"
+            analysis.error_message = "Analysis queued but never started by worker"
+            analysis.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            continue
+
+        # 1d. Check legacy PID file liveness (if running outside container)
         if run_dir:
             pid_file = os.path.join(run_dir, "chemex.pid")
             if os.path.exists(pid_file):
@@ -74,7 +87,7 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
                 except (OSError, ValueError):
                     pass
 
-        # 1d. If the log file was updated recently (< 600s), the process/container is still active
+        # 1e. If the log file was updated recently (< 600s), the process/container is still active
         if analysis.log_path and os.path.exists(analysis.log_path):
             try:
                 mtime = os.path.getmtime(analysis.log_path)
@@ -88,7 +101,7 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
             if (now_tz - created_tz).total_seconds() < 300:
                 continue
 
-        # 1e. Check if job finished successfully in the log before worker process terminated
+        # 1f. Check if job finished successfully in the log before worker process terminated
         if analysis.log_path and os.path.exists(analysis.log_path):
             try:
                 with open(analysis.log_path, "r") as lf:
@@ -101,7 +114,7 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
             except Exception:
                 pass
 
-        # 1f. Truly orphaned run: mark as FAILED
+        # 1g. Truly orphaned run: mark as FAILED
         analysis.status = "FAILED"
         analysis.error_message = extract_failure_reason(
             analysis.log_path, "Worker container terminated unexpectedly (orphaned run)"
@@ -109,18 +122,30 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
         analysis.completed_at = datetime.now(timezone.utc)
         db.commit()
 
-    # 2. Check running peak-fitting jobs
-    running_jobs = (
+    # 2. Check running or pending peak-fitting jobs
+    active_jobs = (
         db.query(models.Job)
         .join(models.Project)
         .filter(
             models.Project.user_id == user_id,
-            models.Job.status == "RUNNING",
+            models.Job.status.in_(["RUNNING", "PENDING"]),
         )
         .all()
     )
 
-    for job in running_jobs:
+    for job in active_jobs:
+        if job.status == "PENDING":
+            if job.created_at:
+                created_tz = job.created_at.replace(tzinfo=timezone.utc) if job.created_at.tzinfo is None else job.created_at
+                now_tz = datetime.now(timezone.utc)
+                if (now_tz - created_tz).total_seconds() < 60:
+                    continue
+            job.status = "FAILED"
+            job.error_message = "Peak fitting queued but never started by worker"
+            job.completed_at = datetime.now(timezone.utc)
+            db.commit()
+            continue
+
         if job.log_path and os.path.exists(job.log_path):
             try:
                 with open(job.log_path, "r", encoding="utf-8", errors="replace") as f:
@@ -368,8 +393,8 @@ def get_dashboard(
     for j in user_jobs:
         all_runs.append(_build_run_item_from_job(j))
 
-    # Sort runs: active first (RUNNING, PENDING), then latest completed/failed
-    status_order = {"RUNNING": 0, "PENDING": 1, "FAILED": 2, "COMPLETED": 3}
+    # Sort runs: active first (RUNNING, PENDING), then latest completed/failed/cancelled
+    status_order = {"RUNNING": 0, "PENDING": 1, "FAILED": 2, "CANCELLED": 3, "COMPLETED": 4}
     all_runs.sort(
         key=lambda r: (
             status_order.get(r.status, 9),
@@ -379,7 +404,7 @@ def get_dashboard(
 
     # Filter to active runs + up to 10 recent terminal runs
     active_runs_list = [r for r in all_runs if r.status in ["RUNNING", "PENDING"]]
-    terminal_runs_list = [r for r in all_runs if r.status in ["COMPLETED", "FAILED"]][:10]
+    terminal_runs_list = [r for r in all_runs if r.status in ["COMPLETED", "FAILED", "CANCELLED"]][:10]
     display_runs = active_runs_list + terminal_runs_list
 
     # 4. Fetch recent analyses (top 10 user analyses)
