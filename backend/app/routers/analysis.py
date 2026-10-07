@@ -50,7 +50,7 @@ def _get_analysis_run_dir(analysis: models.Analysis) -> str:
         folder_name = "exchange_fitting"
     elif atype == "SDM":
         folder_name = "sdm_fitting"
-    elif atype in ("R1", "R2", "HETNOE"):
+    elif atype in ("R1", "R2", "HETNOE", "EXCHANGE"):
         folder_name = f"{analysis.analysis_type.lower()}_fitting"
     else:
         folder_name = "cest_fitting"
@@ -1301,7 +1301,7 @@ def _render_analysis_html(
     palette: Optional[str] = None,
 ) -> HTMLResponse:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM", "EXCHANGE"):
         raise HTTPException(
             status_code=400,
             detail=f"Interactive reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
@@ -1329,7 +1329,7 @@ def _render_analysis_html(
 
 def _render_analysis_json(analysis: models.Analysis) -> Response:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM", "EXCHANGE"):
         raise HTTPException(
             status_code=400,
             detail=f"Interactive reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
@@ -1361,7 +1361,7 @@ def _render_or_serve_pdf(
     palette: Optional[str] = None,
 ):
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM", "EXCHANGE"):
         raise HTTPException(
             status_code=400,
             detail=f"Publication reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
@@ -1423,7 +1423,7 @@ def _trigger_pdf_async(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "SDM", "EXCHANGE"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Publication reports are available for CPMG, CEST, R1, R2, hetNOE and SDM analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",
@@ -1488,7 +1488,7 @@ def _trigger_plots_export_async(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "R1", "R2", "HETNOE", "EXCHANGE"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Plot archive export is available for CPMG, CEST, R1, R2 and hetNOE analyses; it packages per-residue decay and dispersion figures, which a {analysis.analysis_type} analysis does not produce. Its plots are in the PDF and interactive reports instead.",
@@ -1981,7 +1981,8 @@ def export_analysis_zip(
 
     project = analysis.project
     is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
+    is_exchange = analysis.analysis_type.upper() == "EXCHANGE"
+    folder_name = "exchange_fitting" if is_exchange else ("cpmg_fitting" if is_cpmg else "cest_fitting")
     run_dir = os.path.join(project.local_directory_path, folder_name, analysis.analysis_uuid)
 
     clean_name = re.sub(r"[^A-Za-z0-9_-]", "_", analysis.name.strip()).lower()
@@ -2476,7 +2477,8 @@ def get_typed_chemex_results(
 
     project = analysis.project
     is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
+    is_exchange = analysis.analysis_type.upper() == "EXCHANGE"
+    folder_name = "exchange_fitting" if is_exchange else ("cpmg_fitting" if is_cpmg else "cest_fitting")
     run_dir = Path(project.local_directory_path) / folder_name / analysis.analysis_uuid
 
     if not run_dir.exists():
@@ -2498,7 +2500,8 @@ def get_restart_config(
 
     project = analysis.project
     is_cpmg = analysis.analysis_type.upper() == "CPMG"
-    folder_name = "cpmg_fitting" if is_cpmg else "cest_fitting"
+    is_exchange = analysis.analysis_type.upper() == "EXCHANGE"
+    folder_name = "exchange_fitting" if is_exchange else ("cpmg_fitting" if is_cpmg else "cest_fitting")
     run_dir = Path(project.local_directory_path) / folder_name / analysis.analysis_uuid
 
     if not run_dir.exists():
