@@ -147,6 +147,42 @@ def _draw_relaxation_decay_curve(
     ax.grid(True, linestyle=":", alpha=0.5)
 
 
+def _get_experiments(rec: Any) -> list:
+    if isinstance(rec, dict):
+        return rec.get("experiments", [])
+    return getattr(rec, "experiments", []) or []
+
+
+def _is_cpmg_experiment(exp: Any) -> bool:
+    if not isinstance(exp, dict):
+        return False
+    if exp.get("experiment_type"):
+        return str(exp["experiment_type"]).lower() == "cpmg"
+    lbl = str(exp.get("exp_name") or exp.get("b1_label") or "").lower()
+    if "cpmg" in lbl:
+        return True
+    if "cest" in lbl:
+        return False
+    y = exp.get("exp_points", {}).get("y") or []
+    if y and any(float(v) > 1.5 for v in y if v is not None):
+        return True
+    x = exp.get("exp_points", {}).get("x") or []
+    if x and any(float(v) >= 200 for v in x if v is not None):
+        return True
+    return False
+
+
+def _with_experiments(rec: Any, exps: list) -> Any:
+    if isinstance(rec, dict):
+        return {**rec, "experiments": exps}
+    if hasattr(rec, "model_copy"):
+        return rec.model_copy(update={"experiments": exps})
+    import copy
+    obj = copy.copy(rec)
+    obj.experiments = exps
+    return obj
+
+
 def _draw_dispersion_curve(
     ax: plt.Axes,
     rec: Any,
@@ -160,10 +196,11 @@ def _draw_dispersion_curve(
         _draw_relaxation_decay_curve(ax, rec, analysis_type=(analysis_type or "R2").upper(), compact=compact, palette=palette)
         return
 
-    experiments = rec.get("experiments", [])
+    experiments = _get_experiments(rec)
     active_palette = palette or get_current_palette()
     handles = []
     labels = []
+    is_cpmg = (analysis_type or "").upper() == "CPMG"
 
     for i, exp in enumerate(experiments):
         color = active_palette[i % len(active_palette)]
@@ -173,8 +210,19 @@ def _draw_dispersion_curve(
 
         # Data points
         if ep.get("x") and ep.get("y"):
+            x_pts = np.array(ep["x"], dtype=float)
+            y_pts = np.array(ep["y"], dtype=float)
+            y_err = np.array(ep.get("y_err"), dtype=float) if ep.get("y_err") else None
+
+            if is_cpmg:
+                s_idx = np.argsort(x_pts)
+                x_pts = x_pts[s_idx]
+                y_pts = y_pts[s_idx]
+                if y_err is not None:
+                    y_err = y_err[s_idx]
+
             h_data = ax.errorbar(
-                ep["x"], ep["y"], yerr=ep.get("y_err"),
+                x_pts, y_pts, yerr=y_err,
                 fmt="o", color=color, markersize=3.5 if compact else 4.5,
                 alpha=0.8, capsize=1.5, label=f"{b1_lbl} (Data)", zorder=3
             )
@@ -183,7 +231,13 @@ def _draw_dispersion_curve(
 
         # Fit curve
         if fc.get("x") and fc.get("y"):
-            h_fit, = ax.plot(fc["x"], fc["y"], "-", color=color, linewidth=1.5, label=f"{b1_lbl} (Fit)", zorder=2)
+            fc_x = np.array(fc["x"], dtype=float)
+            fc_y = np.array(fc["y"], dtype=float)
+            if is_cpmg:
+                s_idx = np.argsort(fc_x)
+                fc_x = fc_x[s_idx]
+                fc_y = fc_y[s_idx]
+            h_fit, = ax.plot(fc_x, fc_y, "-", color=color, linewidth=1.5, label=f"{b1_lbl} (Fit)", zorder=2)
 
     # De-duplicate legend entries (Phase 3b)
     unique_handles_labels = {}
@@ -194,25 +248,37 @@ def _draw_dispersion_curve(
     if unique_handles_labels:
         ax.legend(
             unique_handles_labels.values(), unique_handles_labels.keys(),
-            loc="lower left" if analysis_type != "CPMG" else "upper right",
+            loc="lower left" if not is_cpmg else "upper right",
             fontsize=7.5 if compact else 8.5, frameon=True, facecolor="white", edgecolor="#E5E7EB"
         )
 
     # Axis labeling and limits
-    dw_status = rec["dw"].status.value if hasattr(rec["dw"].status, "value") else str(rec["dw"].status)
-    ax.set_title(f"Residue: {rec['display_name']} ({dw_status})", fontsize=9.5 if compact else 11.5, fontweight="bold")
-    if analysis_type != "CPMG":
+    dw_obj = rec.get("dw") if isinstance(rec, dict) else getattr(rec, "dw", None)
+    dw_status = ""
+    if dw_obj is not None:
+        dw_status = dw_obj.status.value if hasattr(dw_obj.status, "value") else str(dw_obj.status)
+    disp_name = rec.get("display_name") if isinstance(rec, dict) else getattr(rec, "display_name", "")
+
+    title_str = f"Residue: {disp_name}"
+    if dw_status:
+        title_str += f" ({dw_status})"
+    ax.set_title(title_str, fontsize=9.5 if compact else 11.5, fontweight="bold")
+
+    if not is_cpmg:
         ax.set_xlabel("Offset (ppm)", fontsize=8.5 if compact else 9.5)
         ax.set_ylabel("I / I₀", fontsize=8.5 if compact else 9.5)
         ax.invert_xaxis()
     else:
         ax.set_xlabel(r"$\nu_{\mathrm{CPMG}}$ (Hz)", fontsize=8.5 if compact else 9.5)
         ax.set_ylabel(r"$R_{2,\mathrm{eff}}$ ($\mathrm{s}^{-1}$)", fontsize=8.5 if compact else 9.5)
+        ax.xaxis.set_inverted(False)
 
     # Non-colliding A and B State Markers in Blended Coordinates (Phase 3a)
-    if show_anchors and analysis_type != "CPMG":
-        csa_val = rec["csa"].value
-        csb_val = rec["csb"].value
+    if show_anchors and not is_cpmg:
+        csa_obj = rec.get("csa") if isinstance(rec, dict) else getattr(rec, "csa", None)
+        csb_obj = rec.get("csb") if isinstance(rec, dict) else getattr(rec, "csb", None)
+        csa_val = getattr(csa_obj, "value", None) if csa_obj is not None else None
+        csb_val = getattr(csb_obj, "value", None) if csb_obj is not None else None
 
         if csa_val is not None:
             ax.axvline(csa_val, color="#6B7280", linestyle="--", linewidth=0.8, alpha=0.6, zorder=1)
@@ -280,9 +346,10 @@ def _draw_residuals_strip(
         _draw_relaxation_residuals_strip(ax, rec, palette=palette)
         return
 
-    experiments = rec.get("experiments", [])
+    experiments = _get_experiments(rec)
     active_palette = palette or get_current_palette()
     has_residuals = False
+    is_cpmg = (analysis_type or "").upper() == "CPMG"
 
     for exp_i, exp in enumerate(experiments):
         color = active_palette[exp_i % len(active_palette)]
@@ -313,10 +380,11 @@ def _draw_residuals_strip(
         ax.axhline(-2.0, color="#E11D48", linestyle=":", linewidth=0.6)
         ax.set_ylabel(r"Residuals ($\sigma$)", fontsize=8.5)
         ax.set_ylim(-3.5, 3.5)
-        if analysis_type != "CPMG":
+        if not is_cpmg:
             ax.set_xlabel("Offset / Chemical Shift (ppm)", fontsize=9.0)
         else:
             ax.set_xlabel(r"$\nu_{\mathrm{CPMG}}$ (Hz)", fontsize=9.0)
+            ax.xaxis.set_inverted(False)
     else:
         ax.text(0.5, 0.5, "Residuals unavailable", ha="center", va="center", color="gray")
 
@@ -549,6 +617,30 @@ def dispersion_curve(
     palette: Optional[str] = None,
 ) -> str:
     """Generate standalone SVG for CEST or CPMG dispersion profile."""
+    atype = (analysis_type or "CEST").upper()
+    if atype == "EXCHANGE":
+        exps = _get_experiments(rec)
+        cpmg_exps = [e for e in exps if _is_cpmg_experiment(e)]
+        cest_exps = [e for e in exps if not _is_cpmg_experiment(e)]
+        if cpmg_exps and cest_exps:
+            def _render_ex():
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(6.2, 2.2) if compact else (7.5, 3.4))
+                cest_rec = _with_experiments(rec, cest_exps)
+                cpmg_rec = _with_experiments(rec, cpmg_exps)
+                _draw_dispersion_curve(ax1, cest_rec, analysis_type="CEST", show_anchors=show_anchors, compact=compact)
+                _draw_dispersion_curve(ax2, cpmg_rec, analysis_type="CPMG", show_anchors=False, compact=compact)
+                fig.tight_layout()
+                return _svg(fig)
+
+            if palette:
+                with apply_report_style(palette=palette):
+                    return _render_ex()
+            return _render_ex()
+        elif cpmg_exps:
+            return dispersion_curve(rec, analysis_type="CPMG", compact=compact, show_anchors=False, palette=palette)
+        else:
+            return dispersion_curve(rec, analysis_type="CEST", compact=compact, show_anchors=show_anchors, palette=palette)
+
     if palette:
         with apply_report_style(palette=palette):
             fig, ax = plt.subplots(figsize=(3.2, 2.2) if compact else (6.4, 3.4))
@@ -595,6 +687,41 @@ def detailed_residue_plot(
 ) -> str:
     """Generate the report's per-residue SVG: profile, and residuals strip
     beneath it for the analyses that report one."""
+    atype = (analysis_type or "CEST").upper()
+    if atype == "EXCHANGE":
+        exps = _get_experiments(rec)
+        cpmg_exps = [e for e in exps if _is_cpmg_experiment(e)]
+        cest_exps = [e for e in exps if not _is_cpmg_experiment(e)]
+        if cpmg_exps and cest_exps:
+            def _render_exchange():
+                fig = plt.figure(figsize=(7.6, 4.4))
+                gs = GridSpec(nrows=2, ncols=2, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25, wspace=0.30)
+                ax_cest_prof = fig.add_subplot(gs[0, 0])
+                ax_cest_res = fig.add_subplot(gs[1, 0], sharex=ax_cest_prof)
+                ax_cpmg_prof = fig.add_subplot(gs[0, 1])
+                ax_cpmg_res = fig.add_subplot(gs[1, 1], sharex=ax_cpmg_prof)
+
+                cest_rec = _with_experiments(rec, cest_exps)
+                cpmg_rec = _with_experiments(rec, cpmg_exps)
+
+                _draw_dispersion_curve(ax_cest_prof, cest_rec, analysis_type="CEST", show_anchors=True, compact=False)
+                ax_cest_prof.set_xlabel("")
+                _draw_residuals_strip(ax_cest_res, cest_rec, analysis_type="CEST")
+
+                _draw_dispersion_curve(ax_cpmg_prof, cpmg_rec, analysis_type="CPMG", show_anchors=False, compact=False)
+                ax_cpmg_prof.set_xlabel("")
+                _draw_residuals_strip(ax_cpmg_res, cpmg_rec, analysis_type="CPMG")
+                return _svg(fig)
+
+            if palette:
+                with apply_report_style(palette=palette):
+                    return _render_exchange()
+            return _render_exchange()
+        elif cpmg_exps:
+            return detailed_residue_plot(rec, analysis_type="CPMG", palette=palette)
+        else:
+            return detailed_residue_plot(rec, analysis_type="CEST", palette=palette)
+
     def _render():
         if not report_shows_residuals(analysis_type):
             fig, ax = plt.subplots(figsize=(6.4, 3.4))

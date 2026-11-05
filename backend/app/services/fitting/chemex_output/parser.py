@@ -108,19 +108,41 @@ def _parse_plot_curve_file(filepath: Path) -> dict[str, dict[str, list[float]]]:
     return data_by_res
 
 
-def _discover_b1_mappings(search_dirs: list[Path]) -> dict[str, str]:
-    b1_mapping: dict[str, str] = {}
+def _discover_experiment_metadata(search_dirs: list[Path]) -> dict[str, dict[str, Any]]:
+    exp_metadata: dict[str, dict[str, Any]] = {}
     for d in search_dirs:
         if d.exists() and d.is_dir():
             for f in d.glob("*.toml"):
                 try:
                     data = tomllib.loads(f.read_text(encoding="utf-8"))
-                    b1_val = data.get("experiment", {}).get("b1_frq")
+                    exp_sec = data.get("experiment", {})
+                    exp_name = str(exp_sec.get("name", "")).lower()
+                    b1_val = exp_sec.get("b1_frq")
+                    b0_val = exp_sec.get("b0")
+                    is_cpmg = "cpmg" in exp_name or "cpmg" in f.stem.lower()
+
                     if b1_val is not None:
-                        b1_mapping[f.stem] = f"{b1_val} Hz"
+                        label = f"{b1_val} Hz"
+                    elif is_cpmg and b0_val:
+                        label = f"{b0_val} MHz ({f.stem})"
+                    else:
+                        label = f.stem
+
+                    exp_metadata[f.stem] = {
+                        "b1_label": label,
+                        "experiment_type": "cpmg" if is_cpmg else "cest",
+                        "b0": b0_val,
+                        "b1": b1_val,
+                        "exp_name": f.stem,
+                    }
                 except Exception:
                     pass
-    return b1_mapping
+    return exp_metadata
+
+
+def _discover_b1_mappings(search_dirs: list[Path]) -> dict[str, str]:
+    meta = _discover_experiment_metadata(search_dirs)
+    return {stem: m["b1_label"] for stem, m in meta.items()}
 
 
 def _extract_step_residues(
@@ -157,7 +179,8 @@ def _extract_step_residues(
         step_dir.parent / "run_info" / "inputs" / "experiments",
         step_dir.parent / "Experiments",
     ]
-    b1_map = _discover_b1_mappings(search_exp_dirs)
+    exp_metadata = _discover_experiment_metadata(search_exp_dirs)
+    b1_map = {stem: m["b1_label"] for stem, m in exp_metadata.items()}
 
     candidate_plot_dirs = [
         step_dir / "Plots",
@@ -417,8 +440,12 @@ def _extract_step_residues(
                             mask_x.append(x_val)
                             mask_y.append(pt.exp)
 
+                m_info = exp_metadata.get(stem, {})
+                exp_type = m_info.get("experiment_type") or ("cpmg" if "cpmg" in stem.lower() else "cest")
                 fallback_experiments.append({
-                    "b1_label": stem,
+                    "b1_label": m_info.get("b1_label", stem),
+                    "exp_name": stem,
+                    "experiment_type": exp_type,
                     "exp_points": {"x": exp_x, "y": exp_y, "y_err": exp_err},
                     "calc_points": {"x": calc_x, "y": calc_y},
                     "fit_curve": {"x": calc_x, "y": calc_y},
@@ -440,9 +467,13 @@ def _extract_step_residues(
                             matching_plot = pv
                             break
                 if matching_plot:
-                    b1_lbl = b1_map.get(stem, stem)
+                    m_info = exp_metadata.get(stem, {})
+                    exp_type = m_info.get("experiment_type") or ("cpmg" if "cpmg" in stem.lower() else "cest")
+                    b1_lbl = m_info.get("b1_label", b1_map.get(stem, stem))
                     plot_experiments.append({
                         "b1_label": b1_lbl,
+                        "exp_name": stem,
+                        "experiment_type": exp_type,
                         "exp_points": matching_plot.get("exp_points", {"x": [], "y": [], "y_err": []}),
                         "calc_points": matching_plot.get("calc_points", {"x": [], "y": []}),
                         "fit_curve": matching_plot.get("fit_curve", {"x": [], "y": []}),

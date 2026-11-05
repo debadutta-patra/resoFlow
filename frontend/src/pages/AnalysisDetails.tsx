@@ -84,7 +84,7 @@ const AnalysisDetails: React.FC = () => {
                   </h1>
                 </div>
             </div>
-            {selectedAnalysis.status === 'COMPLETED' && ['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE', 'SDM'].includes((selectedAnalysis.analysis_type || '').toUpperCase()) && (
+            {selectedAnalysis.status === 'COMPLETED' && ['15N-CEST', 'CEST', 'CPMG', 'R1', 'R2', 'HETNOE', 'SDM', 'EXCHANGE'].includes((selectedAnalysis.analysis_type || '').toUpperCase()) && (
               <button
                 onClick={() => navigate(`/projects/${projectUuid}/analysis/${analysisUuid}/report`)}
                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all shadow-sm active:scale-[0.98]"
@@ -112,8 +112,14 @@ const AnalysisDetails: React.FC = () => {
           <ExchangeAnalysisManager
             analysis={selectedAnalysis}
             projectUuid={projectUuid!}
-            spectra={project?.spectra || []}
+            availableSpectra={project?.spectra || []}
+            allAnalyses={project?.analyses || []}
+            onStatusChange={(status) => {
+                setSelectedAnalysis({ ...selectedAnalysis, status });
+            }}
             onUpdate={() => fetchProjectDetails(false)}
+            onClose={handleClose}
+            onDelete={handleClose}
           />
         ) : selectedAnalysis.analysis_type === 'SDM' ? (
           <SdmAnalysisManager

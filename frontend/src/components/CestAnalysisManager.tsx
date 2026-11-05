@@ -260,7 +260,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const terminalLogsIcon = isDarkTheme ? terminalLogsDark : terminalLogsLight;
 
   const cestSpectra = useMemo(
-    () => _availableSpectra.filter(s => s.experiment_type === 'CEST' && s.is_fitted),
+    () => _availableSpectra.filter(s => (s.experiment_type || '').toUpperCase().includes('CEST') && s.is_fitted),
     [_availableSpectra]
   );
 

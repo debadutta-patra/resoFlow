@@ -321,7 +321,7 @@ def get_analysis_results(
     if analysis.status in ["RUNNING", "PENDING"]:
         return {"status": analysis.status, "results": None}
 
-    if analysis.analysis_type.lower() in ["cest", "15n-cest", "cpmg"]:
+    if analysis.analysis_type.lower() in ["cest", "15n-cest", "cpmg", "exchange"]:
         run_dir = os.path.dirname(analysis.results_path) if analysis.results_path else None
         if run_dir and os.path.exists(run_dir):
             try:
@@ -1536,7 +1536,7 @@ def _render_or_serve_plots_zip(
     style: str = "publication",
 ):
     atype = (analysis.analysis_type or "").upper()
-    if atype not in ("CPMG", "CEST", "15N-CEST"):
+    if atype not in ("CPMG", "CEST", "15N-CEST", "EXCHANGE"):
         raise HTTPException(
             status_code=400,
             detail=f"Plot archive export is currently available for CPMG and CEST dispersion analyses. Analysis '{analysis.name}' is of type {analysis.analysis_type}.",

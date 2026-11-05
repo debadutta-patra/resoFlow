@@ -567,13 +567,13 @@ const SpectraAnalysis: React.FC = () => {
         setError('hetNOE sequence mode is required.');
         return;
       }
-      if (formData.experiment_type === 'CPMG-RD') {
+      if (formData.experiment_type === 'CPMG-RD' || formData.experiment_type === 'CPMG') {
         if (!formData.vclist_path && !formData.vdlist_path) {
-          setError('Either VC List Path (cycle counts) or VD List Path (frequencies/delays) is required for CPMG-RD.');
+          setError('Either VC List Path (cycle counts) or VD List Path (frequencies/delays) is required for CPMG.');
           return;
         }
         if (formData.t_relax === null || formData.t_relax === '') {
-          setError('T-Relax parameter is required for CPMG-RD.');
+          setError('T-Relax parameter is required for CPMG.');
           return;
         }
       }
@@ -1801,6 +1801,7 @@ const SpectraAnalysis: React.FC = () => {
                                 <option value="T2">T2</option>
                                 <option value="hetNOE">hetNOE</option>
                                 <option value="CPMG-RD">CPMG-RD</option>
+                                <option value="CPMG">CPMG</option>
                                 <option value="CEST">CEST</option>
                             </select>
                         </div>
@@ -1882,7 +1883,7 @@ const SpectraAnalysis: React.FC = () => {
                           </div>
                         )}
 
-                        {formData.experiment_type === 'CPMG-RD' && (
+                        {(formData.experiment_type === 'CPMG-RD' || formData.experiment_type === 'CPMG') && (
                           <div className="space-y-4">
                             <div>
                               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -2002,7 +2003,7 @@ const SpectraAnalysis: React.FC = () => {
                           </div>
                         )}
 
-                        {formData.experiment_type === 'CPMG-RD' && (
+                        {(formData.experiment_type === 'CPMG-RD' || formData.experiment_type === 'CPMG') && (
                           <div>
                               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">T-Relax (s)</label>
                               <input
