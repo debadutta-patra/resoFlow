@@ -12,6 +12,8 @@ import importlib.metadata
 import inspect
 from typing import Mapping
 
+from .errors import ChemExCompatError
+
 MIN_CHEMEX: str = "2026.9.2"
 MAX_CHEMEX: str = "2026.9.2"
 
@@ -19,10 +21,6 @@ MAX_CHEMEX: str = "2026.9.2"
 MODEL_ALIASES: dict[str, str] = {
     "2st.rs": "2st_rs",
 }
-
-
-class ChemExCompatError(RuntimeError):
-    """Raised when the installed ChemEx version or internal hooks do not match requirements."""
 
 
 def normalize_version(version: str) -> str:
