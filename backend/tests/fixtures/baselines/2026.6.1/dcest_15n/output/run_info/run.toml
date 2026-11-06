@@ -1,0 +1,42 @@
+# ChemEx run information.
+# Input records distinguish the path provided by the user, its resolved
+# absolute path, and the archived copy relative to this run_info directory.
+
+schema_version = 1
+created_at_utc = "2026-11-06T10:33:20.717367+00:00"
+
+[run]
+kind = "fit"
+working_directory = "/tmp/test_baseline/dcest"
+output_directory = "/tmp/test_baseline/dcest/Output"
+
+[chemex]
+version = "2026.6.1"
+
+[python]
+version = "3.13.11"
+platform = "Linux-7.0.0-42-generic-x86_64-with-glibc2.43"
+
+[command]
+# Exact process arguments, including the executable.
+arguments = ["/home/debadutta/Documents/resoFlow/backend/.venv/bin/chemex", "fit", "-e", "/tmp/ChemEx/examples/Experiments/DCEST_15N/Experiments/700hz.toml", "/tmp/ChemEx/examples/Experiments/DCEST_15N/Experiments/800hz.toml", "-p", "/tmp/ChemEx/examples/Experiments/DCEST_15N/Parameters/parameters.toml", "-m", "/tmp/ChemEx/examples/Experiments/DCEST_15N/Methods/method.toml", "-o", "Output"]
+
+[[inputs.experiments]]
+provided_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Experiments/700hz.toml"
+resolved_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Experiments/700hz.toml"
+copied_path = "inputs/experiments/700hz.toml"
+
+[[inputs.experiments]]
+provided_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Experiments/800hz.toml"
+resolved_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Experiments/800hz.toml"
+copied_path = "inputs/experiments/800hz.toml"
+
+[[inputs.parameters]]
+provided_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Parameters/parameters.toml"
+resolved_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Parameters/parameters.toml"
+copied_path = "inputs/parameters/parameters.toml"
+
+[[inputs.methods]]
+provided_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Methods/method.toml"
+resolved_path = "/tmp/ChemEx/examples/Experiments/DCEST_15N/Methods/method.toml"
+copied_path = "inputs/methods/method.toml"

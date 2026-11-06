@@ -1,0 +1,2 @@
+[DEFAULT]
+CONSTRAINTS = ["[R2_B] = [R2_A]"]

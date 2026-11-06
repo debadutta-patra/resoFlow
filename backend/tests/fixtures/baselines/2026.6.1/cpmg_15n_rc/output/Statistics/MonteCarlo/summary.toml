@@ -1,0 +1,95 @@
+["DW_AB, NUC->32N"]
+interval = "95% percentile"
+sample_count = 500
+mean = 7.75795e+00
+standard_deviation = 6.13906e-01
+median = 7.64225e+00
+percentile_95_lower = 6.55505e+00
+percentile_95_upper = 8.97628e+00
+lower_1sigma = 7.16942e+00
+upper_1sigma = 8.42830e+00
+stderr = 6.29439e-01
+
+["DW_AB, NUC->55N"]
+interval = "95% percentile"
+sample_count = 500
+mean = 8.51196e+00
+standard_deviation = 8.76900e-01
+median = 8.41338e+00
+percentile_95_lower = 7.00165e+00
+percentile_95_upper = 1.01551e+01
+lower_1sigma = 7.62544e+00
+upper_1sigma = 9.52373e+00
+stderr = 9.49142e-01
+
+["DW_AB, NUC->65N"]
+interval = "95% percentile"
+sample_count = 500
+mean = 8.46123e+00
+standard_deviation = 7.38115e-01
+median = 8.52393e+00
+percentile_95_lower = 7.08193e+00
+percentile_95_upper = 9.75974e+00
+lower_1sigma = 7.54534e+00
+upper_1sigma = 9.21072e+00
+stderr = 8.32689e-01
+
+["KEX_AB"]
+interval = "95% percentile"
+sample_count = 500
+mean = 7.64415e+01
+standard_deviation = 9.04807e+01
+median = 5.23929e+01
+percentile_95_lower = 1.66801e+01
+percentile_95_upper = 3.91965e+02
+lower_1sigma = 2.26074e+01
+upper_1sigma = 9.71274e+01
+stderr = 3.72600e+01
+
+["PB"]
+interval = "95% percentile"
+sample_count = 500
+mean = 7.80841e-02
+standard_deviation = 1.09047e-01
+median = 5.55896e-02
+percentile_95_lower = 8.07271e-03
+percentile_95_upper = 1.67066e-01
+lower_1sigma = 3.07183e-02
+upper_1sigma = 1.13252e-01
+stderr = 4.12670e-02
+
+["R2_A, NUC->32N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 7.50138e+00
+standard_deviation = 3.08361e-01
+median = 7.51595e+00
+percentile_95_lower = 6.80307e+00
+percentile_95_upper = 8.14092e+00
+lower_1sigma = 7.18108e+00
+upper_1sigma = 7.82354e+00
+stderr = 3.21227e-01
+
+["R2_A, NUC->55N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 1.03290e+01
+standard_deviation = 4.64293e-01
+median = 1.03306e+01
+percentile_95_lower = 9.32178e+00
+percentile_95_upper = 1.12424e+01
+lower_1sigma = 9.85528e+00
+upper_1sigma = 1.08039e+01
+stderr = 4.74334e-01
+
+["R2_A, NUC->65N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 9.90602e+00
+standard_deviation = 2.77729e-01
+median = 9.89788e+00
+percentile_95_lower = 9.40422e+00
+percentile_95_upper = 1.05186e+01
+lower_1sigma = 9.61821e+00
+upper_1sigma = 1.01885e+01
+stderr = 2.85150e-01

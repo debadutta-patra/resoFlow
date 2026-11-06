@@ -1,0 +1,131 @@
+["DW_AB, NUC->14N"]
+interval = "95% percentile"
+sample_count = 500
+mean = 6.64251e+00
+standard_deviation = 8.23019e-02
+median = 6.65242e+00
+percentile_95_lower = 6.45768e+00
+percentile_95_upper = 6.78755e+00
+lower_1sigma = 6.56356e+00
+upper_1sigma = 6.72092e+00
+stderr = 7.86827e-02
+
+["DW_AB, NUC->55N"]
+interval = "95% percentile"
+sample_count = 500
+mean = 4.70279e+00
+standard_deviation = 3.88251e-02
+median = 4.69843e+00
+percentile_95_lower = 4.62992e+00
+percentile_95_upper = 4.78674e+00
+lower_1sigma = 4.66568e+00
+upper_1sigma = 4.74134e+00
+stderr = 3.78286e-02
+
+["DW_AB, NUC->65N"]
+interval = "95% percentile"
+sample_count = 500
+mean = 4.09774e+00
+standard_deviation = 6.02475e-02
+median = 4.09474e+00
+percentile_95_lower = 3.99514e+00
+percentile_95_upper = 4.22748e+00
+lower_1sigma = 4.04145e+00
+upper_1sigma = 4.15208e+00
+stderr = 5.53135e-02
+
+["KEX_AB"]
+interval = "95% percentile"
+sample_count = 500
+mean = 4.24571e+02
+standard_deviation = 2.50248e+01
+median = 4.22263e+02
+percentile_95_lower = 3.78042e+02
+percentile_95_upper = 4.75846e+02
+lower_1sigma = 4.00890e+02
+upper_1sigma = 4.47236e+02
+stderr = 2.31728e+01
+
+["PB"]
+interval = "95% percentile"
+sample_count = 500
+mean = 3.48154e-03
+standard_deviation = 7.39604e-05
+median = 3.48235e-03
+percentile_95_lower = 3.33087e-03
+percentile_95_upper = 3.63524e-03
+lower_1sigma = 3.41017e-03
+upper_1sigma = 3.54935e-03
+stderr = 6.95920e-05
+
+["R1_A, NUC->14N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 1.96593e+00
+standard_deviation = 2.56885e-03
+median = 1.96597e+00
+percentile_95_lower = 1.96105e+00
+percentile_95_upper = 1.97108e+00
+lower_1sigma = 1.96326e+00
+upper_1sigma = 1.96855e+00
+stderr = 2.64754e-03
+
+["R1_A, NUC->55N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 1.59703e+00
+standard_deviation = 1.82551e-03
+median = 1.59711e+00
+percentile_95_lower = 1.59375e+00
+percentile_95_upper = 1.60044e+00
+lower_1sigma = 1.59508e+00
+upper_1sigma = 1.59898e+00
+stderr = 1.94822e-03
+
+["R1_A, NUC->65N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 1.60777e+00
+standard_deviation = 1.86549e-03
+median = 1.60779e+00
+percentile_95_lower = 1.60423e+00
+percentile_95_upper = 1.61140e+00
+lower_1sigma = 1.60594e+00
+upper_1sigma = 1.60952e+00
+stderr = 1.78889e-03
+
+["R2_A, NUC->14N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 1.06470e+01
+standard_deviation = 1.58822e-01
+median = 1.06395e+01
+percentile_95_lower = 1.03373e+01
+percentile_95_upper = 1.09572e+01
+lower_1sigma = 1.05007e+01
+upper_1sigma = 1.08059e+01
+stderr = 1.52612e-01
+
+["R2_A, NUC->55N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 9.88017e+00
+standard_deviation = 1.26717e-01
+median = 9.88330e+00
+percentile_95_lower = 9.64579e+00
+percentile_95_upper = 1.01221e+01
+lower_1sigma = 9.75412e+00
+upper_1sigma = 1.00052e+01
+stderr = 1.25531e-01
+
+["R2_A, NUC->65N, B0->600.3MHZ"]
+interval = "95% percentile"
+sample_count = 500
+mean = 9.29419e+00
+standard_deviation = 1.51095e-01
+median = 9.30489e+00
+percentile_95_lower = 8.94196e+00
+percentile_95_upper = 9.54758e+00
+lower_1sigma = 9.15030e+00
+upper_1sigma = 9.44428e+00
+stderr = 1.46992e-01

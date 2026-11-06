@@ -1,0 +1,4 @@
+[STEP1]
+CONSTRAINTS = ["[R2_B] = [R2_A] * 0.5"]
+INCLUDE = ["55N", "32N", "65N"]
+STATISTICS = { "MC" = 500 }
