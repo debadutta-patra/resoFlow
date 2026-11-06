@@ -369,4 +369,67 @@ describe('Method Configuration Validation', () => {
     expect(errors.some(e => e.message.includes('replicate count must be a positive integer'))).toBe(true);
     expect(errors.some(e => e.message.includes('burn (100) must be smaller than total steps (100)'))).toBe(true);
   });
+
+  it('emits canonical ChemEx v2 TOML and parses it back losslessly', async () => {
+    const { configToTomlV2 } = await import('./methodToml');
+
+    const config: MethodConfig = {
+      steps: [
+        {
+          id: 'step1',
+          name: 'STEP1',
+          parameters: [
+            { name: 'PB', mode: 'fit' },
+            { name: 'KEX_AB', mode: 'fit' },
+            { name: 'CS_A', mode: 'fix' },
+            { name: 'R2_B', mode: 'constrain', expression: '[R2_A]' },
+          ],
+          residueMode: 'include',
+          residues: ['15', '31'],
+          statistics: {
+            mc: { enabled: true, replicates: 50 },
+            mcmc: { enabled: true, steps: 2000, burn: 'auto', seed: 42 },
+          },
+        },
+        {
+          id: 'step2',
+          name: 'STEP2',
+          parameters: [
+            { name: 'PB', mode: 'fix' },
+            { name: 'KEX_AB', mode: 'fix' },
+            { name: 'DW_AB', mode: 'fit' },
+          ],
+          residueMode: 'include',
+          residues: ['ALL'],
+        },
+      ],
+    };
+
+    const emittedV2 = configToTomlV2(config);
+    expect(emittedV2).toContain('FORMAT_VERSION = 2');
+    expect(emittedV2).toContain('[STEP1]');
+    expect(emittedV2).toContain('ROLES = [');
+    expect(emittedV2).toContain('{ CONSTRAIN = ["[R2_B] = [R2_A]"] }');
+    expect(emittedV2).toContain('{ FIX = ["CS_A"] }');
+    expect(emittedV2).toContain('{ FIT = ["PB", "KEX_AB"] }');
+    expect(emittedV2).toContain('[STEP1.STATISTICS.MC]');
+    expect(emittedV2).toContain('REPLICATES = 50');
+    expect(emittedV2).toContain('[STEP1.STATISTICS.MCMC]');
+    expect(emittedV2).toContain('STEPS = 2000');
+    expect(emittedV2).toContain('BURN = "AUTO"');
+    expect(emittedV2).toContain('SEED = 42');
+    expect(emittedV2).toContain('ROLES_FROM = "STEP1"');
+
+    // Parse v2 back to config
+    const { config: parsed } = tomlToConfig(emittedV2);
+    expect(parsed.steps).toHaveLength(2);
+    expect(parsed.steps[0].name).toBe('STEP1');
+    expect(parsed.steps[0].parameters.find(p => p.name === 'PB')?.mode).toBe('fit');
+    expect(parsed.steps[0].parameters.find(p => p.name === 'CS_A')?.mode).toBe('fix');
+    expect(parsed.steps[0].parameters.find(p => p.name === 'R2_B')?.mode).toBe('constrain');
+    expect(parsed.steps[0].statistics?.mc?.replicates).toBe(50);
+    expect(parsed.steps[0].statistics?.mcmc?.steps).toBe(2000);
+    expect(parsed.steps[1].name).toBe('STEP2');
+    expect(parsed.steps[1].parameters.find(p => p.name === 'DW_AB')?.mode).toBe('fit');
+  });
 });

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import {
   Play, FileText,
@@ -7,7 +8,7 @@ import {
   Workflow, Sparkles, Code, Copy, Download, Upload,
   AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info,
   RefreshCw, FileCode, Sliders, MinusCircle, PlusCircle, GitFork,
-  Activity, ArrowUpDown, LayoutGrid, Maximize2, Search
+  Activity, ArrowUpDown, LayoutGrid, Maximize2, Search, FastForward
 } from 'lucide-react';
 import Plot, { PLOT_COLORS } from './Plot';
 import { formatUncertainty } from '../lib/uncertaintyFormatter';
@@ -255,6 +256,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   analysis, projectUuid, availableSpectra: _availableSpectra, allAnalyses,
   onStatusChange, onUpdate, onDelete: _onDelete, onClose: _onClose,
 }) => {
+  const navigate = useNavigate();
   const { theme } = useTheme();
   const userRuns = useOptionalUserRuns();
   const isDarkTheme = theme === 'dark';
@@ -1021,6 +1023,28 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
       setLastRunConfigHash(runHash);
       setLastRunTimestamp(runTime);
 
+      // Pre-flight validation against ChemEx
+      try {
+        const valRes = await api.post('/api/chemex/validate', {
+          analysis_uuid: analysis.analysis_uuid,
+          project_uuid: projectUuid,
+          parameter_toml: effectiveParameterToml,
+          method_toml: effectiveMethodToml,
+          model,
+        });
+        if (valRes.data && !valRes.data.valid && valRes.data.errors && valRes.data.errors.length > 0) {
+          const errMsg = valRes.data.errors.map((e: any) => e.message || String(e)).join('\n');
+          setError(`ChemEx Validation Error:\n${errMsg}`);
+          setIsRunning(false);
+          setStatus(status);
+          onStatusChange?.(status);
+          isSubmittingRunRef.current = false;
+          return;
+        }
+      } catch (valErr: any) {
+        console.warn('Pre-flight validation check skipped:', valErr);
+      }
+
       const res = await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/run`, {
         parameter_toml: effectiveParameterToml,
         parameter_config: isRawParamEditMode ? { ...parameterConfig, rawOverride: rawParamToml } : parameterConfig,
@@ -1048,6 +1072,23 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     } finally {
       isSubmittingRunRef.current = false;
       fetchLogs();
+    }
+  };
+
+  const handleContinueRun = async () => {
+    try {
+      setIsRunning(true);
+      setError('');
+      const res = await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/continue`);
+      onUpdate?.();
+      userRuns?.refreshRuns();
+      if (res.data?.analysis_uuid) {
+        navigate(`/projects/${projectUuid}/analysis/${res.data.analysis_uuid}`);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to continue from this run.");
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -1404,6 +1445,18 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             </button>
           )}
 
+          {status === 'COMPLETED' && (
+            <button
+              onClick={handleContinueRun}
+              disabled={isRunning}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-bold rounded-lg border border-purple-200 dark:border-purple-800 transition-all disabled:opacity-50"
+              title="Create a new run initialized from this run's restart.toml"
+            >
+              <FastForward size={13} />
+              <span>Continue from Run</span>
+            </button>
+          )}
+
           <button onClick={saveConfig} className={btnSecondary}>Save Config</button>
 
           <button
@@ -1424,7 +1477,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         </div>
       </div>
 
-      {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {error}</div>}
+      {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm flex items-start gap-2 whitespace-pre-line"><AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /> <div>{error}</div></div>}
       {successMsg && <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm flex items-center gap-2"><Check className="w-4 h-4" /> {successMsg}</div>}
 
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm flex flex-col md:flex-row min-h-[600px]">

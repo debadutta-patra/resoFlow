@@ -13,6 +13,10 @@ vi.mock('../services/api', () => ({
   },
 }));
 
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+}));
+
 vi.mock('../context/RunsContext', () => ({
   useOptionalUserRuns: () => ({ refreshRuns: vi.fn() }),
 }));
@@ -206,12 +210,14 @@ describe('ExchangeAnalysisManager', () => {
     const runBtn = screen.getAllByText(/Run ChemEx/i)[0];
     fireEvent.click(runBtn);
 
-    expect(api.post).toHaveBeenCalledWith(
-      '/api/projects/proj-123/analysis/test-uuid-123/exchange/run',
-      expect.objectContaining({
-        model: '2st',
-      })
-    );
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        '/api/projects/proj-123/analysis/test-uuid-123/exchange/run',
+        expect.objectContaining({
+          model: '2st',
+        })
+      );
+    });
   });
 
   it('calls exchange/cancel endpoint when Stop Run is clicked during RUNNING status', async () => {

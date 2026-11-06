@@ -21,7 +21,10 @@ def test_chemex_available_and_capabilities():
     assert CHEMEX_ERROR is None
     caps = capabilities()
     assert "chemex" in caps
-    assert caps["chemex"] == {"available": True, "error": None}
+    assert caps["chemex"]["available"] is True
+    assert caps["chemex"]["error"] is None
+    assert caps["chemex"]["version"] == "2026.9.2"
+    assert caps["chemex"]["method_format"] == 2
 
 def test_cest_15n_schema():
     schema = get_module_schema("cest_15n")

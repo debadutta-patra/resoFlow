@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import sys
+import traceback
 from pathlib import Path
 from typing import Any, Callable
 
@@ -67,7 +69,8 @@ def run_fit(
                 s_name = step_plan.name if step_plan.name else "STEP1"
                 steps.append(EngineStepInfo(name=s_name, output_dir=s_name))
 
-        out_path = Path(args_ns.output) if args_ns is not None else (base_dir / spec.output_dir)
+        out_raw = Path(args_ns.output) if (args_ns is not None and getattr(args_ns, "output", None)) else Path(spec.output_dir)
+        out_path = out_raw if out_raw.is_absolute() else (base_dir / out_raw)
         outcome_file = out_path / "run_info" / "outcome.toml"
         restart_file = out_path / "run_info" / "restart.toml"
 
@@ -104,6 +107,9 @@ def run_fit(
             exit_code = 1
             stage = getattr(exc, "failure_stage", "unknown")
 
+        if not interrupted:
+            traceback.print_exc(file=sys.stderr)
+
         err_info = EngineErrorInfo(
             type=type(exc).__name__,
             message=str(exc),
@@ -115,7 +121,8 @@ def run_fit(
             with contextlib.suppress(Exception):
                 final_values = {str(k): float(v) for k, v in session.analysis_values.snapshot().items()}
 
-        out_path = Path(args_ns.output) if args_ns is not None else (base_dir / spec.output_dir)
+        out_raw = Path(args_ns.output) if (args_ns is not None and getattr(args_ns, "output", None)) else Path(spec.output_dir)
+        out_path = out_raw if out_raw.is_absolute() else (base_dir / out_raw)
         outcome_file = out_path / "run_info" / "outcome.toml"
         restart_file = out_path / "run_info" / "restart.toml"
 

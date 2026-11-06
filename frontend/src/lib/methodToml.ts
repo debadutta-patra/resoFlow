@@ -167,6 +167,132 @@ export function configToToml(config: MethodConfig): string {
 }
 
 /**
+ * Serializes a structured MethodConfig into canonical ChemEx v2 method.toml (FORMAT_VERSION = 2).
+ */
+export function configToTomlV2(config: MethodConfig): string {
+  if (config.rawOverride !== undefined && config.rawOverride.trim() !== '') {
+    const raw = config.rawOverride.trim();
+    return raw.startsWith('FORMAT_VERSION') ? raw + '\n' : `FORMAT_VERSION = 2\n\n${raw}\n`;
+  }
+
+  const lines: string[] = ['FORMAT_VERSION = 2', ''];
+  let prevStepName: string | null = null;
+
+  for (let idx = 0; idx < config.steps.length; idx++) {
+    const step = config.steps[idx];
+    const stepName = (step.name || `STEP${idx + 1}`).trim().toUpperCase();
+    lines.push(`[${stepName}]`);
+
+    // 1. Selection
+    if (step.residues && step.residues.length > 0) {
+      const formatted = step.residues.map(r => `"${r}"`).join(', ');
+      const val = step.residues.length === 1 && String(step.residues[0]).toUpperCase() === 'ALL'
+        ? '"ALL"'
+        : `[${formatted}]`;
+      lines.push(`${step.residueMode === 'exclude' ? 'EXCLUDE' : 'INCLUDE'} = ${val}`);
+    }
+
+    // 2. Roles from
+    if (prevStepName !== null) {
+      lines.push(`ROLES_FROM = "${prevStepName}"`);
+    }
+
+    // 3. ROLES (CONSTRAIN, FIX, FIT)
+    const roles: string[] = [];
+
+    // CONSTRAIN
+    const constrainParams = step.parameters.filter(p => p.mode === 'constrain' && p.expression?.trim());
+    if (constrainParams.length > 0) {
+      const cItems = constrainParams.map(p => {
+        const expr = p.expression!.trim();
+        const clean = expr.replace(/"/g, '');
+        return clean.includes('=') ? `"${clean}"` : `"[${p.name.toUpperCase()}] = ${clean}"`;
+      });
+      roles.push(`  { CONSTRAIN = [${cItems.join(', ')}] },`);
+    }
+
+    // FIX
+    const fixParams = step.parameters.filter(p => p.mode === 'fix');
+    if (fixParams.length > 0) {
+      const names = fixParams.map(p => `"${p.name.toUpperCase()}"`).join(', ');
+      roles.push(`  { FIX = [${names}] },`);
+    }
+
+    // FIT
+    const fitParams = step.parameters.filter(p => p.mode === 'fit');
+    if (fitParams.length > 0) {
+      const names = fitParams.map(p => `"${p.name.toUpperCase()}"`).join(', ');
+      roles.push(`  { FIT = [${names}] },`);
+    }
+
+    if (roles.length > 0) {
+      lines.push('ROLES = [');
+      lines.push(...roles);
+      lines.push(']');
+    }
+
+    // 4. GRID
+    const gridParams = step.parameters.filter(p => p.mode === 'grid' && p.grid);
+    if (gridParams.length > 0) {
+      lines.push('');
+      lines.push(`[${stepName}.SEARCH.GRID]`);
+      lines.push('AXES = [');
+      for (const p of gridParams) {
+        const g = p.grid!;
+        const scale = g.scale === 'log' ? 'log' : 'lin';
+        const pName = p.name.toUpperCase().startsWith('[') ? p.name.toUpperCase() : `[${p.name.toUpperCase()}]`;
+        lines.push(`  "${pName} = ${scale}(${g.min}, ${g.max}, ${g.steps})",`);
+      }
+      lines.push(']');
+    }
+
+    // 5. STATISTICS
+    if (step.statistics) {
+      const stats = step.statistics;
+      if (stats.mc?.enabled && stats.mc.replicates > 0) {
+        lines.push('');
+        lines.push(`[${stepName}.STATISTICS.MC]`);
+        lines.push(`REPLICATES = ${stats.mc.replicates}`);
+        lines.push('SEED = 0');
+      }
+      if (stats.bs?.enabled && stats.bs.replicates > 0) {
+        lines.push('');
+        lines.push(`[${stepName}.STATISTICS.BS]`);
+        lines.push(`REPLICATES = ${stats.bs.replicates}`);
+        lines.push('SEED = 0');
+      }
+      if (stats.bsn?.enabled && stats.bsn.replicates > 0) {
+        lines.push('');
+        lines.push(`[${stepName}.STATISTICS.BSN]`);
+        lines.push(`REPLICATES = ${stats.bsn.replicates}`);
+        lines.push('SEED = 0');
+      }
+      if (stats.mcmc?.enabled && stats.mcmc.steps > 0) {
+        lines.push('');
+        lines.push(`[${stepName}.STATISTICS.MCMC]`);
+        lines.push(`STEPS = ${stats.mcmc.steps}`);
+        const burnVal = stats.mcmc.burn === 'auto' || typeof stats.mcmc.burn === 'string'
+          ? `"${String(stats.mcmc.burn || 'AUTO').toUpperCase()}"`
+          : String(stats.mcmc.burn);
+        lines.push(`BURN = ${burnVal}`);
+        lines.push(`SEED = ${stats.mcmc.seed ?? 0}`);
+        if (stats.mcmc.thin && stats.mcmc.thin > 1) {
+          lines.push(`# V1_ONLY_THIN = ${stats.mcmc.thin}`);
+        }
+        if (stats.mcmc.walkers) {
+          lines.push(`# V1_ONLY_WALKERS = ${stats.mcmc.walkers}`);
+        }
+      }
+    }
+
+    lines.push('');
+    prevStepName = stepName;
+  }
+
+  return lines.join('\n').trim() + '\n';
+}
+
+/**
  * Best-effort parser for ChemEx method.toml.
  * Parses known sections, keys (FIT, FIX, CONSTRAINTS, GRID, INCLUDE, EXCLUDE, STATISTICS).
  * Lines or blocks that cannot be represented in the structured model are captured in `unparsed`.
@@ -244,6 +370,7 @@ export function tomlToConfig(toml: string): ParseResult {
 
   for (const sec of sections) {
     const parentName = (sec.isSubTable ? sec.parentSection! : sec.name).toUpperCase();
+    if (parentName === 'FORMAT_VERSION') continue;
 
     if (!stepMap.has(parentName)) {
       stepOrder.push(parentName);
@@ -258,9 +385,48 @@ export function tomlToConfig(toml: string): ParseResult {
 
     const step = stepMap.get(parentName)!;
 
-    if (sec.isSubTable && sec.name.toUpperCase() === 'GRID') {
+    if (sec.isSubTable && (sec.name.toUpperCase() === 'SEARCH.GRID' || sec.name.toUpperCase() === 'GRID')) {
+      const combined = combineMultilineStatements(sec.lines);
+      for (const line of combined) {
+        const mAxes = line.match(/^AXES\s*=\s*(\[[\s\S]*\])$/i);
+        if (mAxes) {
+          parseGridValue(step, mAxes[1], unparsed);
+        } else {
+          parseGridEntry(step, line.trim(), unparsed);
+        }
+      }
+      continue;
+    }
+
+    if (sec.isSubTable && (sec.name.toUpperCase() === 'STATISTICS.MC' || sec.name.toUpperCase() === 'MC')) {
+      if (!step.statistics) step.statistics = {};
       for (const line of sec.lines) {
-        parseGridEntry(step, line.trim(), unparsed);
+        const kvMatch = line.trim().match(/^REPLICATES\s*=\s*(\d+)$/i);
+        if (kvMatch) {
+          step.statistics.mc = { enabled: true, replicates: parseInt(kvMatch[1], 10) };
+        }
+      }
+      continue;
+    }
+
+    if (sec.isSubTable && (sec.name.toUpperCase() === 'STATISTICS.BS' || sec.name.toUpperCase() === 'BS')) {
+      if (!step.statistics) step.statistics = {};
+      for (const line of sec.lines) {
+        const kvMatch = line.trim().match(/^REPLICATES\s*=\s*(\d+)$/i);
+        if (kvMatch) {
+          step.statistics.bs = { enabled: true, replicates: parseInt(kvMatch[1], 10) };
+        }
+      }
+      continue;
+    }
+
+    if (sec.isSubTable && (sec.name.toUpperCase() === 'STATISTICS.BSN' || sec.name.toUpperCase() === 'BSN')) {
+      if (!step.statistics) step.statistics = {};
+      for (const line of sec.lines) {
+        const kvMatch = line.trim().match(/^REPLICATES\s*=\s*(\d+)$/i);
+        if (kvMatch) {
+          step.statistics.bsn = { enabled: true, replicates: parseInt(kvMatch[1], 10) };
+        }
       }
       continue;
     }
@@ -314,6 +480,22 @@ export function tomlToConfig(toml: string): ParseResult {
         for (const rawC of constraints) {
           parseConstraintIntoStep(step, rawC);
         }
+      } else if (key === 'ROLES') {
+        const roleMatches = valStr.matchAll(/\{\s*(FIT|FIX|CONSTRAIN)\s*=\s*([\s\S]*?)\s*\}/gi);
+        for (const rm of roleMatches) {
+          const action = rm[1].toUpperCase();
+          const listStr = rm[2].trim();
+          if (action === 'FIT') {
+            const items = parseStringOrIdentArray(listStr);
+            for (const item of items) upsertParam(step, item.toUpperCase(), { mode: 'fit' });
+          } else if (action === 'FIX') {
+            const items = parseStringOrIdentArray(listStr);
+            for (const item of items) upsertParam(step, item.toUpperCase(), { mode: 'fix' });
+          } else if (action === 'CONSTRAIN') {
+            const constraints = parseStringOrArrayOfStrings(listStr);
+            for (const rawC of constraints) parseConstraintIntoStep(step, rawC);
+          }
+        }
       } else if (key === 'GRID') {
         parseGridValue(step, valStr, unparsed);
       } else if (key === 'INCLUDE') {
@@ -326,6 +508,9 @@ export function tomlToConfig(toml: string): ParseResult {
         step.residues = items;
       } else if (key === 'STATISTICS') {
         parseInlineStatisticsTable(step, valStr, unparsed);
+      } else if (key === 'FORMAT_VERSION' || key === 'ROLES_FROM') {
+        // ChemEx v2 format markers - handled
+        continue;
       } else {
         // Unknown key
         unparsed.push(stmt);

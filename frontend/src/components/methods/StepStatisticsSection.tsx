@@ -419,58 +419,22 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                       className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
                     >
                       <Settings2 className="w-3 h-3" />
-                      <span>{showAdvancedMcmc ? 'Hide Advanced Settings' : 'Show Advanced MCMC Settings (Thin, Walkers, Seed)'}</span>
+                      <span>{showAdvancedMcmc ? 'Hide Advanced Settings' : 'Show Advanced MCMC Settings (Seed)'}</span>
                     </button>
                   </div>
 
                   {showAdvancedMcmc && (
                     <div className="p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/50 space-y-2 border border-slate-200 dark:border-slate-700/60">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-600 dark:text-slate-400">Thinning:</span>
-                        <input
-                          type="number"
-                          min={1}
-                          value={stats.mcmc.thin ?? 1}
-                          onChange={e => handleUpdateMcmc('thin', parseInt(e.target.value, 10) || 1)}
-                          disabled={readOnly}
-                          className="w-16 px-1.5 py-0.5 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-600 dark:text-slate-400">Walkers:</span>
-                        <input
-                          type="number"
-                          placeholder="Auto (max(32, 2p))"
-                          value={stats.mcmc.walkers ?? ''}
-                          onChange={e => handleUpdateMcmc('walkers', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                          disabled={readOnly}
-                          className="w-24 px-1.5 py-0.5 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-600 dark:text-slate-400">Workers:</span>
-                        <input
-                          type="number"
-                          placeholder="Inherit"
-                          value={stats.mcmc.workers ?? ''}
-                          onChange={e => handleUpdateMcmc('workers', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                          disabled={readOnly}
-                          className="w-20 px-1.5 py-0.5 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-600 dark:text-slate-400">Seed:</span>
+                        <span className="text-slate-600 dark:text-slate-400">Random Seed:</span>
                         <div className="flex items-center gap-1">
                           <input
                             type="number"
-                            placeholder="None"
+                            placeholder="0 (deterministic)"
                             value={stats.mcmc.seed ?? ''}
                             onChange={e => handleUpdateMcmc('seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
                             disabled={readOnly}
-                            className="w-20 px-1.5 py-0.5 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                            className="w-24 px-1.5 py-0.5 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                           />
                           <button
                             type="button"
@@ -483,19 +447,16 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 pt-1">
-                        <input
-                          type="checkbox"
-                          id={`update-params-${step.id}`}
-                          checked={!!stats.mcmc.update_parameters}
-                          onChange={e => handleUpdateMcmc('update_parameters', e.target.checked)}
-                          disabled={readOnly}
-                          className="w-3.5 h-3.5 rounded text-purple-600"
-                        />
-                        <label htmlFor={`update-params-${step.id}`} className="text-slate-600 dark:text-slate-400 cursor-pointer">
-                          Update fitted values with posterior medians
-                        </label>
-                      </div>
+                      {/* Display legacy settings read-only if present from historic runs */}
+                      {((stats.mcmc.thin && stats.mcmc.thin > 1) || stats.mcmc.walkers || stats.mcmc.workers || stats.mcmc.update_parameters) && (
+                        <div className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-700/60 text-[10px] space-y-1 text-slate-500">
+                          <div className="font-semibold text-slate-400 uppercase tracking-wider">Legacy v1 Settings (read-only):</div>
+                          {stats.mcmc.thin && stats.mcmc.thin > 1 && <div>Thinning: {stats.mcmc.thin}</div>}
+                          {stats.mcmc.walkers && <div>Walkers: {stats.mcmc.walkers}</div>}
+                          {stats.mcmc.workers && <div>Workers: {stats.mcmc.workers}</div>}
+                          {stats.mcmc.update_parameters && <div>Update parameters: enabled</div>}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

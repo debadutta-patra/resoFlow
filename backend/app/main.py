@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from . import models, database
-from .routers import auth, dashboard, projects, admin, fs, peak_fitting, analysis, experiments, cpmg, sdm, capabilities, exchange
+from .routers import auth, dashboard, projects, admin, fs, peak_fitting, analysis, experiments, cpmg, sdm, capabilities, exchange, chemex
 
 database.init_db()
 
@@ -43,6 +43,7 @@ app.include_router(cpmg.router)
 app.include_router(exchange.router)
 app.include_router(sdm.router)
 app.include_router(capabilities.router)
+app.include_router(chemex.router)
 
 @app.get("/")
 def read_root():

@@ -6,6 +6,7 @@ import os
 import re
 import json
 import math
+import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -127,6 +128,72 @@ def update_analysis(
     db.commit()
     db.refresh(analysis)
     return analysis
+
+
+@router.post("/{analysis_uuid}/continue", response_model=schemas.Analysis)
+def continue_from_run(
+    analysis: models.Analysis = Depends(get_analysis),
+    name: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+):
+    """Create a new analysis initialized from <source>/run_info/restart.toml."""
+    source_dir = _locate_analysis_run_dir(analysis)
+    restart_toml = source_dir / "run_info" / "restart.toml"
+    if not restart_toml.exists():
+        restart_toml = source_dir / "Output" / "run_info" / "restart.toml"
+
+    if not restart_toml.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"No restart.toml found in {source_dir}. Source run must have completed or created a checkpoint.",
+        )
+
+    new_uuid = str(uuid.uuid4())
+    new_name = name or f"{analysis.name} (continued)"
+
+    new_analysis = models.Analysis(
+        analysis_uuid=new_uuid,
+        name=new_name,
+        analysis_type=analysis.analysis_type,
+        project_id=analysis.project_id,
+        status="PENDING",
+        parameters=analysis.parameters,
+        use_height=analysis.use_height,
+    )
+    if hasattr(analysis, "spectra"):
+        new_analysis.spectra = list(analysis.spectra)
+
+    db.add(new_analysis)
+    db.commit()
+    db.refresh(new_analysis)
+
+    new_run_dir = _locate_analysis_run_dir(new_analysis)
+    new_run_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Copy Experiments and Data
+    if (source_dir / "Experiments").exists():
+        shutil.copytree(source_dir / "Experiments", new_run_dir / "Experiments", dirs_exist_ok=True)
+    if (source_dir / "Data").exists():
+        shutil.copytree(source_dir / "Data", new_run_dir / "Data", dirs_exist_ok=True)
+
+    # 2. Copy Methods
+    if (source_dir / "Methods").exists():
+        shutil.copytree(source_dir / "Methods", new_run_dir / "Methods", dirs_exist_ok=True)
+
+    # 3. Parameters: copy restart.toml as parameters.toml
+    new_param_dir = new_run_dir / "Parameters"
+    new_param_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(restart_toml, new_param_dir / "parameters.toml")
+
+    # 4. Copy config.json if exists
+    if (source_dir / "config.json").exists():
+        try:
+            cfg_text = (source_dir / "config.json").read_text(encoding="utf-8")
+            (new_run_dir / "config.json").write_text(cfg_text, encoding="utf-8")
+        except Exception:
+            pass
+
+    return new_analysis
 
 @router.put("/{analysis_uuid}/spectra")
 def update_analysis_spectra(

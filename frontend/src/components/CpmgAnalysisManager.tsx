@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { useTheme } from "../context/ThemeContext";
 import { useOptionalUserRuns } from "../context/RunsContext";
@@ -26,6 +27,7 @@ import {
   Code,
   Copy,
   Download,
+  FastForward,
   FileCode,
   Info,
   Loader2,
@@ -130,6 +132,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
 }) => {
   const { theme } = useTheme();
   const userRuns = useOptionalUserRuns();
+  const navigate = useNavigate();
   const isDarkTheme = theme === "dark";
   const nmrSpectraIcon = isDarkTheme ? nmrSpectraDark : nmrSpectraLight;
   const atomSpinIcon = isDarkTheme ? atomSpinDark : atomSpinLight;
@@ -863,6 +866,26 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
       const paramToml = configToCpmgToml(parameterConfig, selectedSpectraFields);
       const effectiveMethodToml = isRawEditMode ? methodToml : methodConfigToToml(methodConfig);
 
+      // Pre-flight validation against ChemEx
+      try {
+        const valRes = await api.post('/api/chemex/validate', {
+          analysis_uuid: analysis.analysis_uuid,
+          project_uuid: projectUuid,
+          parameter_toml: paramToml,
+          method_toml: effectiveMethodToml,
+          model,
+        });
+        if (valRes.data && !valRes.data.valid && valRes.data.errors && valRes.data.errors.length > 0) {
+          const errMsg = valRes.data.errors.map((e: any) => e.message || String(e)).join('\n');
+          setError(`ChemEx Validation Error:\n${errMsg}`);
+          setIsFitting(false);
+          setStatus("FAILED");
+          return;
+        }
+      } catch (valErr: any) {
+        console.warn("Validation pre-flight check failed to reach server:", valErr);
+      }
+
       const res = await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/run`, {
         parameters_toml: paramToml,
         method_toml: effectiveMethodToml,
@@ -910,6 +933,23 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
       setIsFitting(false);
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const handleContinueRun = async () => {
+    try {
+      setIsFitting(true);
+      setError('');
+      const res = await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/continue`);
+      onUpdate?.();
+      userRuns?.refreshRuns();
+      if (res.data?.analysis_uuid) {
+        navigate(`/projects/${projectUuid}/analysis/${res.data.analysis_uuid}`);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to continue from this run.");
+    } finally {
+      setIsFitting(false);
     }
   };
 
@@ -1030,6 +1070,18 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             >
               <RotateCcw size={13} />
               <span>Restore Last fit</span>
+            </button>
+          )}
+
+          {status === "COMPLETED" && (
+            <button
+              onClick={handleContinueRun}
+              disabled={isFitting}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-bold rounded-lg border border-purple-200 dark:border-purple-800 transition-all disabled:opacity-50"
+              title="Create a new run initialized from this run's restart.toml"
+            >
+              <FastForward size={13} />
+              <span>Continue from Run</span>
             </button>
           )}
 

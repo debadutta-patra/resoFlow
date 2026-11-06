@@ -71,5 +71,7 @@ def capabilities() -> Dict[str, object]:
         "chemex": {
             "available": CHEMEX_AVAILABLE,
             "error": CHEMEX_ERROR,
+            "version": "2026.9.2",
+            "method_format": 2,
         },
     }

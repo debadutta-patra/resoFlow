@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import sys
 from argparse import Namespace
 from collections import defaultdict
@@ -141,11 +142,82 @@ def build_session(
         return session, experiments, plan, args_ns, input_files, equivalent_argv
 
 
-def inspect_parameters(spec: FitJobSpec, job_dir: Path | None = None) -> list[dict[str, Any]]:
-    """Build the session up to step 9 and introspect all model parameters."""
+def _check_legacy_names(base_dir: Path, spec: FitJobSpec) -> list[dict[str, str]]:
+    """Scan parameter and method files for legacy ChemEx parameter names removed in 2026.9."""
+    errors = []
+    
+    # 1. Parameter files
+    for p_rel in spec.parameter_files:
+        p_path = (base_dir / p_rel).resolve()
+        if not p_path.exists() or not p_path.is_file():
+            continue
+        try:
+            content = p_path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        
+        # Check DWP / DWM
+        m_dwp = re.findall(r'\b(DW[PM](?:_[A-Za-z0-9]+)?)\b', content, re.IGNORECASE)
+        for match in set(m_dwp):
+            errors.append({
+                "message": f"Legacy parameter '{match.upper()}' detected in '{p_rel}'. ChemEx 2026.9 replaced DWP/DWM with DW0_AX/DW1_AX for .tc models.",
+                "type": "LegacyParameterError",
+                "file": p_rel,
+            })
+            
+        # Check binding model legacy names
+        if spec.model and "binding" in spec.model.lower():
+            m_kab = re.findall(r'\b(K(?:AB|BA|BC|CB))\b', content, re.IGNORECASE)
+            for match in set(m_kab):
+                errors.append({
+                    "message": f"Legacy parameter '{match.upper()}' detected in '{p_rel}'. ChemEx 2026.9 uses KEQ_*/KEX_* for binding models.",
+                    "type": "LegacyParameterError",
+                    "file": p_rel,
+                })
+                
+        # Check KD_EFF
+        if re.search(r'\bKD_EFF\b', content, re.IGNORECASE):
+            errors.append({
+                "message": f"Legacy parameter 'KD_EFF' detected in '{p_rel}'. ChemEx 2026.9 renamed KD_EFF to KD_APP.",
+                "type": "LegacyParameterError",
+                "file": p_rel,
+            })
+
+    # 2. Method files
+    for m_rel in spec.method_files:
+        m_path = (base_dir / m_rel).resolve()
+        if not m_path.exists() or not m_path.is_file():
+            continue
+        try:
+            content = m_path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+            
+        m_dwp = re.findall(r'\b(DW[PM](?:_[A-Za-z0-9]+)?)\b', content, re.IGNORECASE)
+        for match in set(m_dwp):
+            errors.append({
+                "message": f"Legacy parameter '{match.upper()}' detected in method file '{m_rel}'. ChemEx 2026.9 replaced DWP/DWM with DW0_AX/DW1_AX for .tc models.",
+                "type": "LegacyParameterError",
+                "file": m_rel,
+            })
+
+    return errors
+
+
+def inspect_parameters(
+    spec: FitJobSpec,
+    job_dir: Path | None = None,
+    include_warnings: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any]:
+    """Build the session up to step 9 and introspect all model parameters.
+    
+    If include_warnings is True, returns a dict with 'parameters', 'warnings', and 'experiments'.
+    Otherwise returns just the list of parameter dicts for backward compatibility.
+    """
     cm = contextlib.chdir(job_dir) if job_dir is not None else contextlib.nullcontext()
     with cm:
-        session, experiments, _, _, _, _ = build_session(spec, job_dir=Path.cwd(), command="fit")
+        target_dir = Path.cwd()
+        session, experiments, _, _, _, _ = build_session(spec, job_dir=target_dir, command="fit")
 
         used_by: dict[str, set[str]] = defaultdict(set)
         for experiment in experiments:
@@ -168,6 +240,7 @@ def inspect_parameters(spec: FitJobSpec, job_dir: Path | None = None) -> list[di
         rows: list[dict[str, Any]] = []
         for pid, setting in params.items():
             pname = setting.param_name
+            status = "fit" if getattr(setting, "vary", False) else ("constrain" if getattr(setting, "expr", "") else "fix")
             rows.append({
                 "id": pid,
                 "selector": pname.section_res,
@@ -175,6 +248,8 @@ def inspect_parameters(spec: FitJobSpec, job_dir: Path | None = None) -> list[di
                 "spin": str(pname.spin_system) if pname.spin_system else "",
                 "conditions": _conditions(pname),
                 "vary": bool(getattr(setting, "vary", False)),
+                "status": status,
+                "is_shared": len(used_by[pid]) > 1,
                 "value": getattr(setting, "value", None),
                 "min": getattr(setting, "min", None),
                 "max": getattr(setting, "max", None),
@@ -183,21 +258,71 @@ def inspect_parameters(spec: FitJobSpec, job_dir: Path | None = None) -> list[di
             })
 
         rows.sort(key=lambda r: (r["selector"], r["name"]))
-        return rows
+
+        if not include_warnings:
+            return rows
+
+        # Calculate sharing map warnings
+        warnings = []
+        by_family: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        for row in rows:
+            by_family[(row["name"], row["spin"])].append(row)
+
+        for (name, spin), family in by_family.items():
+            key_sets = {tuple(sorted(r["conditions"])) for r in family}
+            if len(key_sets) > 1:
+                warnings.append({
+                    "code": "CONDITION_MISMATCH",
+                    "parameter": f"{name}{', ' + spin if spin else ''}",
+                    "variants": [r["selector"] for r in family],
+                    "message": "Same parameter under different condition qualifiers; these copies are fitted independently, not shared.",
+                })
+            fields = sorted({r["conditions"]["h_larmor_frq"] for r in family if "h_larmor_frq" in r["conditions"]})
+            for lo, hi in zip(fields, fields[1:]):
+                if hi - lo < 1.0:
+                    warnings.append({
+                        "code": "NEAR_FIELD",
+                        "parameter": f"{name}{', ' + spin if spin else ''}",
+                        "fields_mhz": [lo, hi],
+                        "message": "Fields differ by < 1 MHz, so field-dependent rates are split. Snap both to one spectrometer value if they are the same magnet.",
+                    })
+
+        all_files = sorted({Path(e.filename).name for e in experiments})
+        for label in all_files:
+            shares = any(r["vary"] and label in r["experiments"] and len(r["experiments"]) > 1 for r in rows)
+            if not shares and len(all_files) > 1:
+                warnings.append({
+                    "code": "ISOLATED",
+                    "experiment": label,
+                    "message": "Shares no fitted parameter with any other experiment file.",
+                })
+
+        return {
+            "parameters": rows,
+            "warnings": warnings,
+            "experiments": all_files,
+        }
 
 
 def validate_inputs(spec: FitJobSpec, job_dir: Path | None = None) -> dict[str, Any]:
     """Run steps 1-9 dry build plus method plan validation and return a structured report."""
+    base_dir = Path(job_dir).resolve() if job_dir is not None else Path.cwd().resolve()
     report: dict[str, Any] = {
         "valid": True,
         "errors": [],
         "warnings": [],
     }
 
-    cm = contextlib.chdir(job_dir) if job_dir is not None else contextlib.nullcontext()
+    # Step A: Check for legacy parameter names from ChemEx B9
+    legacy_errors = _check_legacy_names(base_dir, spec)
+    if legacy_errors:
+        report["valid"] = False
+        report["errors"].extend(legacy_errors)
+
+    cm = contextlib.chdir(base_dir)
     with cm:
         try:
-            session, experiments, plan, _, _, _ = build_session(spec, job_dir=Path.cwd(), command="fit")
+            session, experiments, plan, _, _, _ = build_session(spec, job_dir=base_dir, command="fit")
             parameter_model = session.parameter_factory.sealed_parameter_model
             if parameter_model is None:
                 report["valid"] = False
@@ -210,6 +335,14 @@ def validate_inputs(spec: FitJobSpec, job_dir: Path | None = None) -> dict[str, 
                 except Exception as exc:
                     report["valid"] = False
                     report["errors"].append({"message": str(exc), "type": type(exc).__name__})
+
+            # Step B: Gather preflight sharing warnings
+            try:
+                inspection = inspect_parameters(spec, job_dir=base_dir, include_warnings=True)
+                if isinstance(inspection, dict) and "warnings" in inspection:
+                    report["warnings"].extend(inspection["warnings"])
+            except Exception:
+                pass
 
         except Exception as exc:
             report["valid"] = False
