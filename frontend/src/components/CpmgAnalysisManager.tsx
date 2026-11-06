@@ -99,6 +99,10 @@ interface Analysis {
   name: string;
   analysis_type: string;
   status: string;
+  error_message?: string;
+  bundle_status?: string;
+  summary_redchi?: number;
+  summary_n_residues?: number;
 }
 
 interface CpmgAnalysisManagerProps {
@@ -114,6 +118,7 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLING: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700",
   CANCELLED: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
   COMPLETED: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800",
+  COMPLETED_WITH_ERRORS: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
   FAILED: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
 };
 
@@ -282,7 +287,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/logs`);
       if (res.data.logs) setLogs(res.data.logs);
       const incomingStatus = res.data.status;
-      const isTerminal = incomingStatus === "COMPLETED" || incomingStatus === "FAILED" || incomingStatus === "CANCELLED";
+      const isTerminal = incomingStatus === "COMPLETED" || incomingStatus === "COMPLETED_WITH_ERRORS" || incomingStatus === "FAILED" || incomingStatus === "CANCELLED";
 
       if (res.data.progress && !isTerminal) {
         setProgressInfo(res.data.progress);
@@ -297,7 +302,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
 
       if (incomingStatus && incomingStatus !== status) {
         setStatus(incomingStatus);
-        if (incomingStatus === "COMPLETED") {
+        if (incomingStatus === "COMPLETED" || incomingStatus === "COMPLETED_WITH_ERRORS") {
           await fetchResults();
           setActiveTab("results");
           onUpdate?.();
@@ -1598,7 +1603,21 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           )}
 
           {activeTab === "results" && (
-            <CpmgResultsTab
+            <>
+              {status === "COMPLETED_WITH_ERRORS" && (
+                <div className="mb-6 p-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
+                      Fit completed with warnings / post-processing issues
+                    </div>
+                    <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                      {analysis.error_message || "Results bundle was partially generated. Raw ChemEx output files remain intact."}
+                    </div>
+                  </div>
+                </div>
+              )}
+              <CpmgResultsTab
               projectUuid={projectUuid}
               analysisUuid={analysis.analysis_uuid}
               analysisName={analysis.name}
@@ -1620,6 +1639,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
               }}
               excludedResidues={parameterConfig.excludedResidues}
             />
+            </>
           )}
         </div>
       </div>

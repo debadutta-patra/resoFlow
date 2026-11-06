@@ -188,6 +188,11 @@ class Analysis(Base):
     cancel_requested = Column(Boolean, default=False)
     launcher_handle = Column(JSON, nullable=True)
 
+    # Results bundle metadata
+    bundle_status = Column(String, default="NONE", nullable=True, server_default="NONE")
+    summary_redchi = Column(Float, nullable=True)
+    summary_n_residues = Column(Integer, nullable=True)
+
     @property
     def has_backup(self):
         if self.results_path and os.path.exists(self.results_path.replace(".json", "_bak.json")):

@@ -86,6 +86,10 @@ export interface Analysis {
   spectra?: Spectrum[];
   use_height?: boolean;
   has_backup?: boolean;
+  error_message?: string;
+  bundle_status?: string;
+  summary_redchi?: number;
+  summary_n_residues?: number;
 }
 
 export interface CestExperiment {

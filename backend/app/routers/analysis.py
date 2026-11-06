@@ -1,5 +1,5 @@
 from ..services.fitting.experiments.cest_builder import build_cest_experiment
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple, Dict, Any
 import os
@@ -316,30 +316,79 @@ def sanitize_floats_for_json(obj: Any) -> Any:
 
 @router.get("/{analysis_uuid}/results")
 def get_analysis_results(
+    request: Request,
+    response: Response,
     analysis: models.Analysis = Depends(get_analysis)
 ):
     if analysis.status in ["RUNNING", "PENDING"]:
         return {"status": analysis.status, "results": None}
 
-    if analysis.analysis_type.lower() in ["cest", "15n-cest", "cpmg", "exchange"]:
-        run_dir = os.path.dirname(analysis.results_path) if analysis.results_path else None
-        if run_dir and os.path.exists(run_dir):
+    run_dir = _get_analysis_run_dir(analysis)
+    from ..services.results_bundle import store, is_bundle_valid
+    from ..services.results_bundle.tasks import ingest_results_task
+
+    # 1. If valid bundle exists, serve directly from bundle with ETag
+    if run_dir and os.path.exists(run_dir) and is_bundle_valid(run_dir):
+        etag = store.get_etag(run_dir)
+        response.headers["ETag"] = etag
+        inm = request.headers.get("if-none-match")
+        if inm and inm.strip() == etag:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+
+        results = store.get_summary(run_dir)
+        config_name = "cpmg_config.json" if analysis.analysis_type.upper() == "CPMG" else "config.json"
+        config_path = os.path.join(run_dir, config_name)
+        residue_mapping = {}
+        if os.path.exists(config_path):
             try:
-                from ..services.fitting.cest_tasks import _parse_chemex_output
-                parsed = _parse_chemex_output(run_dir)
-                if parsed and parsed.get("residues"):
-                    results_data = {
-                        "analysis_uuid": analysis.analysis_uuid,
-                        "timestamp": datetime.now().isoformat(),
-                        "fit_mode": parsed.get("fit_mode", "global"),
-                        **parsed
-                    }
-                    temp_path = f"{analysis.results_path}.tmp"
-                    with open(temp_path, "w") as f:
-                        json.dump(sanitize_floats_for_json(results_data), f, indent=2, default=str)
-                    os.replace(temp_path, analysis.results_path)
-            except Exception as e:
-                print(f"Error refreshing analysis results: {e}")
+                with open(config_path, "r") as cf:
+                    config = json.load(cf)
+                    residue_mapping = config.get("residue_mapping", {})
+            except Exception:
+                pass
+
+        if isinstance(results, dict):
+            results["residue_mapping"] = residue_mapping
+
+        return JSONResponse(
+            content={"status": analysis.status, "results": sanitize_floats_for_json(results)},
+            headers={"ETag": etag},
+        )
+
+    # 2. Lazy migration fallback: bundle missing or stale
+    # Parse raw tree once, return results, and enqueue background ingest
+    if run_dir and os.path.exists(run_dir) and analysis.analysis_type.lower() in ["cest", "15n-cest", "cpmg", "exchange"]:
+        try:
+            from ..services.fitting.cest_tasks import _parse_chemex_output
+            parsed = _parse_chemex_output(run_dir)
+            if parsed and parsed.get("residues"):
+                results_data = {
+                    "analysis_uuid": analysis.analysis_uuid,
+                    "timestamp": datetime.now().isoformat(),
+                    "fit_mode": parsed.get("fit_mode", "global"),
+                    **parsed
+                }
+                config_name = "cpmg_config.json" if analysis.analysis_type.upper() == "CPMG" else "config.json"
+                config_path = os.path.join(run_dir, config_name)
+                residue_mapping = {}
+                if os.path.exists(config_path):
+                    try:
+                        with open(config_path, "r") as cf:
+                            config = json.load(cf)
+                            residue_mapping = config.get("residue_mapping", {})
+                    except Exception:
+                        pass
+                results_data["residue_mapping"] = residue_mapping
+
+                # Enqueue background migration
+                try:
+                    ingest_results_task.delay(analysis.analysis_uuid)
+                except Exception as q_exc:
+                    logger.debug("Could not queue background ingest migration: %s", q_exc)
+
+                return {"status": analysis.status, "results": sanitize_floats_for_json(results_data)}
+        except Exception as e:
+            logger.warning(f"Error parsing raw analysis results fallback: {e}")
 
     if not analysis.results_path or not os.path.exists(analysis.results_path):
         return {"status": analysis.status, "results": None}
@@ -347,7 +396,6 @@ def get_analysis_results(
     with open(analysis.results_path, "r") as f:
         results = json.load(f)
         
-    run_dir = _get_analysis_run_dir(analysis)
     config_name = "cpmg_config.json" if analysis.analysis_type.upper() == "CPMG" else "config.json"
     config_path = os.path.join(run_dir, config_name)
     residue_mapping = {}
@@ -363,6 +411,65 @@ def get_analysis_results(
         results["residue_mapping"] = residue_mapping
         
     return {"status": analysis.status, "results": sanitize_floats_for_json(results)}
+
+
+@router.get("/{analysis_uuid}/results/summary")
+def get_analysis_results_summary(
+    request: Request,
+    response: Response,
+    analysis: models.Analysis = Depends(get_analysis)
+):
+    """Serve eager summary payload (< 200 kB) with ETag support."""
+    run_dir = _get_analysis_run_dir(analysis)
+    if not run_dir or not os.path.exists(run_dir):
+        raise HTTPException(status_code=404, detail="Analysis results directory not found")
+
+    from ..services.results_bundle import store, is_bundle_valid
+    from ..services.results_bundle.tasks import ingest_results_task
+
+    if not is_bundle_valid(run_dir):
+        try:
+            from ..services.results_bundle.ingest import ingest_results
+            ingest_results(run_dir, analysis_uuid=analysis.analysis_uuid, chemex_version=analysis.chemex_version, analysis_name=analysis.name, analysis_type=analysis.analysis_type or "CEST")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate summary: {e}")
+
+    etag = store.get_etag(run_dir)
+    inm = request.headers.get("if-none-match")
+    if inm and inm.strip() == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+
+    summary = store.get_summary(run_dir)
+    return JSONResponse(
+        content=sanitize_floats_for_json(summary),
+        headers={"ETag": etag},
+    )
+
+
+@router.get("/{analysis_uuid}/results/residues/{residue}")
+def get_analysis_residue_details(
+    residue: str,
+    step: Optional[str] = None,
+    analysis: models.Analysis = Depends(get_analysis),
+):
+    """Lazy query for a single residue's parameters, profiles, and residuals from results.sqlite."""
+    run_dir = _get_analysis_run_dir(analysis)
+    if not run_dir or not os.path.exists(run_dir):
+        raise HTTPException(status_code=404, detail="Analysis results directory not found")
+
+    from ..services.results_bundle import store, is_bundle_valid
+    if not is_bundle_valid(run_dir):
+        try:
+            from ..services.results_bundle.ingest import ingest_results
+            ingest_results(run_dir, analysis_uuid=analysis.analysis_uuid, chemex_version=analysis.chemex_version, analysis_name=analysis.name, analysis_type=analysis.analysis_type or "CEST")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to ingest bundle: {e}")
+
+    try:
+        data = store.get_residue(run_dir, residue=residue, step=step)
+        return sanitize_floats_for_json(data)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error querying residue: {exc}")
 
 
 @router.delete("/{analysis_uuid}")
@@ -1348,8 +1455,10 @@ def _render_analysis_json(analysis: models.Analysis) -> Response:
             excluded_residues=excluded,
             noe_threshold=_sdm_noe_threshold(analysis),
         )
+        from ..services.results_bundle import store
+        etag = store.get_etag(run_dir)
         json_str = json.dumps(model.to_dict())
-        return Response(content=json_str, media_type="application/json")
+        return Response(content=json_str, media_type="application/json", headers={"ETag": etag})
     except Exception as e:
         logger.exception("Failed to generate report JSON for %s: %s", analysis.analysis_uuid, e)
         raise HTTPException(status_code=500, detail="Failed to generate report data. Please check server logs.")
@@ -1372,44 +1481,24 @@ def _render_or_serve_pdf(
     report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
     type_name = report_atype.lower()
 
-    if palette and palette != "okabe_ito":
-        safe_palette = "".join(c for c in palette if c.isalnum() or c in ("_", "-"))
-        pdf_path = os.path.join(run_dir, f"report_{safe_palette}.pdf")
-    else:
-        pdf_path = os.path.join(run_dir, "report.pdf")
-
-    if os.path.exists(pdf_path):
-        return FileResponse(
-            pdf_path,
-            media_type="application/pdf",
-            filename=f"{type_name}_{analysis.analysis_uuid}_report.pdf",
-        )
-
     try:
+        from ..services.results_bundle.artifacts import get_or_render_artifact
         excluded = _extract_excluded_residues(analysis)
-        pdf_buf = generate_modern_pdf_report(
-            analysis_dir=run_dir,
+        pdf_path = get_or_render_artifact(
+            run_dir=run_dir,
+            kind="report",
             analysis_name=analysis.name,
             analysis_type=report_atype,
             style=style,
-            palette=palette,
-            chemex_image_digest=analysis.chemex_image_digest,
+            palette=palette or "okabe_ito",
             excluded_residues=excluded,
             noe_threshold=_sdm_noe_threshold(analysis),
+            chemex_image_digest=analysis.chemex_image_digest,
         )
-        try:
-            with open(pdf_path, "wb") as f:
-                f.write(pdf_buf.getvalue())
-            pdf_buf.seek(0)
-        except Exception:
-            pass
-
-        return StreamingResponse(
-            pdf_buf,
+        return FileResponse(
+            str(pdf_path),
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": f"attachment; filename={type_name}_{analysis.analysis_uuid}_report.pdf"
-            },
+            filename=f"{type_name}_{analysis.analysis_uuid}_report.pdf",
         )
     except Exception as e:
         logger.exception("Failed to generate PDF report for %s: %s", analysis.analysis_uuid, e)
@@ -1547,32 +1636,27 @@ def _render_or_serve_plots_zip(
 
     chosen_palette = palette or "okabe_ito"
     safe_palette = "".join(c for c in chosen_palette if c.isalnum() or c in ("_", "-"))
-    zip_path = os.path.join(run_dir, f"plots_{safe_palette}.zip")
     clean_name = re.sub(r"[^A-Za-z0-9_-]", "_", analysis.name.strip()).lower()
     filename = f"{clean_name}_{analysis.analysis_uuid[:8]}_plots_{safe_palette}.zip"
 
-    if os.path.exists(zip_path):
-        return FileResponse(
-            zip_path,
-            media_type="application/zip",
-            filename=filename,
-        )
-
     try:
+        from ..services.results_bundle.artifacts import get_or_render_artifact
         report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
-        buf = export_all_plots_zip(
-            analysis_dir=run_dir,
+        excluded = _extract_excluded_residues(analysis)
+        zip_path = get_or_render_artifact(
+            run_dir=run_dir,
+            kind="plots",
             analysis_name=analysis.name,
             analysis_type=report_atype,
-            palette=chosen_palette,
             style=style,
+            palette=chosen_palette,
+            excluded_residues=excluded,
             chemex_image_digest=analysis.chemex_image_digest,
-            output_path=zip_path,
         )
-        return StreamingResponse(
-            buf,
+        return FileResponse(
+            str(zip_path),
             media_type="application/zip",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
+            filename=filename,
         )
     except Exception as e:
         logger.exception("Failed to generate plots ZIP export for %s: %s", analysis.analysis_uuid, e)

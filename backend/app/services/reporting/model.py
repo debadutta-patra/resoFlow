@@ -218,6 +218,121 @@ def provenance_to_dict(p: ReportProvenance) -> dict[str, Any]:
     }
 
 
+def resolved_param_from_dict(d: Optional[dict[str, Any]]) -> Optional[ResolvedParameter]:
+    """Deserialize a ResolvedParameter from a dict."""
+    if not d or not isinstance(d, dict):
+        return None
+    source_val = d.get("source", "NONE")
+    try:
+        source = UncertaintySource(source_val)
+    except Exception:
+        source = UncertaintySource.NONE
+    status_val = d.get("status", "FITTED")
+    try:
+        status = ParameterStatus(status_val)
+    except Exception:
+        status = ParameterStatus.FITTED
+    return ResolvedParameter(
+        name=d.get("name", ""),
+        scope=d.get("scope", "global"),
+        value=d.get("value"),
+        err_low=d.get("err_low"),
+        err_high=d.get("err_high"),
+        err_low_95=d.get("err_low_95"),
+        err_high_95=d.get("err_high_95"),
+        source=source,
+        status=status,
+        unit=d.get("unit"),
+        n_samples=d.get("n_samples"),
+        expression=d.get("expression"),
+        is_near_bound=bool(d.get("is_near_bound", False)),
+        bound_low=d.get("bound_low"),
+        bound_high=d.get("bound_high"),
+        flag_reason=d.get("flag_reason"),
+        is_asymmetric=bool(d.get("is_asymmetric", False)),
+        method_name=d.get("method_name"),
+    )
+
+
+def derived_kinetic_from_dict(d: Optional[dict[str, Any]]) -> Optional[DerivedKineticResult]:
+    """Deserialize a DerivedKineticResult from a dict."""
+    if not d or not isinstance(d, dict):
+        return None
+    source_val = d.get("source", "COVARIANCE")
+    try:
+        source = UncertaintySource(source_val)
+    except Exception:
+        source = UncertaintySource.COVARIANCE
+    status_val = d.get("status", "DERIVED")
+    try:
+        status = ParameterStatus(status_val)
+    except Exception:
+        status = ParameterStatus.DERIVED
+    return DerivedKineticResult(
+        name=d.get("name", ""),
+        symbol=d.get("symbol", ""),
+        value=d.get("value"),
+        err_low=d.get("err_low"),
+        err_high=d.get("err_high"),
+        err_low_95=d.get("err_low_95"),
+        err_high_95=d.get("err_high_95"),
+        unit=d.get("unit", "s⁻¹"),
+        propagation_method=d.get("propagation_method", "COVARIANCE"),
+        source=source,
+        status=status,
+        n_samples=d.get("n_samples"),
+        correlation_r=d.get("correlation_r"),
+        expression=d.get("expression", ""),
+    )
+
+
+def dof_accounting_from_dict(d: Optional[dict[str, Any]]) -> Optional[DegreeOfFreedomAccounting]:
+    """Deserialize a DegreeOfFreedomAccounting from a dict."""
+    if not d or not isinstance(d, dict):
+        return None
+    return DegreeOfFreedomAccounting(
+        n_data_global=int(d.get("n_data_global", 0)),
+        n_global_params=int(d.get("n_global_params", 0)),
+        n_local_params_total=int(d.get("n_local_params_total", 0)),
+        n_varys_global=int(d.get("n_varys_global", 0)),
+        dof_global=int(d.get("dof_global", 0)),
+        chi2_global=float(d.get("chi2_global", 0.0)),
+        chi2_red_global=float(d.get("chi2_red_global", 0.0)),
+        residue_dofs=d.get("residue_dofs", {}),
+        reconciliation_note=d.get("reconciliation_note", ""),
+    )
+
+
+def provenance_from_dict(d: Optional[dict[str, Any]]) -> ReportProvenance:
+    """Deserialize a ReportProvenance from a dict."""
+    d = d or {}
+    dof_data = d.get("dof_accounting")
+    dof_acc = dof_accounting_from_dict(dof_data) if dof_data else DegreeOfFreedomAccounting()
+    return ReportProvenance(
+        timestamp_iso=d.get("timestamp_iso", ""),
+        resoflow_version=d.get("resoflow_version", ""),
+        git_sha=d.get("git_sha"),
+        chemex_version=d.get("chemex_version"),
+        chemex_image_digest=d.get("chemex_image_digest"),
+        analysis_name=d.get("analysis_name", ""),
+        analysis_uuid=d.get("analysis_uuid", ""),
+        analysis_type=d.get("analysis_type", ""),
+        model_name=d.get("model_name"),
+        minimizer=d.get("minimizer", "trf"),
+        convergence_status=d.get("convergence_status", "SUCCESS"),
+        b0_fields=tuple(d.get("b0_fields", ())),
+        temperature_k=d.get("temperature_k"),
+        carrier_ppm=d.get("carrier_ppm"),
+        b1_fields=d.get("b1_fields", {}),
+        input_files=d.get("input_files", {}),
+        dof_accounting=dof_acc,
+        delta_omega_convention=d.get("delta_omega_convention", "B - A"),
+        uncertainty_sources_used=tuple(d.get("uncertainty_sources_used", ())),
+        has_statistics_runs=bool(d.get("has_statistics_runs", False)),
+        warnings=tuple(d.get("warnings", ())),
+    )
+
+
 def to_json_serializable(obj: Any) -> Any:
     """Recursively convert data structures to plain JSON-serializable types."""
     if obj is None:
@@ -348,6 +463,47 @@ class ResidueRecord:
             d["decay_curve_data"] = to_json_serializable(self.decay_curve_data)
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ResidueRecord:
+        rates_by_field: dict[str, list[tuple[str, ResolvedParameter]]] = {}
+        for name, entries in d.get("rates_by_field", {}).items():
+            field_list = []
+            for e in entries:
+                f_name = e.get("field", "")
+                p = resolved_param_from_dict(e)
+                if p is not None:
+                    field_list.append((f_name, p))
+            rates_by_field[name] = field_list
+
+        dw = resolved_param_from_dict(d.get("dw")) or ResolvedParameter("DW_AB", d.get("raw_key", ""), None)
+        r1a = resolved_param_from_dict(d.get("r1a")) or ResolvedParameter("R1_A", d.get("raw_key", ""), None)
+        r2a = resolved_param_from_dict(d.get("r2a")) or ResolvedParameter("R2_A", d.get("raw_key", ""), None)
+        r2b = resolved_param_from_dict(d.get("r2b")) or ResolvedParameter("R2_B", d.get("raw_key", ""), None)
+        csa = resolved_param_from_dict(d.get("csa")) or ResolvedParameter("CS_A", d.get("raw_key", ""), None)
+        csb = resolved_param_from_dict(d.get("csb")) or ResolvedParameter("CS_B", d.get("raw_key", ""), None)
+
+        return cls(
+            raw_key=d.get("raw_key", ""),
+            display_name=d.get("display_name", ""),
+            chi2_red=d.get("chi2_red"),
+            dw=dw,
+            r1a=r1a,
+            r2a=r2a,
+            r2b=r2b,
+            csa=csa,
+            csb=csb,
+            flags=list(d.get("flags", [])),
+            experiments=list(d.get("experiments", [])),
+            step_name=d.get("step_name"),
+            rate=resolved_param_from_dict(d.get("rate")),
+            amplitude=resolved_param_from_dict(d.get("amplitude")),
+            decay_curve_data=d.get("decay_curve_data"),
+            res_num=d.get("res_num"),
+            res_name=d.get("res_name"),
+            rmse=d.get("rmse"),
+            rates_by_field=rates_by_field,
+        )
+
 
 @dataclass
 class StepReportModel:
@@ -387,6 +543,38 @@ class StepReportModel:
             **({"excluded_residues": list(self.excluded_residues)}
                if self.excluded_residues is not None else {}),
         }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> StepReportModel:
+        global_params = []
+        for item in d.get("global_params", []):
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                p = resolved_param_from_dict(item[1])
+                if p is not None:
+                    global_params.append((str(item[0]), p))
+        derived_kinetics = {
+            k: derived_kinetic_from_dict(v)
+            for k, v in d.get("derived_kinetics", {}).items()
+            if v is not None and derived_kinetic_from_dict(v) is not None
+        }
+        residues = [ResidueRecord.from_dict(r) for r in d.get("residues", [])]
+        dof_info = dof_accounting_from_dict(d.get("dof_info"))
+        return cls(
+            step_name=d.get("step_name", ""),
+            step_index=int(d.get("step_index", 0)),
+            status=d.get("status", "complete"),
+            has_grid=bool(d.get("has_grid", False)),
+            has_statistics=bool(d.get("has_statistics", False)),
+            global_params=global_params,
+            derived_kinetics=derived_kinetics,
+            residues=residues,
+            dof_info=dof_info,
+            resampled=d.get("resampled", {}),
+            grid_1d=d.get("grid_1d", {}),
+            grid_2d=d.get("grid_2d"),
+            ledger=d.get("ledger", {}),
+            excluded_residues=d.get("excluded_residues"),
+        )
 
 
 @dataclass
@@ -441,6 +629,44 @@ class ReportModel:
             d["steps"] = [s.to_dict() for s in self.steps]
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any], analysis_dir: Optional[Union[str, Path]] = None) -> ReportModel:
+        a_dir = Path(analysis_dir) if analysis_dir else Path(d.get("analysis_dir", "."))
+        provenance = provenance_from_dict(d.get("provenance"))
+        derived_kinetics = {
+            k: derived_kinetic_from_dict(v)
+            for k, v in d.get("derived_kinetics", {}).items()
+            if v is not None and derived_kinetic_from_dict(v) is not None
+        }
+        residues = [ResidueRecord.from_dict(r) for r in d.get("residues", [])]
+        global_params = []
+        for item in d.get("global_params", []):
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                p = resolved_param_from_dict(item[1])
+                if p is not None:
+                    global_params.append((str(item[0]), p))
+        steps = [StepReportModel.from_dict(s) for s in d.get("steps", [])]
+        return cls(
+            analysis_name=d.get("analysis_name", ""),
+            analysis_type=d.get("analysis_type", "CEST"),
+            analysis_dir=a_dir,
+            results=d.get("results", {}),
+            provenance=provenance,
+            derived_kinetics=derived_kinetics,
+            residues=residues,
+            global_params=global_params,
+            resampled=d.get("resampled", {}),
+            grid_1d=d.get("grid_1d", {}),
+            ledger=d.get("ledger", {}),
+            is_multi_step=bool(d.get("is_multi_step", False)),
+            step_order=list(d.get("step_order", [])),
+            steps=steps,
+            grid_2d=d.get("grid_2d"),
+            sequence_summary=d.get("sequence_summary"),
+            excluded_residues=d.get("excluded_residues"),
+            spectral_density=d.get("spectral_density"),
+        )
+
 
 def build_report_model(
     analysis_dir: Union[str, Path],
@@ -460,6 +686,24 @@ def build_report_model(
     """
     a_dir = Path(analysis_dir)
     a_type = analysis_type.upper()
+
+    # Check for prebuilt report_model.json in results bundle
+    cached_model_file = a_dir / "results" / "report_model.json"
+    if cached_model_file.is_file() and (noe_threshold is NOE_THRESHOLD_UNSET or noe_threshold is None):
+        try:
+            cached_data = json.loads(cached_model_file.read_text(encoding="utf-8"))
+            cached_model = ReportModel.from_dict(cached_data, analysis_dir=a_dir)
+            if excluded_residues is not None and set(excluded_residues) != set(cached_model.excluded_residues or []):
+                cached_model.excluded_residues = list(excluded_residues)
+                for r in cached_model.residues:
+                    is_ex = is_residue_excluded(r.raw_key, excluded_residues, r.res_num)
+                    if is_ex and "EXCLUDED" not in r.flags:
+                        r.flags.append("EXCLUDED")
+                    elif not is_ex and "EXCLUDED" in r.flags:
+                        r.flags.remove("EXCLUDED")
+            return cached_model
+        except Exception as exc:
+            logger.warning("Could not deserialize cached report_model.json: %s", exc)
 
     # 1. Load results.json
     results_data: Dict[str, Any] = {}

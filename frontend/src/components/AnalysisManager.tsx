@@ -538,7 +538,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
         if (updated && updated.status !== currentAnalysis.status) {
             setCurrentAnalysis(updated);
             if (onStatusChange) onStatusChange(updated.status);
-            if (updated.status === 'COMPLETED') {
+            if (updated.status === 'COMPLETED' || updated.status === 'COMPLETED_WITH_ERRORS') {
                 fetchResults();
             } else if (updated.status === 'FAILED') {
                 fetchLogs();
@@ -575,7 +575,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
   }, [currentAnalysis.status]);
 
   useEffect(() => {
-    if (currentAnalysis.status === 'COMPLETED' && activeTab === 'results') {
+    if ((currentAnalysis.status === 'COMPLETED' || currentAnalysis.status === 'COMPLETED_WITH_ERRORS') && activeTab === 'results') {
         fetchResults();
     }
   }, [currentAnalysis.status, activeTab]);
@@ -616,7 +616,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
       {/* Analysis Status Header */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between transition-colors">
         <div className="flex items-center space-x-5">
-          <div className={`p-4 rounded-2xl ${currentAnalysis.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-blue-50 dark:bg-indigo-900/20 text-blue-600'}`}>
+          <div className={`p-4 rounded-2xl ${currentAnalysis.status === 'COMPLETED' || currentAnalysis.status === 'COMPLETED_WITH_ERRORS' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-blue-50 dark:bg-indigo-900/20 text-blue-600'}`}>
             <ActivityIcon className="w-7 h-7" />
           </div>
           <div>
@@ -626,7 +626,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
               <span className="text-slate-300 dark:text-slate-600">/</span>
               <div className="flex items-center px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                 {currentAnalysis.status === 'RUNNING' && <div className="animate-spin rounded-full h-2 w-2 border-b-2 border-blue-600 mr-2"></div>}
-                <span className={`text-[10px] font-black uppercase tracking-tighter ${currentAnalysis.status === 'COMPLETED' ? 'text-emerald-500' : currentAnalysis.status === 'FAILED' ? 'text-red-500' : 'text-blue-500'}`}>
+                <span className={`text-[10px] font-black uppercase tracking-tighter ${currentAnalysis.status === 'COMPLETED' ? 'text-emerald-500' : currentAnalysis.status === 'COMPLETED_WITH_ERRORS' ? 'text-amber-500' : currentAnalysis.status === 'FAILED' ? 'text-red-500' : 'text-blue-500'}`}>
                     {currentAnalysis.status}
                 </span>
               </div>
@@ -647,7 +647,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
             </button>
           )}
 
-          {currentAnalysis.status === 'COMPLETED' || currentAnalysis.status === 'FAILED' ? (
+          {currentAnalysis.status === 'COMPLETED' || currentAnalysis.status === 'COMPLETED_WITH_ERRORS' || currentAnalysis.status === 'FAILED' ? (
             <button
               onClick={() => setShowRerunWarning(true)}
               disabled={isLoading || currentAnalysis.spectra.length === 0}
@@ -967,7 +967,21 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                             </button>
                         </div>
                     )}
-                    {currentAnalysis.status === 'COMPLETED' && results ? (
+                    {(currentAnalysis.status === 'COMPLETED' || currentAnalysis.status === 'COMPLETED_WITH_ERRORS') && results ? (
+                        <>
+                        {currentAnalysis.status === 'COMPLETED_WITH_ERRORS' && (
+                          <div className="mb-6 p-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
+                                Fit completed with warnings / post-processing issues
+                              </div>
+                              <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                                {currentAnalysis.error_message || 'Results bundle was partially generated. Raw ChemEx output files remain intact.'}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                            {/* Results Table and Map */}
                             <div className="lg:col-span-12 xl:col-span-4 space-y-6">
@@ -1337,6 +1351,7 @@ const AnalysisManager: React.FC<AnalysisManagerProps> = ({
                                 </div>
                             )}
                         </div>
+                        </>
                     ) : currentAnalysis.status === 'FAILED' ? (
                         <div className="text-center py-16 px-6 bg-rose-50/50 dark:bg-rose-950/20 rounded-[3rem] border-2 border-dashed border-rose-200 dark:border-rose-900/50 max-w-2xl mx-auto shadow-sm animate-in fade-in">
                             <div className="w-20 h-20 bg-rose-100 dark:bg-rose-900/40 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner text-rose-600 dark:text-rose-400">

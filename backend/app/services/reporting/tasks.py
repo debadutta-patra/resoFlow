@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -87,26 +88,33 @@ def generate_report_pdf_task(
             except Exception:
                 pass
 
-        pdf_buf = generate_modern_pdf_report(
-            analysis_dir=run_dir,
+        from ..results_bundle.artifacts import get_or_render_artifact
+
+        artifact_path = get_or_render_artifact(
+            run_dir=run_dir,
+            kind="report",
             analysis_name=analysis.name,
             analysis_type=analysis_type,
             style=style,
-            palette=palette,
-            chemex_image_digest=analysis.chemex_image_digest,
+            palette=palette or "okabe_ito",
             excluded_residues=excluded_residues,
+            chemex_image_digest=analysis.chemex_image_digest,
         )
 
-        with open(pdf_path, "wb") as f:
-            f.write(pdf_buf.getvalue())
+        file_size = os.path.getsize(artifact_path)
+        # Compatibility copy at run_dir / report.pdf
+        try:
+            if str(artifact_path) != str(pdf_path):
+                shutil.copyfile(str(artifact_path), str(pdf_path))
+        except Exception as c_exc:
+            logger.debug("Could not copy compatibility report PDF: %s", c_exc)
 
-        file_size = os.path.getsize(pdf_path)
         logger.info("Report PDF generated successfully for %s: %d bytes", analysis_uuid, file_size)
 
         return {
             "status": "COMPLETED",
             "analysis_uuid": analysis_uuid,
-            "pdf_path": pdf_path,
+            "pdf_path": str(artifact_path),
             "size_bytes": file_size,
         }
     except Exception as exc:
@@ -169,34 +177,44 @@ def export_plots_zip_task(
         os.makedirs(run_dir, exist_ok=True)
 
         chosen_palette = palette or (options or {}).get("palette") or (options or {}).get("color") or "okabe_ito"
-        safe_palette = "".join(c for c in chosen_palette if c.isalnum() or c in ("_", "-"))
-        zip_path = os.path.join(run_dir, f"plots_{safe_palette}.zip")
 
-        logger.info(
-            "Exporting all publication plots for analysis %s (type: %s) to %s (palette: %s)",
-            analysis_uuid,
-            analysis.analysis_type,
-            zip_path,
-            chosen_palette,
-        )
+        from ..results_bundle.artifacts import get_or_render_artifact
 
-        export_all_plots_zip(
-            analysis_dir=run_dir,
+        excluded_residues = None
+        if analysis.parameters:
+            try:
+                p_data = json.loads(analysis.parameters)
+                excluded_residues = p_data.get("excludedResidues") or p_data.get("excluded_residues")
+            except Exception:
+                pass
+
+        artifact_path = get_or_render_artifact(
+            run_dir=run_dir,
+            kind="plots",
             analysis_name=analysis.name,
             analysis_type=analysis_type,
-            palette=chosen_palette,
             style=style,
+            palette=chosen_palette,
+            excluded_residues=excluded_residues,
             chemex_image_digest=analysis.chemex_image_digest,
-            output_path=zip_path,
         )
 
-        file_size = os.path.getsize(zip_path)
+        file_size = os.path.getsize(artifact_path)
+        # Compatibility copy at run_dir / plots_<palette>.zip
+        safe_palette = "".join(c for c in chosen_palette if c.isalnum() or c in ("_", "-"))
+        legacy_zip = os.path.join(run_dir, f"plots_{safe_palette}.zip")
+        try:
+            if str(artifact_path) != str(legacy_zip):
+                shutil.copyfile(str(artifact_path), str(legacy_zip))
+        except Exception as c_exc:
+            logger.debug("Could not copy compatibility plots ZIP: %s", c_exc)
+
         logger.info("Plots ZIP archive exported successfully for %s: %d bytes", analysis_uuid, file_size)
 
         return {
             "status": "COMPLETED",
             "analysis_uuid": analysis_uuid,
-            "zip_path": zip_path,
+            "zip_path": str(artifact_path),
             "size_bytes": file_size,
             "palette": chosen_palette,
         }

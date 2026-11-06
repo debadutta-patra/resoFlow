@@ -8,7 +8,7 @@ export interface RunItem {
   name: string;
   kind: 'analysis' | 'peak_fitting';
   analysis_type: string | null;
-  status: 'RUNNING' | 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  status: 'RUNNING' | 'PENDING' | 'COMPLETED' | 'COMPLETED_WITH_ERRORS' | 'FAILED' | 'CANCELLED';
   project_id: number;
   project_uuid: string;
   project_name: string;
@@ -52,7 +52,7 @@ export const RunsProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setRuns((prev) => {
         // Keep recent terminal runs that might have been on the dashboard, update or merge active runs
         const activeUuids = new Set(activeRuns.map((r) => r.uuid));
-        const keptTerminal = prev.filter((r) => !activeUuids.has(r.uuid) && (r.status === 'COMPLETED' || r.status === 'FAILED' || r.status === 'CANCELLED'));
+        const keptTerminal = prev.filter((r) => !activeUuids.has(r.uuid) && (r.status === 'COMPLETED' || r.status === 'COMPLETED_WITH_ERRORS' || r.status === 'FAILED' || r.status === 'CANCELLED'));
         return [...activeRuns, ...keptTerminal.slice(0, 10)];
       });
     } catch (err) {

@@ -567,26 +567,31 @@ def run_cest_analysis_task(self, analysis_uuid: str, config: dict):
             log_file.write(f"\n{'=' * 60}\n")
             log_file.write(f"Completed at: {datetime.now().isoformat()}\n")
 
-        # Parse ALL output directories using the main run_dir (parent of Output)
-        output_results = _parse_chemex_output(run_dir)
+        # Ingest results bundle and chain artifact prebuilding
+        try:
+            from celery import chain
+            from app.services.results_bundle.tasks import ingest_results_task, prebuild_artifacts_task
 
-        # Save results
-        with open(results_path, "w") as f:
-            json.dump(
-                {
-                    "analysis_uuid": analysis_uuid,
-                    "timestamp": datetime.now().isoformat(),
-                    "fit_mode": fit_mode,
-                    **output_results,
-                },
-                f,
-                indent=4,
-                default=str,
+            chain(
+                ingest_results_task.si(analysis_uuid),
+                prebuild_artifacts_task.si(analysis_uuid),
+            ).apply_async()
+        except Exception as queue_exc:
+            logger.warning(f"Could not queue ingest chain for {analysis_uuid}, executing directly: {queue_exc}")
+            from app.services.results_bundle.ingest import ingest_results
+            meta = ingest_results(
+                run_dir=run_dir,
+                analysis_uuid=analysis_uuid,
+                chemex_version=analysis.chemex_version,
+                analysis_name=analysis.name,
+                analysis_type=analysis.analysis_type or "CEST",
             )
-
-        analysis.status = "COMPLETED"
-        analysis.completed_at = datetime.now()
-        db.commit()
+            analysis.status = "COMPLETED"
+            analysis.bundle_status = "VALID"
+            analysis.summary_redchi = meta.get("summary_redchi")
+            analysis.summary_n_residues = meta.get("summary_n_residues")
+            analysis.completed_at = datetime.now()
+            db.commit()
 
     except Exception as e:
         logger.exception(f"CEST Analysis {analysis_uuid} failed")

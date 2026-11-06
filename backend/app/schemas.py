@@ -381,6 +381,9 @@ class Analysis(AnalysisBase):
     chemex_version: Optional[str] = None
     celery_task_id: Optional[str] = None
     cancel_requested: bool = False
+    bundle_status: Optional[str] = "NONE"
+    summary_redchi: Optional[float] = None
+    summary_n_residues: Optional[int] = None
     spectra: List[Spectrum] = []
 
     class Config:

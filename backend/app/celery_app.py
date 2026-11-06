@@ -43,6 +43,8 @@ celery_app.conf.task_routes = {
     "app.services.fitting.relaxation_tasks.run_relaxation_analysis_task": {"queue": "stats"},
     "app.services.reporting.tasks.generate_report_pdf_task": {"queue": "stats"},
     "app.services.reporting.tasks.export_plots_zip_task": {"queue": "stats"},
+    "app.services.results_bundle.tasks.ingest_results_task": {"queue": "stats"},
+    "app.services.results_bundle.tasks.prebuild_artifacts_task": {"queue": "stats"},
 }
 
 @worker_process_init.connect
