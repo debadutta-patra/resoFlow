@@ -1006,6 +1006,8 @@
           "experiments": [
             {
               "b1_label": "500mhz",
+              "exp_name": "500mhz",
+              "experiment_type": "cpmg",
               "exp_points": {
                 "x": [
                   33.33333,
@@ -1228,6 +1230,8 @@
             },
             {
               "b1_label": "800mhz",
+              "exp_name": "800mhz",
+              "experiment_type": "cpmg",
               "exp_points": {
                 "x": [
                   33.33333,
@@ -1717,6 +1721,8 @@
           "experiments": [
             {
               "b1_label": "500mhz",
+              "exp_name": "500mhz",
+              "experiment_type": "cpmg",
               "exp_points": {
                 "x": [
                   33.33333,
@@ -1939,6 +1945,8 @@
             },
             {
               "b1_label": "800mhz",
+              "exp_name": "800mhz",
+              "experiment_type": "cpmg",
               "exp_points": {
                 "x": [
                   33.33333,
@@ -2282,6 +2290,8 @@
           "experiments": [
             {
               "b1_label": "500mhz",
+              "exp_name": "500mhz",
+              "experiment_type": "cpmg",
               "exp_points": {
                 "x": [
                   33.33333,
@@ -2504,6 +2514,8 @@
             },
             {
               "b1_label": "800mhz",
+              "exp_name": "800mhz",
+              "experiment_type": "cpmg",
               "exp_points": {
                 "x": [
                   33.33333,

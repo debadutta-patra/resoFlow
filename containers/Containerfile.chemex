@@ -27,4 +27,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER appuser
 WORKDIR /work
-ENTRYPOINT ["python", "-m", "resoflow.progress"]
+ENTRYPOINT ["python", "-m", "resoflow.engine"]

@@ -15,7 +15,8 @@ from app.routers.exchange import (
     get_exchange_method_parameters,
     run_exchange_analysis,
 )
-from app.services.fitting.exchange_tasks import _build_exchange_chemex_command, _setup_exchange_directory
+from app.services.fitting.chemex_jobs import build_fit_spec
+from app.services.fitting.exchange_tasks import _setup_exchange_directory
 from app.services.fitting.experiments.models import GeneratedExperiment
 
 
@@ -244,29 +245,24 @@ def test_exchange_chemex_command_builder(tmp_path):
         "parameters_dir": str(param_dir),
         "methods_dir": str(methods_dir),
     }
-    cmd = _build_exchange_chemex_command(dirs, {"model": "2st"})
+    spec = build_fit_spec(dirs, {"model": "2st"}, job_dir=run_dir)
 
-    assert cmd[0] == "fit"
-    assert "-e" in cmd
-    e_idx = cmd.index("-e")
-    # Verify both experiment TOMLs are present
-    assert any("cest_600mhz.toml" in x for x in cmd[e_idx+1:])
-    assert any("cpmg_600mhz.toml" in x for x in cmd[e_idx+1:])
+    assert spec.model == "2st"
+    assert any("cest_600mhz.toml" in x for x in spec.experiment_files)
+    assert any("cpmg_600mhz.toml" in x for x in spec.experiment_files)
 
     # Add stale ChemEx output files to parameters_dir
     (param_dir / "constrained.toml").write_text("[DW_AB]")
     (param_dir / "fitted.toml").write_text("[CS_A]")
     (param_dir / "fixed.toml").write_text("[R1_A]")
 
-    cmd2 = _build_exchange_chemex_command(dirs, {"model": "2st"})
-    # Verify ONLY parameters.toml is passed with -p
-    p_indices = [i for i, x in enumerate(cmd2) if x == "-p"]
-    assert len(p_indices) == 1
-    p_arg = cmd2[p_indices[0] + 1]
-    assert p_arg.endswith("parameters.toml")
-    assert not any("constrained.toml" in x for x in cmd2)
-    assert not any("fitted.toml" in x for x in cmd2)
-    assert not any("fixed.toml" in x for x in cmd2)
+    spec2 = build_fit_spec(dirs, {"model": "2st"}, job_dir=run_dir)
+    # Verify ONLY parameters.toml is passed in parameter_files
+    assert len(spec2.parameter_files) == 1
+    assert spec2.parameter_files[0].endswith("parameters.toml")
+    assert not any("constrained.toml" in x for x in spec2.parameter_files)
+    assert not any("fitted.toml" in x for x in spec2.parameter_files)
+    assert not any("fixed.toml" in x for x in spec2.parameter_files)
 
     # Test that _setup_exchange_directory cleans stale toml files
     config_dict = {

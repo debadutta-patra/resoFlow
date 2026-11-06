@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float, Table
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float, Table, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -186,6 +186,7 @@ class Analysis(Base):
     chemex_version = Column(String, nullable=True)
     celery_task_id = Column(String, nullable=True)
     cancel_requested = Column(Boolean, default=False)
+    launcher_handle = Column(JSON, nullable=True)
 
     @property
     def has_backup(self):

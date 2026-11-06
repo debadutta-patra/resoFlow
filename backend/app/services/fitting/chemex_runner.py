@@ -1,51 +1,77 @@
-"""
-ChemEx Per-Job Ephemeral Container Runner.
+"""ChemEx Per-Job Execution Runner.
 
-Executes ChemEx fits inside isolated rootless Podman containers with:
-  - Deterministic container naming (`rf-chemex-{job_id}`) for reliable cancellation
-  - Host path translation for nested container/sibling execution (RESOFLOW_HOST_DATA_ROOT)
-  - SELinux :z flag and UserNS=keep-id for host UID/GID preservation
-  - Atomic output directories (staging in .tmp before atomic rename on exit 0)
-  - Real-time line-buffered log streaming to chemex.log
-  - Image digest and version tracking
-  - Orphan container cleanup on worker startup
+Coordinates job specification, launcher submission (Local or Podman container),
+log and structured progress streaming, atomic output staging, and cancellation.
 """
 
+from __future__ import annotations
+
+import json
+import logging
 import os
-import sys
 import re
 import shutil
-import signal
-import logging
 import subprocess
-import json
-import threading
-import time
+import sys
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from resoflow.chemex_api.spec import FitJobSpec
+
+from ..path_utils import to_container_path, to_host_path
+from .launchers import (
+    JobHandle,
+    JobState,
+    Launcher,
+    LocalLauncher,
+    PodmanLauncher,
+    Resources,
+    get_container_name,
+    get_launcher,
+    is_chemex_container_running,
+    reap_orphaned_chemex_containers,
+    wait_for_job,
+)
+from .launchers.podman import (
+    DEFAULT_CHEMEX_IMAGE,
+    _podman_socket_request,
+)
+import app.services.fitting.launchers.podman as podman_mod
 
 logger = logging.getLogger(__name__)
-
-# Default ChemEx container image
-DEFAULT_CHEMEX_IMAGE = os.getenv("RESOFLOW_CHEMEX_IMAGE", "localhost/resoflow-chemex:latest")
 
 # Cache for image metadata
 _IMAGE_METADATA_CACHE: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
 
 
-def get_container_name(job_id: str) -> str:
-    """Generate deterministic container name from job ID / analysis UUID."""
-    # Sanitize job_id to contain only safe container name chars ([a-zA-Z0-9_.-])
-    clean_id = re.sub(r"[^a-zA-Z0-9_.-]", "-", str(job_id).strip())
-    return f"rf-chemex-{clean_id}"
+def _get_detected_api_prefix() -> Optional[str]:
+    return podman_mod._DETECTED_API_PREFIX
 
 
-from ..path_utils import to_host_path, to_container_path
+def _set_detected_api_prefix(val: Optional[str]) -> None:
+    podman_mod._DETECTED_API_PREFIX = val
 
 
-def get_chemex_image_info(image_name: str = DEFAULT_CHEMEX_IMAGE) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Inspect the ChemEx container image to retrieve its SHA256 digest and version string.
+# Compatibility property wrapper for _DETECTED_API_PREFIX
+class _RunnerModuleCompat:
+    @property
+    def _DETECTED_API_PREFIX(self) -> Optional[str]:
+        return podman_mod._DETECTED_API_PREFIX
+
+    @_DETECTED_API_PREFIX.setter
+    def _DETECTED_API_PREFIX(self, val: Optional[str]) -> None:
+        podman_mod._DETECTED_API_PREFIX = val
+
+
+_DETECTED_API_PREFIX = podman_mod._DETECTED_API_PREFIX
+
+
+def get_chemex_image_info(
+    image_name: str = DEFAULT_CHEMEX_IMAGE,
+    use_container: Optional[bool] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Inspect the ChemEx image / engine to retrieve its SHA256 digest and version string.
+
     Returns (digest, version). Results are cached in-memory.
     """
     if image_name in _IMAGE_METADATA_CACHE:
@@ -66,7 +92,7 @@ def get_chemex_image_info(image_name: str = DEFAULT_CHEMEX_IMAGE) -> Tuple[Optio
             digest_str = inspect_res.stdout.strip()
             if digest_str and digest_str != "<no value>":
                 digest = digest_str
-        
+
         # Fallback to image ID if digest is empty (local build without push)
         if not digest:
             id_res = subprocess.run(
@@ -80,218 +106,79 @@ def get_chemex_image_info(image_name: str = DEFAULT_CHEMEX_IMAGE) -> Tuple[Optio
     except Exception as e:
         logger.warning(f"Failed to inspect ChemEx image digest: {e}")
 
-    # 2. Fetch ChemEx version via container run
+    # 2. Fetch ChemEx version via engine JSON output
+    if use_container is None:
+        launcher_name = os.getenv("RESOFLOW_LAUNCHER", "").lower().strip()
+        if launcher_name == "podman" or os.getenv("RESOFLOW_USE_CONTAINER", "").lower() in ("true", "1", "yes") or "RESOFLOW_SELINUX_MOUNT" in os.environ:
+            use_container = True
+        else:
+            use_container = False
+
     try:
+        if use_container:
+            cmd = ["podman", "run", "--rm", image_name, "version"]
+        else:
+            cmd = [sys.executable, "-m", "resoflow.engine", "version"]
+
         ver_res = subprocess.run(
-            ["podman", "run", "--rm", image_name, "--version"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=15,
         )
         if ver_res.returncode == 0 and ver_res.stdout.strip():
-            # Example output: "chemex 0.9.1" or "0.9.1"
             out = ver_res.stdout.strip()
-            v_match = re.search(r"(\d+\.\d+(\.\d+)?)", out)
-            version = v_match.group(1) if v_match else out
+            try:
+                data = json.loads(out)
+                if isinstance(data, dict) and "chemex_version" in data:
+                    version = data["chemex_version"]
+            except Exception:
+                pass
+
+            if not version:
+                # Regex fallback for plain text version strings (e.g. from mock tests)
+                v_match = re.search(r"(\d+\.\d+(\.\d+)?)", out)
+                version = v_match.group(1) if v_match else out
     except Exception as e:
-        logger.warning(f"Failed to get ChemEx version from image: {e}")
+        logger.warning(f"Failed to get ChemEx version: {e}")
 
     _IMAGE_METADATA_CACHE[image_name] = (digest, version)
     return digest, version
 
 
-def _podman_socket_request(method: str, path: str):
-    """Execute a REST request directly against the Podman Unix socket."""
-    sock_path = os.environ.get("CONTAINER_HOST", "").replace("unix://", "")
-    if not sock_path:
-        for candidate in [
-            "/run/podman/podman.sock",
-            f"/run/user/{os.getuid()}/podman/podman.sock" if hasattr(os, "getuid") else None,
-            os.path.expanduser("~/.local/share/containers/podman/machine/podman.sock"),
-            os.path.expanduser("~/.local/share/containers/podman/machine/qemu/podman.sock"),
-        ]:
-            if candidate and os.path.exists(candidate):
-                sock_path = candidate
-                break
-    if not sock_path or not os.path.exists(sock_path):
-        return None
-
-    try:
-        import socket
-        import http.client
-
-        class UnixHTTPConnection(http.client.HTTPConnection):
-            def __init__(self, s_path):
-                super().__init__("localhost")
-                self.s_path = s_path
-
-            def connect(self):
-                self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                self.sock.settimeout(4.0)
-                self.sock.connect(self.s_path)
-
-        conn = UnixHTTPConnection(sock_path)
-        conn.request(method, path)
-        resp = conn.getresponse()
-        data = resp.read().decode("utf-8", errors="replace")
-        conn.close()
-        return resp.status, data
-    except Exception as e:
-        logger.debug(f"Podman socket {method} {path} error: {e}")
-        return None
-
-
-# Cached API prefix for Podman socket endpoints (/v4.0.0/libpod, /v3.0.0/libpod, or /v1.40)
-_DETECTED_API_PREFIX: Optional[str] = None
-
-
-def is_chemex_container_running(job_id: str) -> bool:
-    """Check if the ephemeral ChemEx container for the given job_id is currently running."""
-    global _DETECTED_API_PREFIX
-    container_name = get_container_name(job_id)
-
-    # 1. Try Podman API socket first (works in containers without podman CLI)
-    import urllib.parse
-    import json
-    filters = json.dumps({"name": [container_name], "status": ["running"]})
-    encoded_filters = urllib.parse.quote(filters)
-
-    prefix = _DETECTED_API_PREFIX or "/v4.0.0/libpod"
-    res = _podman_socket_request("GET", f"{prefix}/containers/json?filters={encoded_filters}")
-
-    # If initial /v4.0.0 endpoint returns 404 (Podman 3.x / Docker compat), probe fallback prefixes
-    if res is not None and res[0] == 404 and _DETECTED_API_PREFIX is None:
-        for candidate in ["/v3.0.0/libpod", "/v1.40"]:
-            probe = _podman_socket_request("GET", f"{candidate}/containers/json?filters={encoded_filters}")
-            if probe is not None and probe[0] == 200:
-                _DETECTED_API_PREFIX = candidate
-                res = probe
-                break
-
-    if res is not None:
-        status, data = res
-        if status == 200:
-            try:
-                containers = json.loads(data)
-                return len(containers) > 0
-            except Exception:
-                pass
-
-    # 2. Fallback to CLI
-    try:
-        ps_res = subprocess.run(
-            ["podman", "ps", "-q", "--filter", f"name={container_name}", "--filter", "status=running"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        return ps_res.returncode == 0 and bool(ps_res.stdout.strip())
-    except Exception:
-        return False
-
-
 def cancel_chemex_job(job_id: str, timeout: int = 2) -> bool:
-    """
-    Cancel an active ChemEx fit by stopping and removing its deterministic container.
-    Sends SIGTERM with a short grace period, followed by SIGKILL.
-    """
-    global _DETECTED_API_PREFIX
+    """Cancel an active ChemEx fit by handle or container name."""
+    logger.info(f"cancel_chemex_job requested for job_id={job_id}")
+
+    # 1. Try DB lookup of launcher_handle
+    try:
+        from ...database import SessionLocal
+        from ...models import Analysis
+
+        with SessionLocal() as db:
+            analysis = db.query(Analysis).filter_by(analysis_uuid=job_id).first()
+            if analysis and analysis.launcher_handle:
+                handle = JobHandle.from_dict(analysis.launcher_handle)
+                launcher = get_launcher(handle.launcher)
+                launcher.cancel(handle)
+                return True
+    except Exception as exc:
+        logger.debug(f"DB lookup for launcher_handle during cancel failed: {exc}")
+
+    # 2. Fallback to Podman / container cancellation
+    launcher = PodmanLauncher()
     container_name = get_container_name(job_id)
-    logger.info(f"Attempting to cancel ChemEx container: {container_name}")
-
-    # 1. Try socket API
-    prefix = _DETECTED_API_PREFIX or "/v4.0.0/libpod"
-    res = _podman_socket_request("POST", f"{prefix}/containers/{container_name}/stop?t={timeout}")
-
-    # If /v4.0.0 endpoint returns 404 (Podman 3.x / Docker compat), probe fallback prefixes
-    if res is not None and res[0] == 404 and _DETECTED_API_PREFIX is None:
-        for candidate in ["/v3.0.0/libpod", "/v1.40"]:
-            probe = _podman_socket_request("POST", f"{candidate}/containers/{container_name}/stop?t={timeout}")
-            if probe is not None and probe[0] in (200, 204, 304):
-                _DETECTED_API_PREFIX = candidate
-                prefix = candidate
-                res = probe
-                break
-
-    if res is not None and res[0] in (200, 204, 304):
-        _podman_socket_request("DELETE", f"{prefix}/containers/{container_name}?force=true")
-        logger.info(f"Successfully cancelled container via Podman socket: {container_name}")
-        return True
-
-    # 2. Fallback to CLI
-    try:
-        # Check if container is running
-        ps_res = subprocess.run(
-            ["podman", "ps", "-q", "--filter", f"name={container_name}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if ps_res.returncode == 0 and ps_res.stdout.strip():
-            # Stop gracefully first
-            subprocess.run(
-                ["podman", "stop", "-t", str(timeout), container_name],
-                capture_output=True,
-                timeout=timeout + 5,
-            )
-            # Force remove if still hanging
-            subprocess.run(
-                ["podman", "rm", "-f", container_name],
-                capture_output=True,
-                timeout=5,
-            )
-            logger.info(f"Successfully stopped and removed container: {container_name}")
-            return True
-        else:
-            # Check if stopped/dead container exists to clean up
-            subprocess.run(
-                ["podman", "rm", "-f", container_name],
-                capture_output=True,
-                timeout=5,
-            )
-            return False
-    except Exception as e:
-        logger.warning(f"Error during cancellation of {container_name}: {e}")
-        # Final desperate kill attempt
-        try:
-            subprocess.run(["podman", "kill", container_name], capture_output=True, timeout=5)
-            subprocess.run(["podman", "rm", "-f", container_name], capture_output=True, timeout=5)
-            return True
-        except Exception:
-            return False
-
-
-def reap_orphaned_chemex_containers() -> List[str]:
-    """
-    Scan for and forcibly remove any leftover rf-chemex-* containers.
-    Called on Celery worker startup to ensure no orphan containers remain after crashes.
-    """
-    reaped = []
-    try:
-        res = subprocess.run(
-            ["podman", "ps", "-a", "--filter", "name=rf-chemex-", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if res.returncode == 0 and res.stdout.strip():
-            containers = [
-                c.strip() for c in res.stdout.strip().splitlines()
-                if c.strip().startswith("rf-chemex-")
-            ]
-            for c in containers:
-                logger.info(f"Reaping orphaned ChemEx container: {c}")
-                subprocess.run(["podman", "rm", "-f", c], capture_output=True, timeout=5)
-                reaped.append(c)
-    except Exception as e:
-        logger.warning(f"Error during orphan container cleanup: {e}")
-    return reaped
+    handle = JobHandle(launcher="podman", id=container_name, job_dir="")
+    launcher.cancel(handle)
+    return True
 
 
 def run_chemex_job(
     job_id: str,
-    work_dir: Path | str,
-    cmd_args: List[str],
+    work_dir: Path | str | None = None,
+    job_dir: Path | str | None = None,
+    spec: Optional[FitJobSpec] = None,
+    cmd_args: Optional[List[str]] = None,
     log_file: Optional[Path | str] = None,
     image_name: str = DEFAULT_CHEMEX_IMAGE,
     memory_limit: Optional[str] = None,
@@ -299,349 +186,201 @@ def run_chemex_job(
     timeout_seconds: Optional[int] = None,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     use_container: Optional[bool] = None,
+    launcher_name: Optional[str] = None,
 ) -> int:
-    """
-    Execute a ChemEx job in an ephemeral container or via direct subprocess with progress streaming.
+    """Execute a ChemEx job in an ephemeral container or local subprocess.
 
-    Args:
-        job_id: Unique identifier for the job / analysis (used for container naming).
-        work_dir: Host/local working directory where configs and data are located.
-        cmd_args: Arguments passed to chemex (e.g. ["fit", "-e", "Experiments/exp.toml", ...]).
-        log_file: Path to write stdout and stderr logs to.
-        image_name: Container image tag (default: localhost/resoflow-chemex:latest).
-        memory_limit: Optional container memory limit (e.g. "4g").
-        cpus: Optional container CPU allocation (e.g. 2.0).
-        timeout_seconds: Optional maximum runtime in seconds.
-        progress_callback: Optional callable receiving structured JSON progress events.
-        use_container: Whether to execute inside Podman container or direct subprocess.
+    Writes job.json with output_dir set to a staging directory (<output>.tmp),
+    submits via the selected Launcher, monitors execution via wait_for_job,
+    and atomically promotes <output>.tmp to <output> upon clean completion.
 
     Returns:
-        int: Subprocess return code. 0 for success, 137/143 for cancellation.
+        int: Subprocess return code. 0 for success, 130/137/143 for cancellation.
     """
-    work_path = Path(work_dir).resolve()
-    work_path.mkdir(parents=True, exist_ok=True)
-    container_name = get_container_name(job_id)
+    target_dir = Path(job_dir or work_dir or ".").resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Path translation for bind mount
-    host_work_dir = to_host_path(work_path)
+    # 1. Construct or adapt spec if cmd_args was passed by legacy callers / tests
+    if spec is None:
+        out_arg = "Output"
+        exp_args: list[str] = []
+        param_args: list[str] = []
+        method_args: list[str] = []
+        model_arg = "2st"
+        include_args: list[str] = []
+        exclude_args: list[str] = []
 
-    # 2. Identify output argument for atomic staging
-    final_output_dir: Optional[Path] = None
-    tmp_output_dir: Optional[Path] = None
-    translated_cmd_args: List[str] = []
-    
-    i = 0
-    while i < len(cmd_args):
-        arg = cmd_args[i]
-        if arg in ("-o", "--output") and i + 1 < len(cmd_args):
-            orig_output = cmd_args[i + 1]
-            # Convert to Path relative to work_dir if relative
-            if os.path.isabs(orig_output):
-                final_output_dir = Path(orig_output)
-            else:
-                final_output_dir = work_path / orig_output
-
-            tmp_output_dir = final_output_dir.with_name(f"{final_output_dir.name}.tmp")
-            
-            # Pass the staging directory to ChemEx inside the container
-            # Make path relative to /work for clean execution inside container
-            try:
-                rel_tmp = tmp_output_dir.relative_to(work_path)
-                translated_cmd_args.extend([arg, str(rel_tmp)])
-            except ValueError:
-                translated_cmd_args.extend([arg, f"/work/{tmp_output_dir.name}"])
-            i += 2
-            continue
-
-        # Convert absolute paths within work_path to relative paths inside /work
-        if os.path.isabs(arg):
-            try:
-                rel_arg = Path(arg).relative_to(work_path)
-                translated_cmd_args.append(str(rel_arg))
+        if cmd_args:
+            i = 0
+            while i < len(cmd_args):
+                arg = cmd_args[i]
+                if arg in ("-o", "--output") and i + 1 < len(cmd_args):
+                    out_arg = cmd_args[i + 1]
+                    i += 2
+                    continue
+                elif arg in ("-e", "--experiments") and i + 1 < len(cmd_args):
+                    i += 1
+                    while i < len(cmd_args) and not cmd_args[i].startswith("-"):
+                        exp_args.append(cmd_args[i])
+                        i += 1
+                    continue
+                elif arg in ("-p", "--parameters") and i + 1 < len(cmd_args):
+                    i += 1
+                    while i < len(cmd_args) and not cmd_args[i].startswith("-"):
+                        param_args.append(cmd_args[i])
+                        i += 1
+                    continue
+                elif arg in ("-m", "--methods") and i + 1 < len(cmd_args):
+                    i += 1
+                    while i < len(cmd_args) and not cmd_args[i].startswith("-"):
+                        method_args.append(cmd_args[i])
+                        i += 1
+                    continue
+                elif arg in ("-d", "--model") and i + 1 < len(cmd_args):
+                    model_arg = cmd_args[i + 1]
+                    i += 2
+                    continue
+                elif arg == "--include" and i + 1 < len(cmd_args):
+                    i += 1
+                    while i < len(cmd_args) and not cmd_args[i].startswith("-"):
+                        include_args.append(cmd_args[i])
+                        i += 1
+                    continue
+                elif arg == "--exclude" and i + 1 < len(cmd_args):
+                    i += 1
+                    while i < len(cmd_args) and not cmd_args[i].startswith("-"):
+                        exclude_args.append(cmd_args[i])
+                        i += 1
+                    continue
                 i += 1
-                continue
-            except ValueError:
-                pass
 
-        translated_cmd_args.append(arg)
-        i += 1
-
-    # Ensure tmp output directory is clean before run
-    if tmp_output_dir and tmp_output_dir.exists():
-        shutil.rmtree(tmp_output_dir, ignore_errors=True)
-
-    # Determine execution mode: container vs direct subprocess
-    if use_container is None:
-        if os.getenv("RESOFLOW_USE_CONTAINER", "").lower() in ("true", "1", "yes") or "RESOFLOW_SELINUX_MOUNT" in os.environ:
-            use_container = True
-        else:
-            use_container = False
-
-    if use_container:
-        # Ensure any existing container with the same name is removed
-        try:
-            subprocess.run(["podman", "rm", "-f", container_name], capture_output=True, timeout=5)
-        except Exception:
-            pass
-
-        # 3. Assemble Podman CLI command
-        selinux_opt = ":z"
-        if os.getenv("RESOFLOW_SELINUX_MOUNT", "").lower() in ("false", "0", "no") or sys.platform == "darwin":
-            selinux_opt = ""
-
-        cmd = [
-            "podman", "run",
-            "--name", container_name,
-            "--replace",
-            "--rm",
-            "--userns=keep-id",
-            "-v", f"{host_work_dir}:/work{selinux_opt}",
-        ]
-
-        if memory_limit:
-            cmd.extend(["--memory", str(memory_limit)])
-        if cpus:
-            cmd.extend(["--cpus", str(cpus)])
-
-        cmd.append(image_name)
-        cmd.extend(translated_cmd_args)
-        logger.info(f"Launching ephemeral ChemEx container '{container_name}': {' '.join(cmd)}")
-    else:
-        cmd = [sys.executable, "-m", "resoflow.progress", *translated_cmd_args]
-        logger.info(f"Launching direct ChemEx subprocess for '{job_id}': {' '.join(cmd)}")
-
-    # 4. Open log file and stream output
-    log_fp = None
-    if log_file:
-        log_file_p = Path(log_file)
-        log_file_p.parent.mkdir(parents=True, exist_ok=True)
-        log_fp = open(log_file_p, "a", encoding="utf-8")
-        log_fp.write(f"\n[ChemEx Runner: {container_name}]\n")
-        if use_container:
-            log_fp.write(f"[Image: {image_name}]\n")
-        log_fp.write(f"$ {' '.join(cmd)}\n\n")
-        log_fp.flush()
-
-    # Set up progress pipe for structured event streaming
-    r_fd, w_fd = os.pipe()
-    os.set_inheritable(w_fd, True)
-    w_fd_closed = False
-
-    child_env = os.environ.copy()
-    child_env["RESOFLOW_PROGRESS_FD"] = str(w_fd)
-
-    progress_file = work_path / "progress.json"
-    last_file_write_time = 0.0
-    last_milestones: Dict[str, int] = {}
-    is_terminal = False
-
-    def _format_progress_data(event: Dict[str, Any]) -> Dict[str, Any]:
-        k = event.get("kind", "progress")
-        prog: Dict[str, Any] = {
-            "kind": k,
-            "updated_at": time.time(),
-        }
-        if k == "fit":
-            prog["stage"] = "Minimization"
-            prog["iteration"] = event.get("iteration", 0)
-            prog["chisqr"] = event.get("chisqr")
-            prog["redchi"] = event.get("redchi")
-            cs = f"{event.get('chisqr'):.2f}" if isinstance(event.get('chisqr'), (int, float)) else "?"
-            rc = f"{event.get('redchi'):.2f}" if isinstance(event.get('redchi'), (int, float)) else "?"
-            prog["message"] = f"Minimization iter {event.get('iteration')} (χ²: {cs}, red-χ²: {rc})"
-        elif k in ("grid", "resample", "mcmc"):
-            labels = {
-                "grid": "Grid Search",
-                "resample": "Resampling",
-                "mcmc": "MCMC Sampling",
-            }
-            stage_name = labels.get(k, k.capitalize())
-            prog["stage"] = stage_name
-            done = event.get("done", 0)
-            total = event.get("total")
-            prog["done"] = done
-            prog["total"] = total
-            if total and total > 0:
-                pct = round((done / total) * 100, 1)
-                prog["percent"] = pct
-                prog["message"] = f"{stage_name}: {done}/{total} ({pct}%)"
-            else:
-                prog["message"] = f"{stage_name}: {done} steps"
-        else:
-            prog["stage"] = k.capitalize()
-            prog["message"] = str(event)
-        return prog
-
-    def _dispatch_progress_event(event: Dict[str, Any]) -> None:
-        nonlocal last_file_write_time
-        if is_terminal:
-            return
-        # 1. Forward raw event to callback
-        if progress_callback:
-            try:
-                progress_callback(event)
-            except Exception as e:
-                logger.debug(f"progress_callback error: {e}")
-
-        # 2. Write structured progress.json (throttled to at most once per 250ms)
-        prog_data = _format_progress_data(event)
-        now = time.time()
-        pct = prog_data.get("percent", 0)
-        if pct >= 100 or (now - last_file_write_time >= 0.25):
-            last_file_write_time = now
-            try:
-                tmp_p = progress_file.with_name(f"{progress_file.name}.tmp")
-                tmp_p.write_text(json.dumps(prog_data), encoding="utf-8")
-                tmp_p.replace(progress_file)
-            except Exception:
-                pass
-
-        # 3. Log to chemex.log sparingly (milestones at 0%, 25%, 50%, 75%, 100%)
-        # Note: For 'fit', ChemEx already outputs its minimization chi2 table, so omit redundant fit lines.
-        if log_fp:
-            k = event.get("kind")
-            if k in ("grid", "resample", "mcmc"):
-                total = event.get("total")
-                done = event.get("done", 0)
-                if total and total > 0:
-                    pct_int = int((done / total) * 100)
-                    bucket = (pct_int // 25) * 25
-                    if bucket > last_milestones.get(k, -1):
-                        last_milestones[k] = bucket
-                        log_fp.write(f"[{container_name}] {k.upper()} progress: {bucket}% ({done}/{total})\n")
-                        log_fp.flush()
-
-    def _drain_progress(fd: int) -> None:
-        try:
-            with os.fdopen(fd, "r", encoding="utf-8") as pipe_in:
-                for line in pipe_in:
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    try:
-                        event = json.loads(stripped)
-                        _dispatch_progress_event(event)
-                    except Exception as err:
-                        logger.warning(f"Malformed progress event skipped: {stripped[:100]!r} ({err})")
-        except Exception as err:
-            logger.debug(f"Progress stream reader terminated: {err}")
-
-    drain_thread = threading.Thread(target=_drain_progress, args=(r_fd,), daemon=True)
-    drain_thread.start()
-
-    return_code = 1
-    try:
-        process = subprocess.Popen(
-            cmd,
-            cwd=str(work_path),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
-            pass_fds=(w_fd,),
-            env=child_env,
+        spec = FitJobSpec(
+            job_id=job_id,
+            experiment_files=exp_args,
+            parameter_files=param_args,
+            method_files=method_args,
+            model=model_arg,
+            include=include_args,
+            exclude=exclude_args,
+            output_dir=out_arg,
         )
 
-        try:
-            os.close(w_fd)
-            w_fd_closed = True
-        except OSError:
-            pass
+    # 2. Determine final output directory and staging directory
+    raw_output = spec.output_dir or "Output"
+    if os.path.isabs(raw_output):
+        final_output_dir = Path(raw_output)
+    else:
+        final_output_dir = target_dir / raw_output
 
-        # Stream lines in real-time
-        def _handle_stdout_line(line: Any) -> None:
-            if isinstance(line, bytes):
-                str_line = line.decode("utf-8", errors="replace")
-            else:
-                str_line = str(line)
+    tmp_output_dir = final_output_dir.with_name(f"{final_output_dir.name}.tmp")
+    if tmp_output_dir.exists():
+        shutil.rmtree(tmp_output_dir, ignore_errors=True)
 
-            stripped = str_line.strip()
-            if stripped.startswith("{") and stripped.endswith("}"):
-                try:
-                    event = json.loads(stripped)
-                    if isinstance(event, dict) and event.get("kind") in ("grid", "resample", "mcmc", "fit"):
-                        _dispatch_progress_event(event)
-                        return
-                except Exception:
-                    pass
-            if log_fp:
-                log_fp.write(str_line)
-                log_fp.flush()
-            else:
-                logger.debug(f"[{container_name}] {stripped}")
+    # Make staging output path relative to target_dir for the spec
+    try:
+        staging_rel = tmp_output_dir.relative_to(target_dir).as_posix()
+    except ValueError:
+        staging_rel = tmp_output_dir.name
 
-        if process.stdout:
-            if hasattr(process.stdout, "readline"):
-                for line in iter(process.stdout.readline, ''):
-                    _handle_stdout_line(line)
-            else:
-                for line in process.stdout:
-                    _handle_stdout_line(line)
+    run_spec = spec.model_copy(deep=True)
+    run_spec.output_dir = staging_rel
 
-        process.wait(timeout=timeout_seconds)
-        return_code = process.returncode
+    # Write job.json into the job directory
+    run_spec.to_file(target_dir / "job.json")
 
-    except subprocess.TimeoutExpired:
-        logger.warning(f"ChemEx run '{container_name}' timed out after {timeout_seconds}s")
-        cancel_chemex_job(job_id)
-        return_code = 124
-        if log_fp:
-            log_fp.write(f"\n[ERROR] Container execution timed out after {timeout_seconds}s\n")
-            log_fp.flush()
+    # 3. Select launcher
+    if launcher_name:
+        launcher = get_launcher(launcher_name)
+    elif use_container is not None:
+        launcher = get_launcher("podman" if use_container else "local")
+    else:
+        launcher = get_launcher()
 
-    except Exception as e:
-        logger.exception(f"Exception during ChemEx run '{container_name}': {e}")
-        cancel_chemex_job(job_id)
-        return_code = 1
-        if log_fp:
-            log_fp.write(f"\n[ERROR] Exception running ChemEx container: {e}\n")
-            log_fp.flush()
+    # Pass image if PodmanLauncher
+    if isinstance(launcher, PodmanLauncher):
+        launcher.image_name = image_name
 
-    finally:
-        if not w_fd_closed:
+    resources = Resources(cpus=cpus, memory=memory_limit, walltime_s=timeout_seconds)
+
+    # 4. Submit job
+    handle = launcher.submit(target_dir, run_spec, resources)
+
+    # Persist launcher_handle to DB if analysis record exists
+    try:
+        from ...database import SessionLocal
+        from ...models import Analysis
+
+        with SessionLocal() as db:
+            analysis = db.query(Analysis).filter_by(analysis_uuid=job_id).first()
+            if analysis:
+                analysis.launcher_handle = handle.to_dict()
+                db.commit()
+    except Exception:
+        pass
+
+    # 5. Wait for job completion with real-time log/progress streaming
+    state = wait_for_job(
+        launcher=launcher,
+        handle=handle,
+        on_progress=progress_callback,
+        log_file=log_file,
+        timeout_seconds=timeout_seconds,
+    )
+
+    # 6. Collect finished job
+    launcher.collect(handle)
+
+    # 7. Atomic promotion or cleanup
+    return_code = 1
+    if state == JobState.DONE:
+        return_code = 0
+        if tmp_output_dir.exists():
             try:
-                os.close(w_fd)
-            except OSError:
-                pass
-        drain_thread.join(timeout=2.0)
-
-        # Write final completion state to progress.json after all stream lines are processed
-        is_terminal = True
-        final_stage = "Completed" if return_code == 0 else ("Cancelled" if return_code in (137, 143) else "Failed")
-        final_prog = {
-            "kind": "completed" if return_code == 0 else ("cancelled" if return_code in (137, 143) else "failed"),
-            "stage": final_stage,
-            "percent": 100.0 if return_code == 0 else 0.0,
-            "message": f"Run {final_stage.lower()}",
-            "updated_at": time.time(),
-        }
-        try:
-            tmp_p = progress_file.with_name(f"{progress_file.name}.tmp")
-            tmp_p.write_text(json.dumps(final_prog), encoding="utf-8")
-            tmp_p.replace(progress_file)
-        except Exception:
-            pass
-
-        if log_fp:
-            log_fp.close()
-
-    # 5. Atomic Promotion or Cleanup
-    if return_code == 0:
-        if tmp_output_dir and tmp_output_dir.exists() and final_output_dir:
-            try:
-                # Remove existing final directory if present
                 if final_output_dir.exists():
                     shutil.rmtree(final_output_dir, ignore_errors=True)
-                # Atomically promote staging directory
                 shutil.move(str(tmp_output_dir), str(final_output_dir))
                 logger.info(f"Atomically promoted {tmp_output_dir} -> {final_output_dir}")
+                # Ensure engine_result.json is also accessible at target_dir / "engine_result.json"
+                eng_res_in_out = final_output_dir / "engine_result.json"
+                eng_res_root = target_dir / "engine_result.json"
+                if eng_res_in_out.exists() and not eng_res_root.exists():
+                    try:
+                        shutil.copy2(eng_res_in_out, eng_res_root)
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.error(f"Failed atomic move of ChemEx output: {e}")
-    else:
-        # On error or cancellation (137/143), remove partial staging directory
-        if tmp_output_dir and tmp_output_dir.exists():
+                return_code = 1
+    elif state == JobState.CANCELLED:
+        return_code = 130
+        proc = handle.metadata.get("proc")
+        if proc is not None and hasattr(proc, "returncode") and isinstance(proc.returncode, int):
+            return_code = proc.returncode
+        result_file = target_dir / "engine_result.json"
+        if result_file.exists():
+            try:
+                data = json.loads(result_file.read_text(encoding="utf-8"))
+                if data.get("exit_code") in (130, 137, 143):
+                    return_code = data["exit_code"]
+            except Exception:
+                pass
+        if tmp_output_dir.exists():
             shutil.rmtree(tmp_output_dir, ignore_errors=True)
-            logger.info(f"Cleaned up staging output directory after non-zero exit ({return_code}): {tmp_output_dir}")
+            logger.info(f"Cleaned up staging output dir after cancellation: {tmp_output_dir}")
+    else:
+        # FAILED or LOST
+        return_code = 1
+        result_file = target_dir / "engine_result.json"
+        if result_file.exists():
+            try:
+                data = json.loads(result_file.read_text(encoding="utf-8"))
+                ec = data.get("exit_code")
+                if ec is not None and ec != 0:
+                    return_code = ec
+            except Exception:
+                pass
+        if tmp_output_dir.exists():
+            shutil.rmtree(tmp_output_dir, ignore_errors=True)
+            logger.info(f"Cleaned up staging output dir after non-zero exit ({return_code}): {tmp_output_dir}")
 
     return return_code

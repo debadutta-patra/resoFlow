@@ -19,6 +19,7 @@ from ...celery_app import celery_app
 from ... import models, database
 from .cest_tasks import _update_experiment_toml_exclusions, _backup_output_directory, _parse_chemex_output
 from .chemex_runner import run_chemex_job, get_chemex_image_info
+from .chemex_jobs import build_fit_spec
 
 logger = logging.getLogger(__name__)
 
@@ -126,37 +127,7 @@ def _setup_cpmg_directory(run_dir: str, config: dict):
     }
 
 
-def _build_cpmg_chemex_command(dirs: dict, config: dict) -> list:
-    """Build the chemex fit command line arguments for CPMG."""
-    cmd = ["fit"]
 
-    # Experiment files
-    experiments_dir = dirs["experiments_dir"]
-    toml_files = [
-        os.path.join(experiments_dir, f)
-        for f in os.listdir(experiments_dir)
-        if f.endswith(".toml")
-    ]
-    if toml_files:
-        cmd.extend(["-e"] + toml_files)
-
-    # Parameter files - only pass parameters.toml to avoid mixing output files
-    parameters_dir = dirs["parameters_dir"]
-    param_path = os.path.join(parameters_dir, "parameters.toml")
-    if os.path.exists(param_path) and os.path.getsize(param_path) > 0:
-        cmd.extend(["-p", param_path])
-
-    # Method files (optional) - only pass method.toml if exists and non-empty
-    methods_dir = dirs["methods_dir"]
-    method_path = os.path.join(methods_dir, "method.toml")
-    if os.path.exists(method_path) and os.path.getsize(method_path) > 0:
-        cmd.extend(["-m", method_path])
-
-    # Kinetic model
-    model = config.get("model", "2st")
-    cmd.extend(["-d", model])
-
-    return cmd
 
 
 @celery_app.task(bind=True)
@@ -245,19 +216,20 @@ def run_cpmg_analysis_task(self, analysis_uuid: str, config: dict):
                 with open(log_path, "a") as log_file:
                     log_file.write(f"\n--- Fitting Residue {idx+1}/{len(residues_to_fit)}: {residue} ---\n")
 
-            cmd = _build_cpmg_chemex_command(dirs, run_config)
-            cmd.extend(["-o", output_dir])
+            run_spec = build_fit_spec(dirs, run_config, job_dir=run_dir)
+            if fit_mode == "individual" and residue:
+                run_spec.output_dir = f"Output/{residue}"
 
-            # Run ChemEx via ephemeral container runner
+            # Run ChemEx via ephemeral container/local runner
             return_code = run_chemex_job(
                 job_id=analysis_uuid,
                 work_dir=run_dir,
-                cmd_args=cmd,
+                spec=run_spec,
                 log_file=log_path,
             )
 
-            # Check for cancellation (SIGKILL=137, SIGTERM=143)
-            if return_code in (137, 143):
+            # Check for cancellation (SIGINT=130, SIGKILL=137, SIGTERM=143)
+            if return_code in (130, 137, 143):
                 logger.info(f"CPMG Analysis {analysis_uuid} was cancelled by user (exit code {return_code})")
                 analysis.status = "CANCELLED"
                 analysis.error_message = "Cancelled by user"

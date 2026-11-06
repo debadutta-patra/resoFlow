@@ -19,6 +19,7 @@ from ...celery_app import celery_app
 from ... import models, database
 from .cest_tasks import _update_experiment_toml_exclusions, _backup_output_directory, _parse_chemex_output
 from .chemex_runner import run_chemex_job, get_chemex_image_info
+from .chemex_jobs import build_fit_spec
 from ..path_utils import to_container_path, resolve_existing_path
 
 logger = logging.getLogger(__name__)
@@ -157,37 +158,7 @@ def _setup_exchange_directory(run_dir: str, config: dict) -> dict:
     }
 
 
-def _build_exchange_chemex_command(dirs: dict, config: dict) -> list:
-    """Build the chemex fit command line arguments identically to CEST and CPMG."""
-    cmd = ["fit"]
 
-    # Experiment files
-    experiments_dir = dirs["experiments_dir"]
-    toml_files = sorted([
-        os.path.join(experiments_dir, f)
-        for f in os.listdir(experiments_dir)
-        if f.endswith(".toml")
-    ])
-    if toml_files:
-        cmd.extend(["-e"] + toml_files)
-
-    # Parameter files - only pass parameters.toml to avoid mixing output files
-    parameters_dir = dirs["parameters_dir"]
-    param_path = os.path.join(parameters_dir, "parameters.toml")
-    if os.path.exists(param_path) and os.path.getsize(param_path) > 0:
-        cmd.extend(["-p", param_path])
-
-    # Method files (optional) - only pass method.toml if exists and non-empty
-    methods_dir = dirs["methods_dir"]
-    method_path = os.path.join(methods_dir, "method.toml")
-    if os.path.exists(method_path) and os.path.getsize(method_path) > 0:
-        cmd.extend(["-m", method_path])
-
-    # Kinetic model
-    model = config.get("model", "2st")
-    cmd.extend(["-d", model])
-
-    return cmd
 
 
 @celery_app.task(bind=True)
@@ -248,18 +219,17 @@ def run_exchange_analysis_task(self, analysis_uuid: str, config: dict):
                 log_file.write(f"ChemEx Version: {analysis.chemex_version}\n")
             log_file.write("=" * 60 + "\n\n")
 
-        cmd = _build_exchange_chemex_command(dirs, config)
-        cmd.extend(["-o", dirs["output_dir"]])
+        spec = build_fit_spec(dirs, config, job_dir=run_dir)
 
         return_code = run_chemex_job(
             job_id=analysis_uuid,
             work_dir=run_dir,
-            cmd_args=cmd,
+            spec=spec,
             log_file=log_path,
         )
 
         db.refresh(analysis)
-        if return_code in (137, 143) or analysis.cancel_requested:
+        if return_code in (130, 137, 143) or analysis.cancel_requested:
             logger.info(f"Exchange Analysis {analysis_uuid} was cancelled by user (exit code {return_code})")
             analysis.status = "CANCELLED"
             analysis.error_message = "Cancelled by user"

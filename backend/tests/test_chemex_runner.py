@@ -1,5 +1,6 @@
 """Unit tests for ChemEx ephemeral per-job container runner."""
 
+import json
 import os
 import shutil
 import tempfile
@@ -243,3 +244,212 @@ def test_is_chemex_container_running_podman3_socket_fallback():
         assert mock_sock.call_args_list[1][0][1].startswith("/v3.0.0/libpod/")
 
     runner._DETECTED_API_PREFIX = None
+
+
+import time
+from app.services.fitting.chemex_jobs import build_fit_spec
+from app.services.fitting.launchers import (
+    JobHandle,
+    JobState,
+    Launcher,
+    LocalLauncher,
+    PodmanLauncher,
+    Resources,
+    get_launcher,
+    wait_for_job,
+)
+from resoflow.chemex_api.spec import FitJobSpec
+
+
+class FakeLauncher:
+    name = "fake"
+
+    def __init__(self, states=None):
+        self.states = list(states) if states else [JobState.DONE]
+        self.cancel_called = False
+
+    def submit(self, job_dir: Path, spec: FitJobSpec, resources: Resources) -> JobHandle:
+        return JobHandle(launcher=self.name, id="fake-1", job_dir=str(job_dir))
+
+    def poll(self, handle: JobHandle) -> JobState:
+        if len(self.states) > 1:
+            return self.states.pop(0)
+        return self.states[0]
+
+    def cancel(self, handle: JobHandle) -> None:
+        self.cancel_called = True
+
+    def collect(self, handle: JobHandle) -> Path:
+        return Path(handle.job_dir)
+
+
+def test_job_handle_serialization():
+    handle = JobHandle(
+        launcher="podman",
+        id="rf-chemex-123",
+        job_dir="/tmp/job",
+        metadata={"pid": 42},
+    )
+    d = handle.to_dict()
+    assert d == {
+        "launcher": "podman",
+        "id": "rf-chemex-123",
+        "job_dir": "/tmp/job",
+        "metadata": {"pid": 42},
+    }
+    reconstituted = JobHandle.from_dict(d)
+    assert reconstituted.launcher == handle.launcher
+    assert reconstituted.id == handle.id
+    assert reconstituted.job_dir == handle.job_dir
+    assert reconstituted.metadata == handle.metadata
+
+
+def test_wait_for_job_progress_and_logs():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        job_dir = Path(temp_dir)
+        progress_jsonl = job_dir / "progress.jsonl"
+        engine_log = job_dir / "engine.log"
+        log_file = job_dir / "chemex.log"
+
+        # Write progress events and log output
+        progress_jsonl.write_text(
+            '{"kind": "fit", "iteration": 1, "chisqr": 100.0, "redchi": 1.5}\n'
+            '{"kind": "mcmc", "done": 10, "total": 20}\n'
+        )
+        engine_log.write_text("Starting fit step 1\nOptimizing parameters\n")
+
+        events = []
+        fake = FakeLauncher([JobState.RUNNING, JobState.DONE])
+        handle = JobHandle(launcher="fake", id="f1", job_dir=str(job_dir))
+
+        state = wait_for_job(
+            launcher=fake,
+            handle=handle,
+            on_progress=lambda ev: events.append(ev),
+            log_file=log_file,
+            poll_interval=0.01,
+        )
+
+        assert state == JobState.DONE
+        assert len(events) == 2
+        assert events[0]["kind"] == "fit"
+        assert events[1]["kind"] == "mcmc"
+
+        assert (job_dir / "progress.json").exists()
+        assert log_file.exists()
+        assert "Starting fit step 1" in log_file.read_text()
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_wait_for_job_stale_heartbeat_lost():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        job_dir = Path(temp_dir)
+        heartbeat_file = job_dir / "heartbeat"
+        heartbeat_file.write_text("1")
+        # Set heartbeat mtime to 100 seconds in the past
+        past_time = time.time() - 100
+        os.utime(heartbeat_file, (past_time, past_time))
+
+        fake = FakeLauncher([JobState.RUNNING])
+        handle = JobHandle(launcher="fake", id="f2", job_dir=str(job_dir))
+
+        state = wait_for_job(
+            launcher=fake,
+            handle=handle,
+            poll_interval=0.01,
+            stale_heartbeat_timeout=1.0,
+        )
+
+        assert state == JobState.LOST
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_wait_for_job_timeout():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        job_dir = Path(temp_dir)
+        fake = FakeLauncher([JobState.RUNNING])
+        handle = JobHandle(launcher="fake", id="f3", job_dir=str(job_dir))
+
+        state = wait_for_job(
+            launcher=fake,
+            handle=handle,
+            poll_interval=0.01,
+            timeout_seconds=0.1,
+        )
+
+        assert state == JobState.CANCELLED
+        assert fake.cancel_called is True
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_get_launcher_factory():
+    with patch.dict(os.environ, {"RESOFLOW_LAUNCHER": "local"}, clear=True):
+        l = get_launcher()
+        assert isinstance(l, LocalLauncher)
+
+    with patch.dict(os.environ, {"RESOFLOW_LAUNCHER": "podman"}, clear=True):
+        l = get_launcher()
+        assert isinstance(l, PodmanLauncher)
+
+    with patch.dict(os.environ, {"RESOFLOW_LAUNCHER": "slurm"}, clear=True):
+        from app.services.fitting.launchers import SlurmLauncher
+        l = get_launcher()
+        assert isinstance(l, SlurmLauncher)
+
+
+def test_run_chemex_job_e2e_local():
+    """Verify run_chemex_job executes an actual fit end-to-end via LocalLauncher."""
+    fixture_inputs = Path(__file__).parent / "fixtures" / "baselines" / "2026.6.1" / "cpmg_15n_ip" / "inputs"
+    if not fixture_inputs.exists():
+        pytest.skip("Baseline fixture inputs not found")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir)
+        # Copy input tree into job_dir
+        shutil.copytree(fixture_inputs, job_dir, dirs_exist_ok=True)
+
+        dirs = {
+            "experiments_dir": job_dir / "Experiments",
+            "parameters_dir": job_dir / "Parameters",
+            "methods_dir": job_dir / "Methods",
+            "output_dir": job_dir / "Output",
+        }
+        config = {
+            "analysis_uuid": "e2e-local-test",
+            "model": "2st",
+            "include": ["15N"],  # Restrict to 1 residue for fast execution
+        }
+
+        spec = build_fit_spec(dirs, config, job_dir=job_dir)
+        log_file = job_dir / "chemex.log"
+
+        events = []
+        rc = run_chemex_job(
+            job_id="e2e-local-test",
+            work_dir=job_dir,
+            spec=spec,
+            log_file=log_file,
+            launcher_name="local",
+            progress_callback=lambda ev: events.append(ev),
+        )
+
+        assert rc == 0
+        final_output = job_dir / "Output"
+        assert final_output.exists()
+        assert not (job_dir / "Output.tmp").exists()
+        assert (final_output / "STEP1" / "Parameters" / "fitted.toml").exists()
+        assert (final_output / "run_info" / "outcome.toml").exists()
+        assert (job_dir / "engine_result.json").exists()
+        result_data = json.loads((job_dir / "engine_result.json").read_text(encoding="utf-8"))
+        assert result_data["status"] == "complete"
+        assert result_data["exit_code"] == 0
+        assert len(events) >= 1
+        assert log_file.exists()
+
+
