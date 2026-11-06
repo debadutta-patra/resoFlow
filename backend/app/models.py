@@ -192,7 +192,12 @@ class Analysis(Base):
         if self.results_path and os.path.exists(self.results_path.replace(".json", "_bak.json")):
             return True
         if self.project and self.project.local_directory_path:
-            dir_name = "cpmg_fitting" if self.analysis_type == "CPMG" else "cest_fitting"
+            if self.analysis_type == "CPMG":
+                dir_name = "cpmg_fitting"
+            elif self.analysis_type == "EXCHANGE":
+                dir_name = "exchange_fitting"
+            else:
+                dir_name = "cest_fitting"
             output_bak = os.path.join(self.project.local_directory_path, dir_name, self.analysis_uuid, "Output_bak")
             return os.path.exists(output_bak)
         return False

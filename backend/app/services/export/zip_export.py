@@ -172,7 +172,12 @@ def build_parameters_csv(resolver: UncertaintyResolver) -> str:
     # Residues
     if resolver.primary_step:
         for res_name in sorted(resolver.primary_step.residues.keys()):
-            for p_name in ["cs_a", "cs_b", "dw_ab", "r1_a", "r2_a", "r2_b"]:
+            res_obj = resolver.primary_step.residues[res_name]
+            p_names = ["cs_a", "cs_b", "dw_ab", "r1_a", "r2_a", "r2_b"]
+            if getattr(res_obj, "parameters", None):
+                p_names = sorted(list(res_obj.parameters.keys()))
+                
+            for p_name in p_names:
                 res = resolver.resolve(p_name, res_name)
                 if res.status != ParameterStatus.NOT_IN_MODEL:
                     writer.writerow([

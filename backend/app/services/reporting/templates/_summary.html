@@ -7,6 +7,10 @@
   <h1>{{ model.analysis_type }} Relaxation Analysis Report</h1>
   {% elif model.analysis_type == 'CPMG' %}
   <h1>CPMG Relaxation Dispersion Analysis Report</h1>
+  {% elif model.analysis_type in ['CEST', '15N-CEST'] %}
+  <h1>CEST Analysis Report</h1>
+  {% elif model.analysis_type == 'EXCHANGE' %}
+  <h1>Exchange (CEST + CPMG) Analysis Report</h1>
   {% else %}
   {% if is_spectral_density is defined and is_spectral_density %}
   <h1>Reduced Spectral Density Mapping Report</h1>

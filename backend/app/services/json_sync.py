@@ -275,6 +275,7 @@ def load_project_from_json(directory_path: str) -> Dict[str, Any]:
     type_folders = [
         ("cest_fitting", "15N-CEST"),
         ("cpmg_fitting", "CPMG"),
+        ("exchange_fitting", "EXCHANGE"),
         ("r1_fitting", "R1"),
         ("r2_fitting", "R2"),
     ]

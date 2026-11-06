@@ -208,3 +208,57 @@ def test_grid_1d_profile_plot_svg():
     assert isinstance(svg, str)
     assert svg.startswith("<svg")
     assert "</svg>" in svg
+
+
+def test_exchange_dispersion_curve_and_detailed_plot():
+    rec = {
+        "display_name": "14N",
+        "dw": MockParam(2.5),
+        "csa": MockParam(118.5),
+        "csb": MockParam(121.0),
+        "experiments": [
+            {
+                "b1_label": "28.2 Hz",
+                "experiment_type": "cest",
+                "exp_points": {
+                    "x": [115.0, 118.5, 121.0, 125.0],
+                    "y": [0.98, 0.35, 0.75, 0.99],
+                    "y_err": [0.02, 0.02, 0.02, 0.02],
+                },
+                "fit_curve": {
+                    "x": [115.0, 118.5, 121.0, 125.0],
+                    "y": [0.98, 0.35, 0.75, 0.99],
+                },
+            },
+            {
+                "b1_label": "cpmg_600MHz_spec_8",
+                "experiment_type": "cpmg",
+                "exp_points": {
+                    "x": [100.0, 200.0, 400.0, 800.0, 1000.0],
+                    "y": [12.0, 11.8, 10.5, 9.8, 9.2],
+                    "y_err": [0.3, 0.3, 0.3, 0.3, 0.3],
+                },
+                "fit_curve": {
+                    "x": [100.0, 200.0, 400.0, 800.0, 1000.0],
+                    "y": [12.0, 11.8, 10.5, 9.8, 9.2],
+                },
+            },
+        ],
+    }
+
+    # Compact dispersion curve for EXCHANGE produces side-by-side subplots
+    compact_svg = dispersion_curve(rec, analysis_type="EXCHANGE", compact=True)
+    assert isinstance(compact_svg, str)
+    assert compact_svg.startswith("<svg")
+    assert 'id="axes_1"' in compact_svg
+    assert 'id="axes_2"' in compact_svg
+
+    # Detailed plot for EXCHANGE produces a 2x2 grid (CEST profile+residuals, CPMG dispersion+residuals)
+    detailed_svg = detailed_residue_plot(rec, analysis_type="EXCHANGE")
+    assert isinstance(detailed_svg, str)
+    assert detailed_svg.startswith("<svg")
+    assert 'id="axes_1"' in detailed_svg
+    assert 'id="axes_2"' in detailed_svg
+    assert 'id="axes_3"' in detailed_svg
+    assert 'id="axes_4"' in detailed_svg
+

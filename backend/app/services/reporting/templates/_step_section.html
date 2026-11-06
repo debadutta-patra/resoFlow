@@ -125,9 +125,9 @@
 {% if step.profile_curves %}
 <div class="page-break"></div>
 <h2>Step Dispersion Profiles ({{ step.name }})</h2>
-<div class="curve-grid">
+<div class="profile-grid">
   {% for curve in step.profile_curves %}
-  <div class="curve-card" id="{{ curve.anchor }}">
+  <div class="{% if model.analysis_type == 'EXCHANGE' %}profile-card-full{% else %}profile-card{% endif %}" id="{{ curve.anchor }}">
     <div class="card-title">{{ curve.display_name }}</div>
     {{ curve.svg|safe }}
   </div>

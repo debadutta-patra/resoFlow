@@ -1,4 +1,6 @@
+
 from __future__ import annotations
+from ..services.fitting.experiments.cpmg_builder import build_cpmg_experiment
 
 import os
 import json
@@ -72,24 +74,12 @@ def generate_cpmg_files(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(security.get_current_user),
 ):
-    """
-    Generate CPMG data files and experiment TOMLs for selected spectra.
-    """
+    if analysis.analysis_type != "CPMG":
+        raise HTTPException(status_code=400, detail="Only for CPMG analyses")
+
     spectrum_ids = request.get("spectrum_ids", [])
     if not spectrum_ids:
         raise HTTPException(status_code=400, detail="No spectra selected")
-
-    selected_module = request.get("selected_module", "cpmg_15n_ip")
-    meta = MODULE_METADATA.get(selected_module, {})
-    spin_fmt = meta.get("spin_system_format", "single_15n")
-    xi_ratio = meta.get("xi_ratio", 0.101329118)
-
-    time_t2_req = float(request.get("time_t2", 0.04))
-    carrier_req = float(request.get("carrier", meta.get("default_carrier", 117.0)))
-    pw90_req = float(request.get("pw90", 35.0e-6))
-    data_error = request.get("data_error", "duplicates")
-    use_height = request.get("use_height", True)
-    excluded_residues = set(request.get("excluded_residues", []))
 
     project = analysis.project
     run_dir = os.path.join(project.local_directory_path, "cpmg_fitting", analysis.analysis_uuid)
@@ -98,335 +88,121 @@ def generate_cpmg_files(
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(experiments_dir, exist_ok=True)
 
-    # Purge old .dat and .toml files to avoid lingering duplicate or legacy entries
-    for f in os.listdir(data_dir):
-        if f.endswith(".dat"):
-            try:
-                os.remove(os.path.join(data_dir, f))
-            except Exception:
-                pass
-    for f in os.listdir(experiments_dir):
-        if f.endswith(".toml"):
-            try:
-                os.remove(os.path.join(experiments_dir, f))
-            except Exception:
-                pass
-
     spectra = db.query(models.Spectrum).filter(models.Spectrum.id.in_(spectrum_ids)).all()
     if not spectra:
-        raise HTTPException(status_code=404, detail="Spectra not found")
+        raise HTTPException(status_code=404, detail="No spectra found")
 
-    val_field = "height" if use_height else "amp"
-    err_field = "height_err" if use_height else "amp_err"
+    config_path = os.path.join(run_dir, "cpmg_config.json")
+    existing_cfg_temp = {}
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                existing_cfg_temp = json.load(f)
+        except Exception:
+            pass
 
-    # Group spectra by static field B0
-    by_b0: Dict[float, List[models.Spectrum]] = {}
-    for s in spectra:
-        b0_val = getattr(s, "b0", None) or 600.0
-        by_b0.setdefault(b0_val, []).append(s)
+    selected_module = request.get("selected_module") or request.get("module_name") or existing_cfg_temp.get("selected_module") or "cpmg_15n_ip"
+    
+    param_cfg_temp = existing_cfg_temp.get("parameter_config") or {}
+    excluded_residues = list(set(
+        request.get("excluded_residues", [])
+        or param_cfg_temp.get("excludedResidues", [])
+        or existing_cfg_temp.get("excluded_residues", [])
+        or []
+    ))
 
-    warnings: List[Dict[str, str]] = []
-    if len(by_b0) < 2:
-        warnings.append({
-            "code": "SINGLE_FIELD",
-            "message": "Only one static field (B0) is selected. CPMG analyses benefit significantly from 2+ fields to break pb-dw correlation.",
-        })
+    block_settings = dict(request)
+    block_settings["module_name"] = selected_module
 
     experiment_tomls = []
-    total_data_files = 0
-    all_profiles_by_res: Dict[str, Dict[str, Any]] = {}
+    all_profiles_by_res = {}
     skipped_reasons = []
 
-    for b0_val, spec_list in by_b0.items():
-        exp_profiles: Dict[str, List[str]] = {}
-
-        for spectrum in spec_list:
-            spec_label = f"Spectrum '{spectrum.name}' (ID: {spectrum.id})"
-            if not spectrum.results_json_path or not os.path.exists(spectrum.results_json_path):
-                skipped_reasons.append(f"{spec_label}: peak fitting results file not found at '{spectrum.results_json_path or ''}'")
-                continue
-
-            try:
-                with open(spectrum.results_json_path, "r") as f:
-                    fit_data = json.load(f)
-            except Exception as e:
-                skipped_reasons.append(f"{spec_label}: failed to parse results JSON ({e})")
-                continue
-
-            t2 = float(getattr(spectrum, "t_relax", None) or time_t2_req)
-            if t2 <= 0:
-                t2 = 0.04
-            carr = float(getattr(spectrum, "carrier", None) or carrier_req)
-
-            # Determine whether we are reading a vclist (cycle counts) or vdlist (frequencies in Hz or delays in s)
-            raw_vals: List[float] = []
-            is_vdlist = False
-            list_path = None
-
-            if spectrum.vdlist_path and os.path.exists(spectrum.vdlist_path):
-                list_path = spectrum.vdlist_path
-                is_vdlist = True
-            elif spectrum.vclist_path and os.path.exists(spectrum.vclist_path):
-                list_path = spectrum.vclist_path
-                if "vdlist" in os.path.basename(list_path).lower():
-                    is_vdlist = True
-
-            if list_path:
-                with open(list_path, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#"):
-                            try:
-                                raw_vals.append(float(line))
-                            except ValueError:
-                                pass
-
-            # Convert raw_vals to ncycs
-            ncycs: List[float] = []
-            if raw_vals:
-                max_val = max(raw_vals)
-                if is_vdlist or max_val > 80.0:
-                    # Treat values as CPMG frequencies (in Hz) or delays (in s)
-                    for v in raw_vals:
-                        if abs(v) < 1e-6:
-                            ncycs.append(0.0)
-                        elif v >= 1.0:
-                            # CPMG frequency in Hz: ncyc = round(nu_cpmg * t2)
-                            ncycs.append(float(round(v * t2)))
-                        else:
-                            # Delay time in seconds: nu_cpmg = 1 / (4 * delay)
-                            nu = 1.0 / (4.0 * v) if v > 0 else 0.0
-                            ncycs.append(float(round(nu * t2)))
-                else:
-                    # Values are already cycle counts
-                    ncycs = [float(round(v)) for v in raw_vals]
-
-            # Extract peak entries supporting both format A (results list) and format B (peak_fits dict)
-            is_1h = any(k in (selected_module or "").lower() for k in ["1h", "hn", "methyl_1h", "ch3"])
-            AA_MAP = {
-                'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D', 'CYS': 'C',
-                'GLU': 'E', 'GLN': 'Q', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
-                'LEU': 'L', 'LYS': 'K', 'MET': 'M', 'PHE': 'F', 'PRO': 'P',
-                'SER': 'S', 'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V'
-            }
-            items_to_process = []
-            if "results" in fit_data and isinstance(fit_data["results"], list):
-                for peak in fit_data["results"]:
-                    ass = peak.get("assignment")
-                    res_num = peak.get("res_num") or peak.get("RES_NUM")
-                    res_name = peak.get("res_name") or peak.get("RES_NAME")
-                    res_raw = ass or f"{res_name or ''}{res_num or ''}"
-                    if not res_raw:
-                        continue
-                    planes = peak.get("planes", [])
-                    if not planes:
-                        planes = [peak]
-                    sorted_planes = sorted(planes, key=lambda p: p.get("plane", 0))
-                    plane_intensities = [float(p.get(val_field, 0.0)) for p in sorted_planes]
-                    plane_errors = [float(p.get(err_field, 0.02 * p.get(val_field, 0.0) if p.get(val_field, 0.0) else 1.0)) for p in sorted_planes]
-                    cs_val = float(peak.get("center_x_ppm" if is_1h else "center_y_ppm") or peak.get("X_PPM" if is_1h else "Y_PPM") or peak.get("cs") or 0.0)
-                    items_to_process.append((res_raw, plane_intensities, plane_errors, cs_val, res_num, res_name))
-            elif "peak_fits" in fit_data and isinstance(fit_data["peak_fits"], dict):
-                for res_raw, p_list in fit_data["peak_fits"].items():
-                    p_entry = p_list[0] if isinstance(p_list, list) and len(p_list) > 0 else {}
-                    plane_vals = p_entry.get("values_by_plane", {})
-                    plane_keys = sorted(plane_vals.keys(), key=lambda k: int(k) if k.isdigit() else k)
-                    plane_intensities = [float(plane_vals[k].get(val_field, 0.0)) for k in plane_keys]
-                    plane_errors = [float(plane_vals[k].get(err_field, 0.02 * plane_vals[k].get(val_field, 0.0) if plane_vals[k].get(val_field, 0.0) else 1.0)) for k in plane_keys]
-                    cs_val = float(p_entry.get("center_x_ppm" if is_1h else "center_y_ppm") or p_entry.get("X_PPM" if is_1h else "Y_PPM") or 0.0)
-                    items_to_process.append((res_raw, plane_intensities, plane_errors, cs_val, None, None))
-
-            max_planes = max((len(p_ints) for _, p_ints, _, _, _, _ in items_to_process), default=0)
-            if len(ncycs) < max_planes:
-                default_ncycs = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 20.0, 24.0, 28.0, 32.0]
-                ncycs = default_ncycs[:max_planes] if max_planes <= len(default_ncycs) else [float(i * 2) for i in range(max_planes)]
-
-            for res_raw, intensities, uncertainties, cs_val, rnum_hint, rname_hint in items_to_process:
-                parsed = SpinSystemKey.parse(res_raw)
-                rnum = parsed.res_num or (int(rnum_hint) if rnum_hint and str(rnum_hint).isdigit() else 0)
-                sym = parsed.symbol or (AA_MAP.get(str(rname_hint).upper(), "") if rname_hint else "")
-
-                if rnum > 0:
-                    if parsed.spins and len(parsed.spins) > 1:
-                        residue_label = parsed.short
-                        full_residue_label = parsed.short
-                    elif is_1h:
-                        residue_label = f"{rnum}HN"
-                        full_residue_label = f"{rnum}HN"
-                    elif "13c" in (selected_module or "").lower():
-                        residue_label = f"{rnum}C"
-                        full_residue_label = f"{rnum}C"
-                    else:
-                        residue_label = f"{rnum}N"
-                        full_residue_label = f"{rnum}N"
-                else:
-                    residue_label = parsed.canonical or res_raw
-                    full_residue_label = residue_label
-
-                spin_key = residue_label
-
-                if res_raw in excluded_residues or spin_key in excluded_residues or full_residue_label in excluded_residues:
-                    continue
-
-                if not intensities or len(intensities) < 2:
-                    continue
-
-                cur_ncycs = ncycs[:len(intensities)]
-                if len(cur_ncycs) < len(intensities):
-                    intensities = intensities[:len(cur_ncycs)]
-                    uncertainties = uncertainties[:len(cur_ncycs)]
-
-                # For RC-CPMG (and other relaxation-compensated modules requiring even ncycs),
-                # automatically filter out odd cycle points
-                is_rc = "rc" in (selected_module or "").lower() or selected_module == "cpmg_15n_rc"
-                if is_rc:
-                    filtered_points = [
-                        (ncyc_v, i_v, e_v)
-                        for ncyc_v, i_v, e_v in zip(cur_ncycs, intensities, uncertainties)
-                        if int(round(ncyc_v)) % 2 == 0
-                    ]
-                    if len(filtered_points) >= 2:
-                        cur_ncycs = [p[0] for p in filtered_points]
-                        intensities = [p[1] for p in filtered_points]
-                        uncertainties = [p[2] for p in filtered_points]
-
-                # Write data file
-                dat_filename = f"{spin_key}_{b0_val:.0f}MHz.dat"
-                dat_path = os.path.join(data_dir, dat_filename)
-
-                with open(dat_path, "w") as f:
-                    f.write("# ncyc    intensity    uncertainty\n")
-                    for ncyc_v, i_v, e_v in zip(cur_ncycs, intensities, uncertainties):
-                        f.write(f"{ncyc_v:8.1f}  {i_v:14.4f}  {e_v:14.4f}\n")
-
-                total_data_files += 1
-                exp_profiles.setdefault(spin_key, []).append(dat_filename)
-
-                # Calculate R2eff & Rex for inspection
-                r2_res = compute_r2eff_profile(cur_ncycs, intensities, uncertainties, t2)
-                rex_res = compute_rex_and_flatness(r2_res["nu_cpmg"], r2_res["r2eff"], r2_res["r2eff_err"])
-
-                all_profiles_by_res.setdefault(spin_key, {
-                    "residue": spin_key,
-                    "full_residue": full_residue_label,
-                    "cs_a": cs_val,
-                    "experiments": [],
-                })
-                if cs_val > 0:
-                    all_profiles_by_res[spin_key]["cs_a"] = cs_val
-                all_profiles_by_res[spin_key]["experiments"].append({
-                    "b0": b0_val,
-                    "time_t2": t2,
-                    "carrier": carr,
-                    "nu_cpmg": r2_res["nu_cpmg"],
-                    "r2eff": r2_res["r2eff"],
-                    "r2eff_err": r2_res["r2eff_err"],
-                    "rex": rex_res["rex"],
-                    "rex_err": rex_res["rex_err"],
-                    "chi2_red": rex_res["chi2_red"],
-                    "is_flat": rex_res["is_flat"],
-                })
-
-        # Write experiment TOML for this B0
-        exp_filename = f"exp_{b0_val:.0f}MHz.toml"
+    for spectrum in spectra:
+        b0_val = getattr(spectrum, "b0", None)
+        if b0_val is None:
+            skipped_reasons.append(f"Spectrum '{spectrum.name}' missing B0")
+            continue
+            
+        exp_filename = f"exp_{b0_val:.0f}MHz_{spectrum.id}.toml"
         exp_path = os.path.join(experiments_dir, exp_filename)
+        
+        try:
+            gen_exp = build_cpmg_experiment(
+                block_settings=block_settings,
+                spectrum=spectrum,
+                out_data_dir=data_dir,
+                toml_path=exp_path,
+                include=[],
+                exclude=excluded_residues
+            )
+            
+            experiment_tomls.append({
+                "b0": b0_val,
+                "path": exp_path,
+                "filename": exp_filename,
+                "profiles_count": len(gen_exp.written_data_files),
+                "toml_content": gen_exp.toml_content,
+                "spectrum_id": spectrum.id,
+            })
+            
+            for prof in gen_exp.inspection_profiles:
+                res_lbl = prof["residue"]
+                if res_lbl not in all_profiles_by_res:
+                    all_profiles_by_res[res_lbl] = {
+                        "residue": res_lbl,
+                        "full_residue": prof["full_residue"],
+                        "cs_a": prof["cs_a"],
+                        "experiments": [],
+                    }
+                all_profiles_by_res[res_lbl]["experiments"].extend(prof["experiments"])
+                if prof["cs_a"] > 0:
+                    all_profiles_by_res[res_lbl]["cs_a"] = prof["cs_a"]
+                    
+        except ValueError as e:
+            skipped_reasons.append(str(e))
 
-        lines = [
-            "[experiment]",
-            f'name = "{selected_module}"',
-            f"time_t2 = {time_t2_req}",
-        ]
-        if selected_module != "cpmg_ch3_mq":
-            if "carrier_h" in meta.get("flags", []) or "carrier_h" in request:
-                lines.append(f'carrier_h = {request.get("carrier_h", 8.5)}')
-                lines.append(f'carrier_n = {request.get("carrier_n", 117.0)}')
-                lines.append(f'pw90_h = {request.get("pw90_h", 10.0e-6)}')
-                lines.append(f'pw90_n = {request.get("pw90_n", 35.0e-6)}')
-            else:
-                lines.append(f"carrier = {carrier_req}")
-                lines.append(f"pw90 = {pw90_req}")
-
-        # Module-specific options
-        if selected_module == "cpmg_15n_rc" or "taub" in request:
-            taub_val = request.get("taub", 2.68e-3)
-            lines.append(f"taub = {float(taub_val)}")
-        if "antitrosy" in request and request.get("antitrosy"):
-            lines.append(f"antitrosy = {str(request['antitrosy']).lower()}")
-        if "t_zeta" in request:
-            lines.append(f"t_zeta = {request['t_zeta']}")
-        if "small_protein" in request and request.get("small_protein"):
-            lines.append(f"small_protein = {str(request['small_protein']).lower()}")
-        if selected_module == "cpmg_15n_rc" or "0013" in selected_module or "ncyc_max" in request:
-            is_rc = "rc" in (selected_module or "").lower() or selected_module == "cpmg_15n_rc"
-            even_ncycs = [c for c in ncycs if (int(round(c)) % 2 == 0 if is_rc else True)]
-            max_c = max(even_ncycs) if even_ncycs and max(even_ncycs) > 0 else 20
-            ncyc_val = request.get("ncyc_max") or max_c
-            lines.append(f"ncyc_max = {int(ncyc_val)}")
-        if "dq_flg" in request and request.get("dq_flg"):
-            lines.append(f"dq_flg = {str(request['dq_flg']).lower()}")
-
-        lines.extend([
-            "",
-            "[conditions]",
-            f"h_larmor_frq = {b0_val}",
-            "",
-            "[data]",
-            'path = "../data"',
-            f'error = "{data_error}"',
-            "[data.profiles]",
-        ])
-        for s_key, f_list in sorted(exp_profiles.items()):
-            files_str = ", ".join(f'"{fn}"' for fn in f_list)
-            lines.append(f'"{s_key}" = [{files_str}]')
-
-        toml_content_str = "\n".join(lines) + "\n"
-        with open(exp_path, "w") as f:
-            f.write(toml_content_str)
-
-        experiment_tomls.append({
-            "b0": b0_val,
-            "path": exp_path,
-            "filename": exp_filename,
-            "profiles_count": len(exp_profiles),
-            "toml_content": toml_content_str,
-        })
-
-    if total_data_files == 0 or len(experiment_tomls) == 0:
-        error_detail = "Failed to generate CPMG data files. " + "; ".join(skipped_reasons) if skipped_reasons else "No valid peaks or profiles found in the selected CPMG spectra."
+    if not experiment_tomls:
+        error_detail = "Failed to generate CPMG files. " + " ".join(skipped_reasons)
         raise HTTPException(status_code=400, detail=error_detail)
 
-    # Prepare profiles list with estimated dw seeds
     profiles_list = list(all_profiles_by_res.values())
     for prof in profiles_list:
-        max_rex = max((e["rex"] for e in prof["experiments"]), default=0.0)
+        max_rex = max((e.get("rex", 0.0) for e in prof["experiments"]), default=0.0)
         prof["overall_rex"] = max_rex
+        
+        # Calculate estimated_dw using the first valid b0
+        b0_mhz = prof["experiments"][0]["b0"] if prof["experiments"] else 600.0
+        
+        # Get xi_ratio
+        from ..services.fitting.chemex_registry import MODULE_METADATA
+        meta = MODULE_METADATA.get(selected_module, {})
+        xi_ratio = meta.get("xi_ratio", 0.101329118)
+        
+        from ..services.fitting.cpmg_reduction import estimate_delta_omega_fast_exchange
         prof["estimated_dw"] = estimate_delta_omega_fast_exchange(
             rex=max_rex,
             kex=500.0,
             pb=0.05,
-            b0_mhz=prof["experiments"][0]["b0"] if prof["experiments"] else 600.0,
+            b0_mhz=b0_mhz,
             xi_ratio=xi_ratio,
         )
 
-    # Save cpmg_config.json
-    cpmg_cfg = {
+    existing_cfg_temp.update({
         "experiments": experiment_tomls,
         "profiles": profiles_list,
         "selected_module": selected_module,
-        "time_t2": time_t2_req,
-        "carrier": carrier_req,
-        "pw90": pw90_req,
-        "data_error": data_error,
-        "use_height": use_height,
-        "excluded_residues": list(excluded_residues),
-        "total_data_files": total_data_files,
-        "experiments_dir": experiments_dir,
-        "data_dir": data_dir,
-        "residue_mapping": {p["residue"]: p.get("full_residue", p["residue"]) for p in profiles_list},
-    }
-    config_path = os.path.join(run_dir, "cpmg_config.json")
+        "time_t2": request.get("time_t2", 0.04),
+        "carrier": request.get("carrier", 117.0),
+        "pw90": request.get("pw90", 35.0e-6),
+        "data_error": request.get("data_error", "duplicates"),
+        "generated_files": len(experiment_tomls),
+        "spectrum_ids": spectrum_ids,
+    })
+
     with open(config_path, "w") as f:
-        json.dump(cpmg_cfg, f, indent=2)
+        json.dump(existing_cfg_temp, f, indent=2)
+
 
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params["cpmg_config_path"] = config_path
@@ -435,13 +211,12 @@ def generate_cpmg_files(
 
     return {
         "status": "success",
-        "total_data_files": total_data_files,
+        "total_data_files": sum([e.get("profiles_count", 0) for e in experiment_tomls]),
         "experiments": experiment_tomls,
         "profiles": profiles_list,
         "residue_mapping": {p["residue"]: p.get("full_residue", p["residue"]) for p in profiles_list},
-        "warnings": warnings,
+        "warnings": [],
     }
-
 
 
 @router.get("/{analysis_uuid}/cpmg/profiles")

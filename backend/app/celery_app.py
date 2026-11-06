@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.services.fitting.relaxation_tasks",
         "app.services.fitting.cest_tasks",
         "app.services.fitting.cpmg_tasks",
+        "app.services.fitting.exchange_tasks",
         "app.services.reporting.tasks",
     ]  # Ensure tasks are discovered
 )
@@ -36,6 +37,7 @@ celery_app.conf.update(
 celery_app.conf.task_routes = {
     "app.services.fitting.cest_tasks.run_cest_analysis_task": {"queue": "chemex"},
     "app.services.fitting.cpmg_tasks.run_cpmg_analysis_task": {"queue": "chemex"},
+    "app.services.fitting.exchange_tasks.run_exchange_analysis_task": {"queue": "chemex"},
     "app.services.fitting.service.fit_cluster_task": {"queue": "peakfit"},
     "app.services.fitting.service.compile_results_task": {"queue": "peakfit"},
     "app.services.fitting.relaxation_tasks.run_relaxation_analysis_task": {"queue": "stats"},
