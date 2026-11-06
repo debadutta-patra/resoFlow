@@ -42,7 +42,7 @@ def run_fit(
     plan = None
 
     try:
-        with hook_cm:
+        with hook_cm, contextlib.chdir(base_dir):
             session, experiments, plan, args_ns, input_files, equivalent_argv = build_session(
                 spec, job_dir=base_dir, command="fit"
             )

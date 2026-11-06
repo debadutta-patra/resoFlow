@@ -12,6 +12,7 @@ from typing import Any
 
 from resoflow.chemex_api.compat import check_version, normalize_version, verify_hooks
 from resoflow.chemex_api.fit import run_fit
+from resoflow.chemex_api.plugins import registered_plugins
 from resoflow.chemex_api.progress import ProgressFileLogger, start_heartbeat
 from resoflow.chemex_api.results import EngineErrorInfo, EngineResult, write_engine_result
 from resoflow.chemex_api.session import validate_inputs
@@ -44,7 +45,7 @@ def cmd_version(args: argparse.Namespace) -> int:
     payload = {
         "chemex_version": ver,
         "engine_version": "1.0.0",
-        "plugins": [],
+        "plugins": registered_plugins(),
         "hooks_ok": hooks_ok,
     }
     print(json.dumps(payload, indent=2))

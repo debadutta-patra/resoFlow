@@ -19,6 +19,8 @@ CHEMEX_ERROR: Optional[str] = None
 
 try:
     ensure_plugins_registered()
+    from resoflow.chemex_api.plugins import ensure_registered
+    ensure_registered()
     CHEMEX_AVAILABLE = True
 except Exception as exc:
     logger.exception("Failed to initialize ChemEx experiment registry")

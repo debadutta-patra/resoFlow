@@ -12,14 +12,14 @@ from chemex.configuration.data import RelaxationDataSettings
 from chemex.configuration.experiment import CpmgSettingsEvenNcycs
 from chemex.configuration.types import ChemicalShift, Delay, PulseWidth
 from chemex.containers.data import Data
-from chemex.containers.dataset import load_relaxation_dataset
-from chemex.experiments.factories import Creators, factories
-from chemex.filterers import PlanesFilterer
+from chemex.experiments.experiment_types import (
+    ProfileCalculation,
+    cpmg_type,
+    register_experiment_type,
+)
 from chemex.nmr.basis import Basis
 from chemex.nmr.spectrometer import Spectrometer
 from chemex.parameters.spin_system import SpinSystem
-from chemex.plotters.cpmg import CpmgPlotter
-from chemex.printers.data import CpmgPrinter
 from chemex.typing import Array
 
 EXPERIMENT_NAME = "cpmg_15n_rc"
@@ -77,15 +77,8 @@ class Cpmg15NRcSettings(CpmgSettingsEvenNcycs):
 
     @property
     def primary_observed_state(self) -> str:
-        """First observed state.
-
-        Written without the `suffix_detect` / `get_detection_expression`
-        helpers so that the module works both before and after the multi-state
-        detection refactor: `observed_state` is a plain string in older ChemEx
-        releases and may be a tuple of states in newer ones.
-        """
-        state = self.observed_state
-        return state if isinstance(state, str) else state[0]
+        """First observed state."""
+        return self.primary_state
 
     @computed_field
     @property
@@ -102,7 +95,7 @@ class Cpmg15NRcSettings(CpmgSettingsEvenNcycs):
     @property
     def detection(self) -> str:
         """The final 15N 90-degree pulse stores in-phase magnetization along z."""
-        return f"[iz_{self.primary_observed_state}]"
+        return self.get_detection_expression("[iz]")
 
 
 class Cpmg15NRcConfig(
@@ -114,7 +107,7 @@ class Cpmg15NRcConfig(
 ):
     @property
     def to_be_fitted(self) -> ToBeFitted:
-        state = self.experiment.primary_observed_state
+        state = self.experiment.primary_state
         return ToBeFitted(rates=[f"r2_i_{state}"], model_free=[f"tauc_{state}"])
 
 
@@ -252,14 +245,21 @@ def _element(echoes: list[Array], phases: tuple[int, ...]) -> Array:
     return propagator
 
 
-def register() -> None:
-    creators = Creators(
-        config_creator=Cpmg15NRcConfig,
-        spectrometer_creator=build_spectrometer,
-        sequence_creator=Cpmg15NRcSequence,
-        dataset_creator=load_relaxation_dataset,
-        filterer_creator=PlanesFilterer,
-        printer_creator=CpmgPrinter,
-        plotter_creator=CpmgPlotter,
+def create_profile_calculation(
+    config: Cpmg15NRcConfig,
+    spin_system: SpinSystem,
+) -> ProfileCalculation:
+    return ProfileCalculation(
+        spectrometer=build_spectrometer(config, spin_system),
+        pulse_sequence=Cpmg15NRcSequence(config.experiment),
     )
-    factories.register(name=EXPERIMENT_NAME, creators=creators)
+
+
+EXPERIMENT_TYPE = cpmg_type(
+    name=EXPERIMENT_NAME,
+    config_type=Cpmg15NRcConfig,
+)(create_profile_calculation)
+
+
+def register() -> None:
+    register_experiment_type(EXPERIMENT_TYPE)

@@ -6,7 +6,6 @@ LABEL io.resoflow.managed="true" \
       io.resoflow.component="chemex-builder"
 WORKDIR /app
 RUN uv venv /app/.venv && uv pip install --no-cache "chemex==2026.9.2"
-COPY containers/chemex_catalog/ /app/.venv/lib/python3.13/site-packages/chemex/experiments/catalog/
 
 FROM ${PYTHON_IMAGE} AS runtime
 LABEL io.resoflow.managed="true" \

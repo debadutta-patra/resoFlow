@@ -18,7 +18,7 @@ from .errors import (
     NoDataError,
 )
 from .fit import run_fit
-from .plugins import ensure_registered
+from .plugins import ensure_registered, registered_plugins
 from .results import EngineErrorInfo, EngineResult, EngineStepInfo, write_engine_result
 from .session import build_session, inspect_parameters, validate_inputs
 from .simulate import run_simulation
@@ -37,7 +37,7 @@ def chemex_info() -> dict[str, Any]:
     return {
         "chemex_version": version,
         "engine_version": "1.0.0",
-        "plugins": [],
+        "plugins": registered_plugins(),
         "hooks_ok": hooks_valid,
     }
 
@@ -62,6 +62,7 @@ __all__ = [
     "chemex_info",
     "ensure_registered",
     "inspect_parameters",
+    "registered_plugins",
     "run_fit",
     "run_simulation",
     "validate_inputs",

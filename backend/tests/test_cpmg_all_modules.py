@@ -2,8 +2,10 @@ import tomllib
 import pytest
 from chemex.runtime.session import ensure_plugins_registered
 from chemex.experiments.experiment_types import registered_experiment_types
+from resoflow.chemex_api.plugins import ensure_registered
 
 ensure_plugins_registered()
+ensure_registered()
 
 CPMG_MODULE_CONFIGS = [
     ("cpmg_15n_ip", """
@@ -331,8 +333,6 @@ error = "duplicates"
 @pytest.mark.parametrize("module_name, toml_str", CPMG_MODULE_CONFIGS)
 def test_cpmg_module_toml_validation(module_name: str, toml_str: str):
     exp_types = registered_experiment_types()
-    if module_name == "cpmg_15n_rc" and module_name not in exp_types:
-        pytest.skip("cpmg_15n_rc custom plugin ported in Phase 3")
     creator = exp_types.get(module_name)
     assert creator is not None, f"Module {module_name} must exist in ChemEx registry"
     cfg_cls = creator.config_type

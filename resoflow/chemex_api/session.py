@@ -49,92 +49,96 @@ def build_session(
     command: Literal["fit", "simulate"] = "fit",
 ) -> tuple[AnalysisSession, Experiments, MethodPlan | None, Namespace, Sequence[InputFile], list[str]]:
     """Prepare AnalysisSession, Experiments, MethodPlan, and Namespace according to steps 1-9 of the fidelity contract."""
-    # Step 1: Ensure plugins are registered
-    ensure_plugins_registered()
-    ensure_resoflow_plugins_registered()
+    target_base = Path(job_dir).resolve() if job_dir is not None else Path.cwd()
+    with contextlib.chdir(target_base):
+        # Step 1: Ensure plugins are registered
+        ensure_plugins_registered()
+        ensure_resoflow_plugins_registered()
 
-    # Step 2: Create AnalysisSession
-    session = AnalysisSession.create()
+        # Step 2: Create AnalysisSession
+        session = AnalysisSession.create()
 
-    # Step 3: Configure execution settings and thread environment
-    session.execution = ExecutionSettings.from_counts(
-        workers=spec.execution.workers,
-        native_threads=spec.execution.native_threads,
-    )
-    os.environ.update(session.execution.native_thread_env())
+        # Step 3: Configure execution settings and thread environment
+        session.execution = ExecutionSettings.from_counts(
+            workers=spec.execution.workers,
+            native_threads=spec.execution.native_threads,
+        )
+        os.environ.update(session.execution.native_thread_env())
 
-    # Step 4: Handle parameter overrides and build CLI Namespace
-    overrides_relpath: str | None = None
-    if spec.overrides:
-        overrides_content = spec.render_overrides_toml()
-        if overrides_content:
-            target_base = job_dir if job_dir is not None else Path(".")
-            param_dir = target_base / "Parameters"
-            if param_dir.exists():
-                ov_file = param_dir / "overrides.toml"
-                overrides_relpath = "Parameters/overrides.toml"
-            else:
-                ov_file = target_base / "overrides.toml"
-                overrides_relpath = "overrides.toml"
-            ov_file.write_text(overrides_content, encoding="utf-8")
+        # Step 4: Handle parameter overrides and build CLI Namespace
+        overrides_relpath: str | None = None
+        if spec.overrides:
+            overrides_content = spec.render_overrides_toml()
+            if overrides_content:
+                param_dir = target_base / "Parameters"
+                if param_dir.exists():
+                    ov_file = param_dir / "overrides.toml"
+                    overrides_relpath = "Parameters/overrides.toml"
+                else:
+                    ov_file = target_base / "overrides.toml"
+                    overrides_relpath = "overrides.toml"
+                ov_file.write_text(overrides_content, encoding="utf-8")
 
-    equivalent_argv = spec.equivalent_argv(command=command, overrides_path=overrides_relpath)
-    parser = build_parser()
-    args_ns = parser.parse_args(equivalent_argv[1:])
+        equivalent_argv = spec.equivalent_argv(command=command, overrides_path=overrides_relpath)
+        parser = build_parser()
+        args_ns = parser.parse_args(equivalent_argv[1:])
 
-    input_files = capture_input_files(args_ns, working_directory=job_dir) if command == "fit" else ()
+        input_files = capture_input_files(args_ns, working_directory=target_base) if command == "fit" else ()
 
-    # Step 5: Kinetics model
-    session.set_model(spec.model)
+        # Step 5: Kinetics model
+        session.set_model(spec.model)
 
-    # Step 6: Build experiments with selection
-    selection = Selection(args_ns.include, args_ns.exclude)
-    experiments = build_experiments(args_ns.experiments, selection, session=session)
-    if not experiments:
-        raise NoDataError("No valid experimental data found matching selection criteria.")
+        # Step 6: Build experiments with selection
+        selection = Selection(args_ns.include, args_ns.exclude)
+        experiments = build_experiments(args_ns.experiments, selection, session=session)
+        if not experiments:
+            raise NoDataError("No valid experimental data found matching selection criteria.")
 
-    # Step 7: Method plan
-    if command == "fit":
-        if args_ns.method:
-            plan = read_method_plan(args_ns.method)
+        # Step 7: Method plan
+        method_path = None
+        if command == "fit":
+            method_path = args_ns.method
+        elif spec.method_files:
+            method_path = [Path(f) for f in spec.method_files]
+
+        if method_path:
+            plan = read_method_plan(method_path)
             if plan.format_origin is FormatOrigin.V1:
                 print_method_v1_deprecation_warning()
         else:
-            plan = MethodPlan(FormatOrigin.V1, (StepPlan(""),))
-    else:
-        plan = None
+            plan = MethodPlan(FormatOrigin.V1, (StepPlan(""),)) if command == "fit" else None
 
-    # Step 8: Parameter defaults
-    defaults = read_defaults(args_ns.parameters)
-    session.parameters.set_defaults(defaults)
+        # Step 8: Parameter defaults
+        defaults = read_defaults(args_ns.parameters)
+        session.parameters.set_defaults(defaults)
 
-    # Step 9: Try building native analysis values with error translation
-    if not session.try_build_analysis_values():
-        construction_error = getattr(session.parameter_factory, "native_construction_error", None)
-        msg = "Native parameter initialization failed"
-        if construction_error is None:
-            raise RuntimeError(msg)
-        if isinstance(
-            construction_error,
-            (
-                IncompleteParameterDependenciesError,
-                InvalidConfigurationError,
-                ConstraintDomainError,
-            ),
-        ):
-            explanation = str(construction_error)
-            if isinstance(construction_error, ConstraintDomainError) and isinstance(
-                construction_error.__cause__,
-                (ArithmeticError, ValueError),
+        # Step 9: Try building native analysis values with error translation
+        if not session.try_build_analysis_values():
+            construction_error = getattr(session.parameter_factory, "native_construction_error", None)
+            msg = "Native parameter initialization failed"
+            if construction_error is None:
+                raise RuntimeError(msg)
+            if isinstance(
+                construction_error,
+                (
+                    IncompleteParameterDependenciesError,
+                    InvalidConfigurationError,
+                    ConstraintDomainError,
+                ),
             ):
-                explanation = str(construction_error.__cause__)
-            raise ParameterConfigurationError(
-                tuple(args_ns.parameters),
-                explanation,
-            ) from construction_error
-        raise RuntimeError(f"{msg}: {construction_error}") from construction_error
+                explanation = str(construction_error)
+                if isinstance(construction_error, ConstraintDomainError) and isinstance(
+                    construction_error.__cause__,
+                    (ArithmeticError, ValueError),
+                ):
+                    explanation = str(construction_error.__cause__)
+                raise ParameterConfigurationError(
+                    tuple(args_ns.parameters),
+                    explanation,
+                ) from construction_error
+            raise RuntimeError(f"{msg}: {construction_error}") from construction_error
 
-    return session, experiments, plan, args_ns, input_files, equivalent_argv
+        return session, experiments, plan, args_ns, input_files, equivalent_argv
 
 
 def inspect_parameters(spec: FitJobSpec, job_dir: Path | None = None) -> list[dict[str, Any]]:

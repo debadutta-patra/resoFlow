@@ -156,8 +156,9 @@ class FitJobSpec(BaseModel):
             argv.append("--exclude")
             argv.extend(self.exclude)
 
-        argv.extend(["--workers", str(self.execution.workers)])
-        argv.extend(["--native-threads", str(self.execution.native_threads)])
+        if command == "fit":
+            argv.extend(["--workers", str(self.execution.workers)])
+            argv.extend(["--native-threads", str(self.execution.native_threads)])
 
         return argv
 
