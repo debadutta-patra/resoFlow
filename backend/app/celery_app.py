@@ -19,6 +19,7 @@ celery_app = Celery(
         "app.services.fitting.cpmg_tasks",
         "app.services.fitting.exchange_tasks",
         "app.services.reporting.tasks",
+        "app.services.results_bundle.tasks",
     ]  # Ensure tasks are discovered
 )
 
