@@ -49,7 +49,28 @@ source "${ROOT_DIR}/deploy/lib/image_cleanup.sh"
 # The installer may have resolved a static Podman that is not the one on
 # PATH. Building with one and cleaning up with the other would address two
 # different image stores.
-PODMAN="${PODMAN_BIN:-podman}"
+PODMAN_EXEC="${PODMAN_BIN:-podman}"
+PODMAN="${PODMAN_EXEC}"
+
+# Detect Snap confinement (e.g. Codium / VS Code snap terminal) where podman defaults
+# to snap-confined storage (~/snap/codium/.../storage) while systemd user services run
+# against the host storage (~/.local/share/containers/storage).
+if [[ -d "${HOME}/.local/share/containers/storage" ]]; then
+    DEFAULT_GRAPH="$(${PODMAN_EXEC} info --format '{{.Store.GraphRoot}}' 2>/dev/null || true)"
+    if [[ "${DEFAULT_GRAPH}" == *"/snap/"* ]]; then
+        WRAPPER_DIR="$(mktemp -d)"
+        WRAPPER_SCRIPT="${WRAPPER_DIR}/podman"
+        cat << WRAPPER_EOF > "${WRAPPER_SCRIPT}"
+#!/usr/bin/env bash
+exec "${PODMAN_EXEC}" --root "${HOME}/.local/share/containers/storage" --runroot "/run/user/\$(id -u)/containers" "\$@"
+WRAPPER_EOF
+        chmod +x "${WRAPPER_SCRIPT}"
+        PODMAN="${WRAPPER_SCRIPT}"
+        trap 'rm -rf "${WRAPPER_DIR}"' EXIT
+        echo "Detected Snap-confined Podman storage (${DEFAULT_GRAPH})."
+        echo "Redirecting builds to host Podman storage (${HOME}/.local/share/containers/storage)."
+    fi
+fi
 
 GIT_TAG=$(git -C "${ROOT_DIR}" describe --tags --always --dirty 2>/dev/null || echo "v0.1.0")
 

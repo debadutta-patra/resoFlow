@@ -283,7 +283,14 @@ a.xref::after {
   margin-bottom: 8pt;
 }
 
-.profile-card svg {
+.profile-card-full {
+  width: 100%;
+  break-inside: avoid;
+  margin-bottom: 12pt;
+}
+
+.profile-card svg,
+.profile-card-full svg {
   width: 100%;
   height: auto;
   display: block;

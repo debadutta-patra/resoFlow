@@ -1559,11 +1559,11 @@ def _render_or_serve_plots_zip(
         )
 
     try:
-        is_cpmg = (analysis.analysis_type or "").upper() == "CPMG"
+        report_atype = "CPMG" if atype == "CPMG" else ("CEST" if atype in ("CEST", "15N-CEST") else atype)
         buf = export_all_plots_zip(
             analysis_dir=run_dir,
             analysis_name=analysis.name,
-            analysis_type="CPMG" if is_cpmg else "CEST",
+            analysis_type=report_atype,
             palette=chosen_palette,
             style=style,
             chemex_image_digest=analysis.chemex_image_digest,

@@ -652,7 +652,7 @@ const AnalysisReport: React.FC = () => {
               dispersion figures, which a spectral density analysis does not
               produce, so the server refuses it. Its plots are in this report
               and in the PDF. A button that always errors is worse than none. */}
-          {(analysis?.analysis_type || '').toUpperCase() !== 'SDM' && (analysis?.analysis_type || '').toUpperCase() !== 'EXCHANGE' && (
+          {(analysis?.analysis_type || '').toUpperCase() !== 'SDM' && (
           <button
             onClick={handleExportPlots}
             disabled={isExportingPlots}

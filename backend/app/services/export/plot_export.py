@@ -80,6 +80,99 @@ def _render_residue_plots(
     Returns mapping of suffix -> (png_bytes, pdf_bytes).
     """
     results: Dict[str, Tuple[bytes, bytes]] = {}
+    atype = (analysis_type or "CEST").upper()
+
+    if atype == "EXCHANGE":
+        exps = figures._get_experiments(r)
+        cpmg_exps = [e for e in exps if figures._is_cpmg_experiment(e)]
+        cest_exps = [e for e in exps if not figures._is_cpmg_experiment(e)]
+
+        if cpmg_exps and cest_exps:
+            cest_r = figures._with_experiments(r, cest_exps)
+            cpmg_r = figures._with_experiments(r, cpmg_exps)
+
+            disp_name = getattr(r, "display_name", "") or (r.get("display_name", "") if isinstance(r, dict) else "")
+            dw_obj = getattr(r, "dw", None) or (r.get("dw", None) if isinstance(r, dict) else None)
+            dw_status = ""
+            if dw_obj is not None:
+                dw_status = dw_obj.status.value if hasattr(dw_obj.status, "value") else str(dw_obj.status)
+
+            # 1. Detailed 2x2 composite (CEST profile+residuals on left, CPMG dispersion+residuals on right)
+            try:
+                fig = plt.figure(figsize=(7.6, 4.4))
+                gs = GridSpec(nrows=2, ncols=2, height_ratios=[0.70, 0.30], figure=fig, hspace=0.25, wspace=0.30)
+                ax_cest_prof = fig.add_subplot(gs[0, 0])
+                ax_cest_res = fig.add_subplot(gs[1, 0], sharex=ax_cest_prof)
+                ax_cpmg_prof = fig.add_subplot(gs[0, 1])
+                ax_cpmg_res = fig.add_subplot(gs[1, 1], sharex=ax_cpmg_prof)
+
+                figures._draw_dispersion_curve(ax_cest_prof, cest_r, analysis_type="CEST", show_anchors=True, compact=False)
+                ax_cest_prof.set_xlabel("")
+                ax_cest_prof.set_title(f"Residue: {disp_name} (CEST)" + (f" ({dw_status})" if dw_status else ""), fontsize=10, fontweight="bold")
+                figures._draw_residuals_strip(ax_cest_res, cest_r, analysis_type="CEST")
+
+                figures._draw_dispersion_curve(ax_cpmg_prof, cpmg_r, analysis_type="CPMG", show_anchors=False, compact=False)
+                ax_cpmg_prof.set_xlabel("")
+                ax_cpmg_prof.set_title(f"Residue: {disp_name} (CPMG)", fontsize=10, fontweight="bold")
+                figures._draw_residuals_strip(ax_cpmg_res, cpmg_r, analysis_type="CPMG")
+
+                results["detailed"] = _render_fig_to_png_and_pdf(fig, dpi=300)
+            except Exception as e:
+                logger.warning("Error rendering exchange detailed plot for residue %s: %s", r.display_name, e)
+
+            # 2. Side-by-side combined dispersion curve (1x2)
+            try:
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.5, 3.4))
+                figures._draw_dispersion_curve(ax1, cest_r, analysis_type="CEST", show_anchors=True, compact=False)
+                figures._draw_dispersion_curve(ax2, cpmg_r, analysis_type="CPMG", show_anchors=False, compact=False)
+                ax1.set_title(f"{disp_name} (CEST)" + (f" ({dw_status})" if dw_status else ""), fontsize=10, fontweight="bold")
+                ax2.set_title(f"{disp_name} (CPMG)", fontsize=10, fontweight="bold")
+                fig.tight_layout()
+                results["dispersion"] = _render_fig_to_png_and_pdf(fig, dpi=300)
+            except Exception as e:
+                logger.warning("Error rendering exchange dispersion plot for residue %s: %s", r.display_name, e)
+
+            # 3. Standalone CEST dispersion
+            try:
+                fig, ax = plt.subplots(figsize=(6.4, 3.4))
+                figures._draw_dispersion_curve(ax, cest_r, analysis_type="CEST", show_anchors=True, compact=False)
+                ax.set_title(f"Residue: {disp_name} (CEST)" + (f" ({dw_status})" if dw_status else ""), fontsize=11, fontweight="bold")
+                results["cest_dispersion"] = _render_fig_to_png_and_pdf(fig, dpi=300)
+            except Exception as e:
+                logger.warning("Error rendering standalone CEST dispersion for %s: %s", r.display_name, e)
+
+            # 4. Standalone CPMG dispersion
+            try:
+                fig, ax = plt.subplots(figsize=(6.4, 3.4))
+                figures._draw_dispersion_curve(ax, cpmg_r, analysis_type="CPMG", show_anchors=False, compact=False)
+                ax.set_title(f"Residue: {disp_name} (CPMG)", fontsize=11, fontweight="bold")
+                results["cpmg_dispersion"] = _render_fig_to_png_and_pdf(fig, dpi=300)
+            except Exception as e:
+                logger.warning("Error rendering standalone CPMG dispersion for %s: %s", r.display_name, e)
+
+            # 5. Standalone CEST residuals
+            try:
+                fig, ax = plt.subplots(figsize=(6.4, 1.8))
+                figures._draw_residuals_strip(ax, cest_r, analysis_type="CEST")
+                ax.set_title(f"Residue: {disp_name} (CEST Residuals)", fontsize=10, fontweight="bold")
+                results["cest_residuals"] = _render_fig_to_png_and_pdf(fig, dpi=300)
+            except Exception as e:
+                logger.warning("Error rendering standalone CEST residuals for %s: %s", r.display_name, e)
+
+            # 6. Standalone CPMG residuals
+            try:
+                fig, ax = plt.subplots(figsize=(6.4, 1.8))
+                figures._draw_residuals_strip(ax, cpmg_r, analysis_type="CPMG")
+                ax.set_title(f"Residue: {disp_name} (CPMG Residuals)", fontsize=10, fontweight="bold")
+                results["cpmg_residuals"] = _render_fig_to_png_and_pdf(fig, dpi=300)
+            except Exception as e:
+                logger.warning("Error rendering standalone CPMG residuals for %s: %s", r.display_name, e)
+
+            return results
+        elif cpmg_exps:
+            return _render_residue_plots(r, "CPMG")
+        else:
+            return _render_residue_plots(r, "CEST")
 
     # 1. Detailed composite figure (Profile + Residuals)
     try:

@@ -247,7 +247,7 @@ def _draw_dispersion_curve(
 
     if unique_handles_labels:
         ax.legend(
-            unique_handles_labels.values(), unique_handles_labels.keys(),
+            list(unique_handles_labels.values()), list(unique_handles_labels.keys()),
             loc="lower left" if not is_cpmg else "upper right",
             fontsize=7.5 if compact else 8.5, frameon=True, facecolor="white", edgecolor="#E5E7EB"
         )
@@ -267,7 +267,7 @@ def _draw_dispersion_curve(
     if not is_cpmg:
         ax.set_xlabel("Offset (ppm)", fontsize=8.5 if compact else 9.5)
         ax.set_ylabel("I / I₀", fontsize=8.5 if compact else 9.5)
-        ax.invert_xaxis()
+        ax.xaxis.set_inverted(True)
     else:
         ax.set_xlabel(r"$\nu_{\mathrm{CPMG}}$ (Hz)", fontsize=8.5 if compact else 9.5)
         ax.set_ylabel(r"$R_{2,\mathrm{eff}}$ ($\mathrm{s}^{-1}$)", fontsize=8.5 if compact else 9.5)
@@ -279,6 +279,18 @@ def _draw_dispersion_curve(
         csb_obj = rec.get("csb") if isinstance(rec, dict) else getattr(rec, "csb", None)
         csa_val = getattr(csa_obj, "value", None) if csa_obj is not None else None
         csb_val = getattr(csb_obj, "value", None) if csb_obj is not None else None
+
+        if csa_val is not None:
+            try:
+                csa_val = float(csa_val)
+            except (ValueError, TypeError):
+                csa_val = None
+
+        if csb_val is not None:
+            try:
+                csb_val = float(csb_val)
+            except (ValueError, TypeError):
+                csb_val = None
 
         if csa_val is not None:
             ax.axvline(csa_val, color="#6B7280", linestyle="--", linewidth=0.8, alpha=0.6, zorder=1)
@@ -382,6 +394,7 @@ def _draw_residuals_strip(
         ax.set_ylim(-3.5, 3.5)
         if not is_cpmg:
             ax.set_xlabel("Offset / Chemical Shift (ppm)", fontsize=9.0)
+            ax.xaxis.set_inverted(True)
         else:
             ax.set_xlabel(r"$\nu_{\mathrm{CPMG}}$ (Hz)", fontsize=9.0)
             ax.xaxis.set_inverted(False)
@@ -629,6 +642,13 @@ def dispersion_curve(
                 cpmg_rec = _with_experiments(rec, cpmg_exps)
                 _draw_dispersion_curve(ax1, cest_rec, analysis_type="CEST", show_anchors=show_anchors, compact=compact)
                 _draw_dispersion_curve(ax2, cpmg_rec, analysis_type="CPMG", show_anchors=False, compact=compact)
+                disp_name = rec.get("display_name") if isinstance(rec, dict) else getattr(rec, "display_name", "")
+                dw_obj = rec.get("dw") if isinstance(rec, dict) else getattr(rec, "dw", None)
+                dw_status = ""
+                if dw_obj is not None:
+                    dw_status = dw_obj.status.value if hasattr(dw_obj.status, "value") else str(dw_obj.status)
+                ax1.set_title(f"{disp_name} (CEST)" + (f" ({dw_status})" if dw_status else ""), fontsize=9.5 if compact else 11.5, fontweight="bold")
+                ax2.set_title(f"{disp_name} (CPMG)", fontsize=9.5 if compact else 11.5, fontweight="bold")
                 fig.tight_layout()
                 return _svg(fig)
 
@@ -711,6 +731,14 @@ def detailed_residue_plot(
                 _draw_dispersion_curve(ax_cpmg_prof, cpmg_rec, analysis_type="CPMG", show_anchors=False, compact=False)
                 ax_cpmg_prof.set_xlabel("")
                 _draw_residuals_strip(ax_cpmg_res, cpmg_rec, analysis_type="CPMG")
+
+                disp_name = rec.get("display_name") if isinstance(rec, dict) else getattr(rec, "display_name", "")
+                dw_obj = rec.get("dw") if isinstance(rec, dict) else getattr(rec, "dw", None)
+                dw_status = ""
+                if dw_obj is not None:
+                    dw_status = dw_obj.status.value if hasattr(dw_obj.status, "value") else str(dw_obj.status)
+                ax_cest_prof.set_title(f"Residue: {disp_name} (CEST)" + (f" ({dw_status})" if dw_status else ""), fontsize=9.5, fontweight="bold")
+                ax_cpmg_prof.set_title(f"Residue: {disp_name} (CPMG)", fontsize=9.5, fontweight="bold")
                 return _svg(fig)
 
             if palette:

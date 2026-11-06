@@ -49,6 +49,9 @@ def generate_report_pdf_task(
         if atype == "CPMG":
             folder_name = "cpmg_fitting"
             analysis_type = "CPMG"
+        elif atype == "EXCHANGE":
+            folder_name = "exchange_fitting"
+            analysis_type = "EXCHANGE"
         elif atype in ("R1", "R2", "HETNOE"):
             folder_name = f"{analysis.analysis_type.lower()}_fitting"
             analysis_type = atype
@@ -148,6 +151,9 @@ def export_plots_zip_task(
         if atype == "CPMG":
             folder_name = "cpmg_fitting"
             analysis_type = "CPMG"
+        elif atype == "EXCHANGE":
+            folder_name = "exchange_fitting"
+            analysis_type = "EXCHANGE"
         elif atype in ("R1", "R2", "HETNOE"):
             folder_name = f"{analysis.analysis_type.lower()}_fitting"
             analysis_type = atype

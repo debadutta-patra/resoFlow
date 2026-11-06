@@ -192,4 +192,45 @@ class TestPlotExport:
         assert response.status_code == 200
         assert response.media_type == "application/zip"
 
+    def test_exchange_render_residue_plots_and_task(self, tmp_path):
+        """Test _render_residue_plots for EXCHANGE separates CEST and CPMG curves."""
+        from unittest.mock import MagicMock
+        from app.services.export.plot_export import _render_residue_plots
+        from app.services.reporting.tasks import export_plots_zip_task, generate_report_pdf_task
+
+        # Create mock residue record with both CEST and CPMG experiments
+        mock_rec = MagicMock()
+        mock_rec.display_name = "47T"
+        mock_rec.raw_key = "47T"
+        mock_rec.dw = MagicMock(status="FIXED")
+        mock_rec.csa = None
+        mock_rec.csb = None
+        mock_rec.experiments = [
+            {
+                "b1_label": "CEST 25Hz",
+                "experiment_type": "cest",
+                "exp_points": {"x": [115.0, 118.5, 121.0], "y": [0.95, 0.40, 0.85], "y_err": [0.02, 0.02, 0.02]},
+                "fit_curve": {"x": [115.0, 118.5, 121.0], "y": [0.95, 0.40, 0.85]},
+            },
+            {
+                "b1_label": "CPMG 600MHz",
+                "experiment_type": "cpmg",
+                "exp_points": {"x": [100.0, 400.0, 800.0], "y": [15.2, 12.1, 9.8], "y_err": [0.2, 0.2, 0.2]},
+                "fit_curve": {"x": [100.0, 400.0, 800.0], "y": [15.2, 12.1, 9.8]},
+            },
+        ]
+
+        plots = _render_residue_plots(mock_rec, "EXCHANGE")
+        assert "detailed" in plots
+        assert "dispersion" in plots
+        assert "cest_dispersion" in plots
+        assert "cpmg_dispersion" in plots
+        assert "cest_residuals" in plots
+        assert "cpmg_residuals" in plots
+
+        for suffix, (png_b, pdf_b) in plots.items():
+            assert png_b.startswith(b"\x89PNG\r\n\x1a\n"), f"Invalid PNG for {suffix}"
+            assert pdf_b.startswith(b"%PDF"), f"Invalid PDF for {suffix}"
+
+
 
