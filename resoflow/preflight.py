@@ -26,9 +26,8 @@ def build_sharing_map(exp_files: list[Path], param_files: list[Path] | None = No
     if param_files:
         defaults = read_defaults(param_files)
         store = session.parameters
-        setter = getattr(store, "set_param_defaults", None) or store.set_defaults
         with contextlib.redirect_stdout(sys.stderr):
-            setter(defaults)
+            store.set_defaults(defaults)
 
     used_by: dict[str, set[str]] = defaultdict(set)
     for experiment in experiments:

@@ -6,17 +6,24 @@ from functools import lru_cache
 from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union
 
 import pydantic
+import logging
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-# Import ChemEx loaders and factories
+from chemex.experiments.experiment_types import registered_experiment_types
+from chemex.runtime.session import ensure_plugins_registered
+
+logger = logging.getLogger(__name__)
+CHEMEX_AVAILABLE: bool = False
+CHEMEX_ERROR: Optional[str] = None
+
 try:
-    import chemex.experiments.factories as factories
-    import chemex.experiments.loader as loader
-    loader.register_experiments()
+    ensure_plugins_registered()
     CHEMEX_AVAILABLE = True
-except Exception:
+except Exception as exc:
+    logger.exception("Failed to initialize ChemEx experiment registry")
     CHEMEX_AVAILABLE = False
+    CHEMEX_ERROR = str(exc)
 
 
 # Units mapping by parameter / field name conventions
@@ -628,11 +635,15 @@ def _introspect_model_schema(model_cls: type[BaseModel]) -> Dict[str, Any]:
 
 
 def _introspect_experiment_module(module_name: str) -> Optional[Dict[str, Any]]:
-    if not CHEMEX_AVAILABLE or module_name not in factories.factories.creators_registry:
+    if not CHEMEX_AVAILABLE:
         return None
 
-    creator = factories.factories.creators_registry[module_name]
-    cfg_cls = creator.config_creator
+    exp_types = registered_experiment_types()
+    if module_name not in exp_types:
+        return None
+
+    creator = exp_types[module_name]
+    cfg_cls = creator.config_type
     meta = MODULE_METADATA.get(module_name, {})
 
     sections: Dict[str, Any] = {}
@@ -693,7 +704,7 @@ def get_chemex_module_registry() -> Dict[str, Any]:
     if not CHEMEX_AVAILABLE:
         return registry
 
-    for mod_name in sorted(factories.factories.creators_registry.keys()):
+    for mod_name in sorted(registered_experiment_types().keys()):
         if mod_name.startswith("wip") or mod_name.endswith("_test"):
             continue
         mod_info = _introspect_experiment_module(mod_name)

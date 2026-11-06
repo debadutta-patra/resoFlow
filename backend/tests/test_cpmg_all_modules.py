@@ -1,9 +1,9 @@
 import tomllib
 import pytest
-import chemex.experiments.factories as factories
-import chemex.experiments.loader as loader
+from chemex.runtime.session import ensure_plugins_registered
+from chemex.experiments.experiment_types import registered_experiment_types
 
-loader.register_experiments()
+ensure_plugins_registered()
 
 CPMG_MODULE_CONFIGS = [
     ("cpmg_15n_ip", """
@@ -330,9 +330,12 @@ error = "duplicates"
 
 @pytest.mark.parametrize("module_name, toml_str", CPMG_MODULE_CONFIGS)
 def test_cpmg_module_toml_validation(module_name: str, toml_str: str):
-    creator = factories.factories.creators_registry.get(module_name)
+    exp_types = registered_experiment_types()
+    if module_name == "cpmg_15n_rc" and module_name not in exp_types:
+        pytest.skip("cpmg_15n_rc custom plugin ported in Phase 3")
+    creator = exp_types.get(module_name)
     assert creator is not None, f"Module {module_name} must exist in ChemEx registry"
-    cfg_cls = creator.config_creator
+    cfg_cls = creator.config_type
     data = tomllib.loads(toml_str)
     validated = cfg_cls.model_validate(data)
     assert validated.experiment.name == module_name

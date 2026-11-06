@@ -59,11 +59,17 @@ def capabilities() -> Dict[str, object]:
     Keys are stable identifiers; the frontend must treat an absent key as
     disabled so that an older server does not enable a newer control.
     """
+    from app.services.fitting.chemex_registry import CHEMEX_AVAILABLE, CHEMEX_ERROR
+
     return {
         "features": {
             "experimental_sdm_rex": experimental_sdm_rex_enabled(),
         },
         "flags": {
             "experimental_sdm_rex": ENABLE_EXPERIMENTAL_SDM_REX,
+        },
+        "chemex": {
+            "available": CHEMEX_AVAILABLE,
+            "error": CHEMEX_ERROR,
         },
     }
