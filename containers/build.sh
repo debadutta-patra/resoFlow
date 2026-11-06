@@ -111,6 +111,7 @@ echo -e "\n--> [4/5] Building resoflow-chemex..."
 "${PODMAN}" build \
     --build-arg UV_IMAGE="${UV_IMAGE}" \
     --build-arg PYTHON_IMAGE="${PYTHON_IMAGE}" \
+    --label "io.resoflow.chemex_version=2026.9.2" \
     -f containers/Containerfile.chemex \
     -t "localhost/resoflow-chemex:${GIT_TAG}" \
     -t "localhost/resoflow-chemex:latest" \

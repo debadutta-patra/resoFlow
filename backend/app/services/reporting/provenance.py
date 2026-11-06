@@ -123,9 +123,8 @@ def extract_report_provenance(
 
     if not chemex_version:
         try:
-            from resoflow.progress.targets import chemex_build
-            b_info = chemex_build()
-            chemex_version = b_info.get("version")
+            from resoflow.chemex_api.compat import get_version
+            chemex_version = get_version()
         except Exception:
             pass
 
@@ -286,10 +285,24 @@ def extract_report_provenance(
             f"Sum of per-residue DOF = {sum_res_dof}. The difference of {sum_res_dof - dof_global} corresponds to the "
             f"{n_global_params} globally shared exchange parameters (k_ex, p_b)."
         )
-        minimizer_name = "Levenberg-Marquardt (leastsq)"
-        dw_convention = "CS_B = CS_A + DW_AB (positive DW indicates downfield excited-state shift)"
-        chemex_ver = chemex_version or "2026.6.1"
+        chemex_ver = chemex_version or "2026.9.2"
         chemex_digest = chemex_image_digest or "sha256:unavailable"
+
+        is_chemex_v2026_9 = False
+        if chemex_ver:
+            try:
+                parts = [int(p) for p in chemex_ver.split(".")[:2]]
+                if parts >= [2026, 9]:
+                    is_chemex_v2026_9 = True
+            except Exception:
+                if "2026.9" in chemex_ver:
+                    is_chemex_v2026_9 = True
+
+        if is_chemex_v2026_9:
+            minimizer_name = "SciPy TRF (ChemEx native)"
+        else:
+            minimizer_name = "Levenberg-Marquardt (leastsq)"
+        dw_convention = "CS_B = CS_A + DW_AB (positive DW indicates downfield excited-state shift)"
 
     dof_acc = DegreeOfFreedomAccounting(
         n_data_global=ndata_global,

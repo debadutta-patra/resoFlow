@@ -9,7 +9,8 @@ RUN uv venv /app/.venv && uv pip install --no-cache "chemex==2026.9.2"
 
 FROM ${PYTHON_IMAGE} AS runtime
 LABEL io.resoflow.managed="true" \
-      io.resoflow.component="chemex"
+      io.resoflow.component="chemex" \
+      io.resoflow.chemex_version="2026.9.2"
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 RUN useradd -u 1000 -m -s /bin/bash appuser
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
