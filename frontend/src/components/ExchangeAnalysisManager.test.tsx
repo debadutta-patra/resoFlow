@@ -531,6 +531,36 @@ describe('ExchangeAnalysisManager', () => {
     fireEvent.change(searchInput, { target: { value: 'VAL-16N' } });
     expect(screen.getByText(/1 \/ 2/i)).toBeDefined();
   });
+
+  it('renders Methods tab with valid initial step, templates, and no false validation warnings', async () => {
+    render(
+      <ExchangeAnalysisManager
+        projectUuid="proj-123"
+        analysis={baseAnalysis}
+        availableSpectra={[]}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    // Switch to Methods tab
+    const methodsTabBtn = screen.getByRole('button', { name: /Methods/i });
+    fireEvent.click(methodsTabBtn);
+
+    expect(screen.getByText(/ChemEx Method Configuration/i)).toBeDefined();
+
+    // Verify there are no validation warnings for unknown parameters R1_B or R2_B
+    expect(screen.queryByText(/Unknown parameter "R2_B"/i)).toBeNull();
+    expect(screen.queryByText(/Unknown parameter "R1_B"/i)).toBeNull();
+    expect(screen.queryByText(/has no parameters in FIT and no GRID search defined/i)).toBeNull();
+
+    // Verify Templates modal can be opened and contains Exchange template
+    const templatesBtn = screen.getByRole('button', { name: /Templates/i });
+    fireEvent.click(templatesBtn);
+
+    expect(screen.getByText(/Method Templates/i)).toBeDefined();
+    expect(screen.getByText(/2-State Combined Exchange \(CEST \+ CPMG\)/i)).toBeDefined();
+    expect(screen.getByText(/Grid Search → Refinement \(Exchange\)/i)).toBeDefined();
+  });
 });
 
 

@@ -138,6 +138,11 @@ const STATUS_COLORS: Record<string, string> = {
   FAILED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
 };
 
+const DEFAULT_METHOD_TOML = `[STEP1]
+FIT = ["PB", "KEX_AB", "DW_AB", "CS_A"]
+CONSTRAINTS = ["[PB] < 0.5"]
+`;
+
 export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = ({
   analysis,
   projectUuid,
@@ -229,7 +234,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
 
   // Methods State
   const [methodConfig, setMethodConfig] = useState<MethodConfig>(() => createDefaultMethodConfig());
-  const [methodToml, setMethodToml] = useState<string>('');
+  const [methodToml, setMethodToml] = useState<string>(() => methodConfigToToml(createDefaultMethodConfig()) || DEFAULT_METHOD_TOML);
   const [isRawEditMode, setIsRawEditMode] = useState<boolean>(false);
   const [unparsedTomlLines, setUnparsedTomlLines] = useState<string[]>([]);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState<boolean>(false);
@@ -393,18 +398,48 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         setRawParamToml(paramConfigToToml(parameterConfig));
       }
 
-      if (cfg.method_config) {
-        setMethodConfig(cfg.method_config);
-        setMethodToml(cfg.method_toml || methodConfigToToml(cfg.method_config));
+      if (cfg.method_config && Array.isArray(cfg.method_config.steps) && cfg.method_config.steps.length > 0) {
+        // Auto-heal any steps that have neither fit nor grid search configured
+        const healedSteps = cfg.method_config.steps.map((st: Step) => {
+          const hasFit = st.parameters?.some(p => p.mode === 'fit' || p.mode === 'grid');
+          if (!hasFit) {
+            const fitNames = new Set(['PB', 'KEX_AB', 'DW_AB', 'CS_A']);
+            const updatedParams = (st.parameters || []).map(p => {
+              if (fitNames.has(p.name)) {
+                return { ...p, mode: 'fit', bounds: p.name === 'PB' ? (p.bounds || '< 0.5') : p.bounds };
+              }
+              return p;
+            });
+            for (const fn of fitNames) {
+              if (!updatedParams.some(p => p.name === fn)) {
+                updatedParams.unshift({ name: fn, mode: 'fit', bounds: fn === 'PB' ? '< 0.5' : undefined });
+              }
+            }
+            return { ...st, parameters: updatedParams };
+          }
+          return st;
+        });
+        const healedConfig = { ...cfg.method_config, steps: healedSteps };
+        setMethodConfig(healedConfig);
+        setMethodToml(cfg.method_toml || methodConfigToToml(healedConfig));
+        setIsRawEditMode(!!cfg.method_config.rawOverride);
+      } else if (cfg.method_toml) {
+        setMethodToml(cfg.method_toml);
+        const parsed = methodTomlToConfig(cfg.method_toml);
+        setMethodConfig(parsed.config);
+        setUnparsedTomlLines(parsed.unparsed);
       } else {
-        setMethodToml(methodConfigToToml(methodConfig));
+        setMethodToml(methodConfigToToml(methodConfig) || DEFAULT_METHOD_TOML);
       }
 
       // Load method parameter definitions
       try {
-        const pRes = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/method-parameters?model=${cfg.model || '2st'}`);
-        if (pRes.data && Array.isArray(pRes.data)) {
-          setAvailableParamMetas(pRes.data);
+        const pRes = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/method-parameters`, {
+          params: { model: cfg.model || '2st' },
+        });
+        const paramList = pRes.data?.parameters || (Array.isArray(pRes.data) ? pRes.data : []);
+        if (paramList.length > 0) {
+          setAvailableParamMetas(paramList);
         }
       } catch (e) {}
 
@@ -412,6 +447,25 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       console.warn("No previous exchange config loaded or error:", e);
     }
   };
+
+  // Fetch Method Parameters Metadata from Backend whenever model changes
+  useEffect(() => {
+    const fetchParams = async () => {
+      try {
+        const res = await api.get(
+          `/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/method-parameters`,
+          { params: { model } }
+        );
+        const paramList = res.data?.parameters || (Array.isArray(res.data) ? res.data : []);
+        if (paramList.length > 0) {
+          setAvailableParamMetas(paramList);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch exchange method parameters from backend', err);
+      }
+    };
+    fetchParams();
+  }, [model, projectUuid, analysis.analysis_uuid]);
 
   const loadResults = async () => {
     try {
@@ -546,7 +600,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         picks,
         parameter_config: parameterConfig,
         parameters_toml: effectiveParameterToml,
-        method_config: methodConfig,
+        method_config: isRawEditMode ? { ...methodConfig, rawOverride: methodToml } : methodConfig,
         method_toml: effectiveMethodToml,
         excluded_residues: parameterConfig.excludedResidues || [],
       };
@@ -570,7 +624,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         parameters_toml: effectiveParameterToml,
         method_toml: effectiveMethodToml,
         parameter_config: parameterConfig,
-        method_config: methodConfig,
+        method_config: isRawEditMode ? { ...methodConfig, rawOverride: methodToml } : methodConfig,
       });
 
       setStatus('PENDING');
@@ -844,9 +898,9 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
   }, [parameterConfig.globals]);
 
   const knownParamNames = useMemo(() => {
-    return availableParamMetas.length > 0
-      ? availableParamMetas.map(p => p.name)
-      : ['PB', 'KEX_AB', 'DW_AB', 'CS_A', 'R1_A', 'R2_A', 'R1_B', 'R2_B', 'TAUC_A'];
+    const baseNames = ['PB', 'PC', 'KEX_AB', 'KEX_AC', 'KEX_BC', 'CS_A', 'DW_AB', 'DW_AC', 'R1_A', 'R2_A', 'R1_B', 'R2_B', 'R1_C', 'R2_C', 'TAUC_A'];
+    const metaNames = availableParamMetas.map(p => p.name);
+    return Array.from(new Set([...baseNames, ...metaNames]));
   }, [availableParamMetas]);
 
   const validationErrors = useMemo(() => {

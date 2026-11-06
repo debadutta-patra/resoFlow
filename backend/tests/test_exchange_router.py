@@ -188,17 +188,23 @@ def test_exchange_config_get_and_put(db_session):
 def test_get_exchange_method_parameters(db_session):
     db, user, project, analysis = db_session
 
-    params_2st = get_exchange_method_parameters(model="2st", analysis=analysis, current_user=user)
+    res_2st = get_exchange_method_parameters(model="2st", analysis=analysis, current_user=user)
+    params_2st = res_2st["parameters"] if isinstance(res_2st, dict) and "parameters" in res_2st else res_2st
     param_names_2st = [p["name"] for p in params_2st]
     assert "PB" in param_names_2st
     assert "KEX_AB" in param_names_2st
     assert "CS_A" in param_names_2st
     assert "DW_AB" in param_names_2st
+    assert "R1_B" in param_names_2st
+    assert "R2_B" in param_names_2st
 
-    params_3st = get_exchange_method_parameters(model="3st", analysis=analysis, current_user=user)
+    res_3st = get_exchange_method_parameters(model="3st", analysis=analysis, current_user=user)
+    params_3st = res_3st["parameters"] if isinstance(res_3st, dict) and "parameters" in res_3st else res_3st
     param_names_3st = [p["name"] for p in params_3st]
     assert "PC" in param_names_3st
     assert "KEX_BC" in param_names_3st
+    assert "R1_C" in param_names_3st
+    assert "R2_C" in param_names_3st
 
 
 def test_run_exchange_analysis_dispatches_celery_task(db_session):

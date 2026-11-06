@@ -129,4 +129,78 @@ export const METHOD_TEMPLATES: MethodTemplate[] = [
       ],
     },
   },
+  {
+    id: '2st_standard_exchange',
+    name: '2-State Combined Exchange (CEST + CPMG)',
+    description: 'Joint fit of CEST and CPMG dispersion data for population (PB), exchange rate (KEX_AB), chemical shift difference (DW_AB), and ground state chemical shift (CS_A).',
+    config: {
+      steps: [
+        {
+          id: 'step_2st_exchange',
+          name: 'STEP1',
+          parameters: [
+            { name: 'PB', mode: 'fit', bounds: '< 0.5' },
+            { name: 'KEX_AB', mode: 'fit' },
+            { name: 'DW_AB', mode: 'fit' },
+            { name: 'CS_A', mode: 'fit' },
+            { name: 'R1_A', mode: 'fix' },
+            { name: 'R2_A', mode: 'fix' },
+            { name: 'R1_B', mode: 'constrain', expression: '[R1_A]' },
+            { name: 'R2_B', mode: 'constrain', expression: '[R2_A]' },
+          ],
+          residueMode: 'include',
+          residues: [],
+        },
+      ],
+    },
+  },
+  {
+    id: 'grid_and_refine_exchange',
+    name: 'Grid Search → Refinement (Exchange)',
+    description: 'Two-step joint fitting: Step 1 executes a 2D grid search over PB and KEX_AB to avoid local minima, followed by Step 2 free parameter refinement.',
+    config: {
+      steps: [
+        {
+          id: 'step_grid_exchange',
+          name: 'STEP1',
+          parameters: [
+            {
+              name: 'PB',
+              mode: 'grid',
+              grid: { min: 0.001, max: 0.05, steps: 20, scale: 'log' },
+            },
+            {
+              name: 'KEX_AB',
+              mode: 'grid',
+              grid: { min: 10, max: 1000, steps: 20, scale: 'log' },
+            },
+            { name: 'DW_AB', mode: 'default' },
+            { name: 'CS_A', mode: 'default' },
+            { name: 'R1_A', mode: 'default' },
+            { name: 'R2_A', mode: 'default' },
+            { name: 'R1_B', mode: 'default' },
+            { name: 'R2_B', mode: 'default' },
+          ],
+          residueMode: 'include',
+          residues: [],
+        },
+        {
+          id: 'step_refine_exchange',
+          name: 'STEP2',
+          parameters: [
+            { name: 'PB', mode: 'fit', bounds: '< 0.5' },
+            { name: 'KEX_AB', mode: 'fit' },
+            { name: 'DW_AB', mode: 'fit' },
+            { name: 'CS_A', mode: 'fit' },
+            { name: 'R1_A', mode: 'fix' },
+            { name: 'R2_A', mode: 'fix' },
+            { name: 'R1_B', mode: 'constrain', expression: '[R1_A]' },
+            { name: 'R2_B', mode: 'constrain', expression: '[R2_A]' },
+          ],
+          residueMode: 'include',
+          residues: [],
+        },
+      ],
+    },
+  },
 ];
