@@ -272,9 +272,31 @@ def run_chemex_job(
     else:
         final_output_dir = target_dir / raw_output
 
+    if final_output_dir.name.endswith(".tmp"):
+        final_output_dir = final_output_dir.with_name(final_output_dir.name[:-4])
+
     tmp_output_dir = final_output_dir.with_name(f"{final_output_dir.name}.tmp")
     if tmp_output_dir.exists():
         shutil.rmtree(tmp_output_dir, ignore_errors=True)
+
+    # Clean up stale results and progress markers from any previous runs
+    for stale_file in [
+        target_dir / "engine_result.json",
+        target_dir / "heartbeat",
+        target_dir / "progress.jsonl",
+        target_dir / "progress.json",
+        final_output_dir / "engine_result.json",
+        tmp_output_dir / "engine_result.json",
+    ]:
+        if stale_file.exists():
+            try:
+                stale_file.unlink()
+            except Exception:
+                pass
+
+    for leftover in target_dir.glob("*.tmp.tmp"):
+        if leftover.is_dir():
+            shutil.rmtree(leftover, ignore_errors=True)
 
     # Make staging output path relative to target_dir for the spec
     try:
@@ -351,6 +373,9 @@ def run_chemex_job(
             except Exception as e:
                 logger.error(f"Failed atomic move of ChemEx output: {e}")
                 return_code = 1
+        elif not final_output_dir.exists():
+            logger.error(f"Job completed with state DONE but neither staging ({tmp_output_dir}) nor final ({final_output_dir}) exists")
+            return_code = 1
     elif state == JobState.CANCELLED:
         return_code = 130
         proc = handle.metadata.get("proc")

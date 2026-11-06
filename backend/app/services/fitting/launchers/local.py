@@ -65,18 +65,36 @@ class LocalLauncher(Launcher):
         )
 
     def poll(self, handle: JobHandle) -> JobState:
+        job_path = Path(handle.job_dir)
         proc = handle.metadata.get("proc")
-        proc_rc = None
         if proc is not None:
+            proc_rc = None
             if hasattr(proc, "poll"):
                 res = proc.poll()
                 if isinstance(res, int):
                     proc_rc = res
-            if proc_rc is None and hasattr(proc, "returncode") and isinstance(proc.returncode, int):
+                elif res is None:
+                    if hasattr(proc, "returncode") and isinstance(proc.returncode, int):
+                        proc_rc = proc.returncode
+                    else:
+                        return JobState.RUNNING
+                elif hasattr(proc, "returncode") and isinstance(proc.returncode, int):
+                    proc_rc = proc.returncode
+            elif hasattr(proc, "returncode") and isinstance(proc.returncode, int):
                 proc_rc = proc.returncode
 
-        if proc_rc is not None:
+            if proc_rc is None:
+                return JobState.RUNNING
+
             if proc_rc == 0:
+                result_file = find_engine_result(job_path)
+                if result_file and result_file.exists():
+                    try:
+                        data = json.loads(result_file.read_text(encoding="utf-8"))
+                        if data.get("status") == "cancelled" or data.get("exit_code") in (130, 137, 143):
+                            return JobState.CANCELLED
+                    except Exception:
+                        pass
                 return JobState.DONE
             elif proc_rc in (130, 137, 143):
                 return JobState.CANCELLED
@@ -100,7 +118,9 @@ class LocalLauncher(Launcher):
             except OSError:
                 alive = False
 
-        job_path = Path(handle.job_dir)
+        if alive:
+            return JobState.RUNNING
+
         result_file = find_engine_result(job_path)
 
         if result_file is not None and result_file.exists():
