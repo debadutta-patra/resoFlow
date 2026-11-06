@@ -1,0 +1,26 @@
+# Latest committed continuation state reached by this invocation.
+# Use this ordinary parameter file with: chemex fit ... -p restart.toml ...
+# Independent coordinates use [value, minimum, maximum].
+# Protected model constants are scalars.
+
+["CS_A"]
+"15N" = [119.849, -100.0, 300.0]
+
+["DW_AB"]
+"15N" = [2.0891228432841094, -100.0, 100.0]
+
+["GLOBAL"]
+"KEX_AB" = [377.3028214701192, 0.0, 1000000.0]
+"PB" = [0.06672001509014103, 0.0, 1.0]
+
+["R1_A, B0->500.0MHZ"]
+"15N" = [2.6246505411660848, 0.0, 1000.0]
+
+["R1_A, B0->800.0MHZ"]
+"15N" = [1.966371826839898, 0.0, 1000.0]
+
+["R2_A, B0->500.0MHZ"]
+"15N" = [3.954884382182773, 0.0, 1000.0]
+
+["R2_A, B0->800.0MHZ"]
+"15N" = [6.369144971476029, 0.0, 1000.0]

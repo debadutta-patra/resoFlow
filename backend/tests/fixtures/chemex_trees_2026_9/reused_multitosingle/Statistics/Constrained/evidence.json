@@ -1,0 +1,1806 @@
+{
+  "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+  "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+  "artifact_type": "native_constrained_evidence",
+  "bundle_identity": "ecd166e4c7dba5f0460e20cac9df02a90da86f1698715bd36b786f8fc0f5baa3",
+  "constrained_propagation": {
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "artifact_type": "ConstrainedPropagationEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.9cd802817fb39p+2",
+        "name": "SOURCE_COVARIANCE::CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "SOURCE_COVARIANCE::FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.a9dc489e310b4p+11; upper[0] zeta=0x1.986e5d0530c54p+11; lower[1] zeta=0x1.b0d488ee1badcp+4; upper[1] zeta=0x1.17f7078cdbe34p+16; lower[2] zeta=0x1.6dcfe26b19835p+5; upper[2] zeta=0x1.3fcfb3040cee1p+9; lower[3] zeta=0x1.aaa8663103ecdp+4; upper[3] zeta=0x1.a3be939fbc915p+12; lower[4] zeta=0x1.66959c82ac1b6p+4; upper[4] zeta=0x1.b50b51fb6d932p+11",
+        "name": "SOURCE_COVARIANCE::BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EXACT_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "GRAM_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "scaled-rank=5; rows=6; threshold=0x1.bcdec9cde09edp-48",
+        "name": "OUTPUT_RANK_DEFICIENCY_EXPECTED",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_FIRST_ORDER_DEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE_USABILITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_15N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KAB",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KBA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__PA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R2_B_15N_500_0MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R2_B_15N_800_0MHZ",
+        "state": "satisfied"
+      }
+    ],
+    "controlled_ids": [
+      "__DW_AB_15N",
+      "__KEX_AB",
+      "__PB",
+      "__R2_A_15N_500_0MHZ",
+      "__R2_A_15N_800_0MHZ"
+    ],
+    "covariance": [
+      [
+        {
+          "binary64": "0x1.d6c6a00cc5dcap-11"
+        },
+        {
+          "binary64": "-0x1.e3326f8b7a801p-7"
+        },
+        {
+          "binary64": "-0x1.7f5511e0e2eefp-4"
+        },
+        {
+          "binary64": "0x1.4e4c3dd14d7e8p-16"
+        },
+        {
+          "binary64": "-0x1.0b361f80608a5p-11"
+        },
+        {
+          "binary64": "-0x1.0099e0b5ed9f0p-16"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.e3326f8b7a801p-7"
+        },
+        {
+          "binary64": "0x1.e73b483ead630p-2"
+        },
+        {
+          "binary64": "0x1.d3b8a6463e9a0p+2"
+        },
+        {
+          "binary64": "0x1.e3f1a4817104cp-14"
+        },
+        {
+          "binary64": "-0x1.860a23ab9670cp-9"
+        },
+        {
+          "binary64": "-0x1.1f6ae4f91b967p-5"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.7f5511e0e2eefp-4"
+        },
+        {
+          "binary64": "0x1.d3b8a6463e9a0p+2"
+        },
+        {
+          "binary64": "0x1.66dfd2f23d6fep+7"
+        },
+        {
+          "binary64": "0x1.bf65dccaf7225p-7"
+        },
+        {
+          "binary64": "-0x1.6024933655806p-3"
+        },
+        {
+          "binary64": "-0x1.9a1001038e7edp-1"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.4e4c3dd14d7e8p-16"
+        },
+        {
+          "binary64": "0x1.e3f1a4817104cp-14"
+        },
+        {
+          "binary64": "0x1.bf65dccaf7225p-7"
+        },
+        {
+          "binary64": "0x1.1dbffac1ab17ap-19"
+        },
+        {
+          "binary64": "-0x1.82a16a41f24bep-16"
+        },
+        {
+          "binary64": "-0x1.cc0c25426cff1p-15"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0b361f80608a5p-11"
+        },
+        {
+          "binary64": "-0x1.860a23ab9670cp-9"
+        },
+        {
+          "binary64": "-0x1.6024933655806p-3"
+        },
+        {
+          "binary64": "-0x1.82a16a41f24bep-16"
+        },
+        {
+          "binary64": "0x1.6862da98e8119p-6"
+        },
+        {
+          "binary64": "0x1.e9900717b78fbp-10"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0099e0b5ed9f0p-16"
+        },
+        {
+          "binary64": "-0x1.1f6ae4f91b967p-5"
+        },
+        {
+          "binary64": "-0x1.9a1001038e7edp-1"
+        },
+        {
+          "binary64": "-0x1.cc0c25426cff1p-15"
+        },
+        {
+          "binary64": "0x1.e9900717b78fbp-10"
+        },
+        {
+          "binary64": "0x1.4acf802e0074bp-4"
+        }
+      ]
+    ],
+    "factor": [
+      [
+        {
+          "binary64": "-0x1.17f139c0df1bfp-8"
+        },
+        {
+          "binary64": "-0x1.c29cdb31eff94p-12"
+        },
+        {
+          "binary64": "0x1.931251529e7f9p-10"
+        },
+        {
+          "binary64": "-0x1.d6a18a6d81956p-6"
+        },
+        {
+          "binary64": "-0x1.d8a2a0c5832c6p-8"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.60008112f14e1p-3"
+        },
+        {
+          "binary64": "0x1.36119b5b14a26p-7"
+        },
+        {
+          "binary64": "0x1.e7fd440b651acp-5"
+        },
+        {
+          "binary64": "0x1.37e02b4c1f6fcp-1"
+        },
+        {
+          "binary64": "-0x1.11fc6c7e70484p-2"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.7c7a41a0b67ddp+0"
+        },
+        {
+          "binary64": "0x1.035cb1d5ad195p-3"
+        },
+        {
+          "binary64": "0x1.691b8af85cbd2p-2"
+        },
+        {
+          "binary64": "0x1.9b05b3ff6595dp+2"
+        },
+        {
+          "binary64": "-0x1.74f71f30ab7a8p+3"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.546c9ae8efbe8p-13"
+        },
+        {
+          "binary64": "-0x1.0f8bac095b15cp-20"
+        },
+        {
+          "binary64": "-0x1.6476f855cd343p-14"
+        },
+        {
+          "binary64": "-0x1.851443857fa5fp-12"
+        },
+        {
+          "binary64": "-0x1.6eca663ad3014p-10"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.86d81b61f1e92p-7"
+        },
+        {
+          "binary64": "-0x1.b6014cce03af4p-4"
+        },
+        {
+          "binary64": "-0x1.98c9579e6d111p-4"
+        },
+        {
+          "binary64": "0x1.6eae8c14d8029p-7"
+        },
+        {
+          "binary64": "0x1.2b2423b12bff9p-6"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.9b5b6062428c1p-6"
+        },
+        {
+          "binary64": "0x1.7a25e9a603691p-3"
+        },
+        {
+          "binary64": "-0x1.a627aed2d26a0p-3"
+        },
+        {
+          "binary64": "-0x1.7dc1cb9625a96p-6"
+        },
+        {
+          "binary64": "0x1.c151e8c49a9b6p-5"
+        }
+      ]
+    ],
+    "identity": "93add4f733c3b6433423ca42ef59bbd9b779731c284c5eac47797317d15232a6",
+    "output_ids": [
+      "__CS_B_15N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R2_B_15N_500_0MHZ",
+      "__R2_B_15N_800_0MHZ"
+    ],
+    "output_scales": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      }
+    ],
+    "output_units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ],
+    "request_identity": "fb8072262995df74a649a8ee430079dbeac31c9aea02998ce7d27e3b1d8f4869",
+    "source_constraint_jacobian_identity": "d62272108c8ec267a8ad13f92c167206d922a43369844402d1a20160441e73eb",
+    "source_covariance_identity": "0c43dd3aa055685df450d0609da599a1cc34f5382c5f48e6a923eddc26aa3b19"
+  },
+  "constraint_jacobian": {
+    "accepted_evaluation_identity": "faa3b5c847d8806661f2857cb482846bdaee7528addb32245f0c460d2dd1a842",
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "artifact_type": "ConstraintJacobianEvidence",
+    "capability_selection_identity": "5697a6ae87913d90fa3c3857f73cb2f9d21bb76d37e9df71a533a9a1fc772d2e",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      }
+    ],
+    "constraint_program_identity": "d68217655f9e8e66f92cc418d2c7854e639003438eb5431aaa2fece87c5d013f",
+    "controlled_ids": [
+      "__DW_AB_15N",
+      "__KEX_AB",
+      "__PB",
+      "__R2_A_15N_500_0MHZ",
+      "__R2_A_15N_800_0MHZ"
+    ],
+    "function_partial_diagnostics": [],
+    "identity": "d62272108c8ec267a8ad13f92c167206d922a43369844402d1a20160441e73eb",
+    "matrix": [
+      [
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.114901acd0010p-4"
+        },
+        {
+          "binary64": "0x1.794d85b536b05p+8"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.ddd6dfca65ffep-1"
+        },
+        {
+          "binary64": "-0x1.794d85b536b05p+8"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "-0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.0000000000000p+0"
+        }
+      ]
+    ],
+    "output_ids": [
+      "__CS_B_15N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R2_B_15N_500_0MHZ",
+      "__R2_B_15N_800_0MHZ"
+    ],
+    "output_scales": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      }
+    ],
+    "output_units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ],
+    "parameterization_identity": "c265e0fbb493e1ad57bb424e3b56cba0fa09a54d67622ef45f00efbaaccb8f08",
+    "problem_identity": "6a4096e035a5696b3744754ab4baa9aceca6007cdf8b653125e7912dff92a535",
+    "request_identity": "8bbd953d170178c73fefb570523c048f635ab3b16025c69e5380a3a9b92a8669",
+    "structural_dependencies": [
+      [
+        "__DW_AB_15N"
+      ],
+      [
+        "__KEX_AB",
+        "__PB"
+      ],
+      [
+        "__KEX_AB",
+        "__PB"
+      ],
+      [
+        "__PB"
+      ],
+      [
+        "__R2_A_15N_500_0MHZ"
+      ],
+      [
+        "__R2_A_15N_800_0MHZ"
+      ]
+    ]
+  },
+  "correlations": {
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "artifact_type": "CorrelationEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.9cd802817fb39p+2",
+        "name": "SOURCE_COVARIANCE::CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "SOURCE_COVARIANCE::FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.a9dc489e310b4p+11; upper[0] zeta=0x1.986e5d0530c54p+11; lower[1] zeta=0x1.b0d488ee1badcp+4; upper[1] zeta=0x1.17f7078cdbe34p+16; lower[2] zeta=0x1.6dcfe26b19835p+5; upper[2] zeta=0x1.3fcfb3040cee1p+9; lower[3] zeta=0x1.aaa8663103ecdp+4; upper[3] zeta=0x1.a3be939fbc915p+12; lower[4] zeta=0x1.66959c82ac1b6p+4; upper[4] zeta=0x1.b50b51fb6d932p+11",
+        "name": "SOURCE_COVARIANCE::BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EXACT_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "GRAM_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "scaled-rank=5; rows=6; threshold=0x1.bcdec9cde09edp-48",
+        "name": "OUTPUT_RANK_DEFICIENCY_EXPECTED",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_FIRST_ORDER_DEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE_USABILITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_15N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KAB",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KBA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__PA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R2_B_15N_500_0MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R2_B_15N_800_0MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_ENTRY_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6d430cedcbdacp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6d430cedcbdacp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.dd7e3b34c0aadp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.dd7e3b34c0aadp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.d2a9b88b24336p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.d2a9b88b24336p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6d430cedcbdacp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6d430cedcbdacp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.94f3a11a00271p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.94f3a11a00271p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.d58ed7f97674ap-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.d58ed7f97674ap-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.dc91fafd7e9dcp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.dc91fafd7e9dcp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6e8b35e60ad8cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6e8b35e60ad8cp-3"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.dd7e3b34c0aadp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.dd7e3b34c0aadp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.94f3a11a00271p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.94f3a11a00271p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.65a8cf649dbf7p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.65a8cf649dbf7p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6280800295fddp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6280800295fddp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.aede30cd56d01p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.aede30cd56d01p-3"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.d2a9b88b24336p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.d2a9b88b24336p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.d58ed7f97674ap-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.d58ed7f97674ap-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.65a8cf649dbf7p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.65a8cf649dbf7p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b43033baed672p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b43033baed672p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.0edc282dbd6fcp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.0edc282dbd6fcp-3"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.dc91fafd7e9dcp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.dc91fafd7e9dcp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6280800295fddp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6280800295fddp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b43033baed672p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b43033baed672p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6e8b35e60ad8cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6e8b35e60ad8cp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.aede30cd56d01p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.aede30cd56d01p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.0edc282dbd6fcp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.0edc282dbd6fcp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        }
+      ]
+    ],
+    "identity": "33c6ebefd53474d241fe10d3efa2b6edbbfb8f93468e3edd46e02851cc8e0f1b",
+    "output_ids": [
+      "__CS_B_15N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R2_B_15N_500_0MHZ",
+      "__R2_B_15N_800_0MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "constrained_propagation",
+    "source_identity": "93add4f733c3b6433423ca42ef59bbd9b779731c284c5eac47797317d15232a6",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "failures": [],
+  "marginal_standard_errors": {
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "artifact_type": "MarginalErrorEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.9cd802817fb39p+2",
+        "name": "SOURCE_COVARIANCE::CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "SOURCE_COVARIANCE::FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.a9dc489e310b4p+11; upper[0] zeta=0x1.986e5d0530c54p+11; lower[1] zeta=0x1.b0d488ee1badcp+4; upper[1] zeta=0x1.17f7078cdbe34p+16; lower[2] zeta=0x1.6dcfe26b19835p+5; upper[2] zeta=0x1.3fcfb3040cee1p+9; lower[3] zeta=0x1.aaa8663103ecdp+4; upper[3] zeta=0x1.a3be939fbc915p+12; lower[4] zeta=0x1.66959c82ac1b6p+4; upper[4] zeta=0x1.b50b51fb6d932p+11",
+        "name": "SOURCE_COVARIANCE::BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EXACT_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "GRAM_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "scaled-rank=5; rows=6; threshold=0x1.bcdec9cde09edp-48",
+        "name": "OUTPUT_RANK_DEFICIENCY_EXPECTED",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_FIRST_ORDER_DEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE_USABILITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_15N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KAB",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KBA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__PA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R2_B_15N_500_0MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R2_B_15N_800_0MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_VARIANCE_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__CS_B_15N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.eaf498234fef0p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__KAB",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.612c5454b294ap-1"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__KBA",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.aca73e6516a99p+3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__PA",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.7e7f3bbca739fp-10"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_B_15N_500_0MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.2fbdce18e6644p-3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_B_15N_800_0MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.2302dbff0b2ddp-2"
+        }
+      }
+    ],
+    "identity": "74b1c9ff5d491249528b769c4eee7596c51d5f0e3530ccc20fac091d61df95d1",
+    "output_ids": [
+      "__CS_B_15N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R2_B_15N_500_0MHZ",
+      "__R2_B_15N_800_0MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "constrained_propagation",
+    "source_identity": "93add4f733c3b6433423ca42ef59bbd9b779731c284c5eac47797317d15232a6",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "operations": [
+    {
+      "artifact_identity": "b86b51d744527846447bc2c412f445dbbf660a83827ce4d3089ec39f24585d2b",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "96c419b88b7df34e7cfe292724380a39cf53498ca32fedb0cc86d44dde44c0a2",
+      "occurrence_identity": "c52e50dbd61f43c0819f45f20ed6a2a9",
+      "request_identity": "f3b38d77fdfe6db0d5f6e8eaddd01a45fd9bbfc5ee2588416e2913241446e152",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "residual_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "0c43dd3aa055685df450d0609da599a1cc34f5382c5f48e6a923eddc26aa3b19",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "ffb4e6a107e67d7ee1674ebb4d4292e9b60fcaf1216f1f12aebd4b819fd7fa31",
+      "occurrence_identity": "cd7d02804a2149098a7e935a887d3b55",
+      "request_identity": "975306ef5470d481d11e58bbcd4b446779efec90bb51e5b027a8e843594243b6",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "covariance",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "b024f0cc2eec47e7d2bb5cf8cd8ad4c90935688d765fd2765dd8fedc3daec519",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "d20761f5089fe91cc9d145f23ad8c011862d52554491c28db14b9f4af8f37260",
+      "occurrence_identity": "6ee5e2727b404f2088f51899055c63d1",
+      "request_identity": "a609e64e9c46f157ac7103f5284729cfa0c9cd3dda56e91533260944bb62fc45",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "e8a475b175f9fb2402fb06deee0fd140d68784d48a7e4791781fcbb6238aae76",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "138454cb16fe77aa0c519619cd40e804a6b1c73dba1741da3eb53e998d20e02c",
+      "occurrence_identity": "5cf23d3cbb414ddcbc27c03c5cfce668",
+      "request_identity": "339e2b7b9e597eb01fb3872519e16179140ac45701b67ad25cceddf5d09cf281",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "correlations",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "d62272108c8ec267a8ad13f92c167206d922a43369844402d1a20160441e73eb",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "47489f34a0d18cf3eb6caad7eee49c75b3e972a3267cc310a4cefa1419e1687e",
+      "occurrence_identity": "83d19317524142b3ba4dc7258ddd13b9",
+      "request_identity": "8bbd953d170178c73fefb570523c048f635ab3b16025c69e5380a3a9b92a8669",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constraint_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "93add4f733c3b6433423ca42ef59bbd9b779731c284c5eac47797317d15232a6",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "3ead6b0f0dcdd80b461250c99b0fcadb07b1c20fd3f78bbfa542b72895316e86",
+      "occurrence_identity": "5b0ec9a9e3a145ee8d5899517f97deef",
+      "request_identity": "fb8072262995df74a649a8ee430079dbeac31c9aea02998ce7d27e3b1d8f4869",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constrained_propagation",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "74b1c9ff5d491249528b769c4eee7596c51d5f0e3530ccc20fac091d61df95d1",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "c6914d8c309f7d17154698ad7d8d3a197ad7cdc5c3a0f6ecb831ef8e4f28b09e",
+      "occurrence_identity": "1f58e6efa0f1443bba0dfcaae9a87614",
+      "request_identity": "71ccf03f239500eca47deef7b506d5dc4940d5c68307dff337b5472e96b73c6b",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constrained_marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "33c6ebefd53474d241fe10d3efa2b6edbbfb8f93468e3edd46e02851cc8e0f1b",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "8788506d0c3b68376517cfc857f0a0e399864f1a7f6a1268329bc85431b2b44d",
+      "occurrence_identity": "11bae283738649d3a2772b0d8d7a9059",
+      "request_identity": "d290b9a48b7ac02c2a6c6d2856ebcd61fbf164769467b0210964556dd05aecc1",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constrained_correlations",
+      "terminal": "completed"
+    }
+  ],
+  "policy_identity": "ea7df2e5d2ae0e8be4fa8d46ae28b90db8f3ab9c396bfd3b93204d7475e1430f",
+  "request_identity": "d0ed5613585ba8a498d83a054fba26c7027825d34df7b4bfcc506f30bbf47b74",
+  "requested_output_scope": [
+    "__CS_B_15N",
+    "__KAB",
+    "__KBA",
+    "__PA",
+    "__R2_B_15N_500_0MHZ",
+    "__R2_B_15N_800_0MHZ"
+  ],
+  "schema_version": 2
+}

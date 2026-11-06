@@ -1,0 +1,59 @@
+["DW_AB, NUC->15N"]
+interval = "95% percentile"
+sample_count = 4
+mean = 2.10461e+00
+standard_deviation = 2.14066e-02
+median = 2.11155e+00
+percentile_95_lower = 2.07664e+00
+percentile_95_upper = 2.12079e+00
+percentile_68_lower = 2.08878e+00
+percentile_68_upper = 2.11979e+00
+half_percentile_68_width = 1.55050e-02
+
+["KEX_AB"]
+interval = "95% percentile"
+sample_count = 4
+mean = 3.72042e+02
+standard_deviation = 7.67270e+00
+median = 3.72165e+02
+percentile_95_lower = 3.63252e+02
+percentile_95_upper = 3.80622e+02
+percentile_68_lower = 3.66430e+02
+percentile_68_upper = 3.77641e+02
+half_percentile_68_width = 5.60559e+00
+
+["PB"]
+interval = "95% percentile"
+sample_count = 4
+mean = 6.65908e-02
+standard_deviation = 7.53556e-04
+median = 6.66188e-02
+percentile_95_lower = 6.58018e-02
+percentile_95_upper = 6.73321e-02
+percentile_68_lower = 6.59488e-02
+percentile_68_upper = 6.72301e-02
+half_percentile_68_width = 6.40683e-04
+
+["R2_A, NUC->15N, B0->500.0MHZ"]
+interval = "95% percentile"
+sample_count = 4
+mean = 4.00101e+00
+standard_deviation = 1.24399e-01
+median = 3.98663e+00
+percentile_95_lower = 3.87334e+00
+percentile_95_upper = 4.15313e+00
+percentile_68_lower = 3.92095e+00
+percentile_68_upper = 4.08245e+00
+half_percentile_68_width = 8.07483e-02
+
+["R2_A, NUC->15N, B0->800.0MHZ"]
+interval = "95% percentile"
+sample_count = 4
+mean = 6.46240e+00
+standard_deviation = 3.54767e-01
+median = 6.44226e+00
+percentile_95_lower = 6.14991e+00
+percentile_95_upper = 6.80912e+00
+percentile_68_lower = 6.15676e+00
+percentile_68_upper = 6.76996e+00
+half_percentile_68_width = 3.06603e-01

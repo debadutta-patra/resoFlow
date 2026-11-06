@@ -99,6 +99,7 @@ class UncertaintyValue(BaseModel):
     is_constrained: bool = False
     is_derived: bool = False
     near_boundary: bool = False
+    uncertainty_kind: Optional[str] = "covariance"
 
 
 class ParameterReportModel(BaseModel):
@@ -225,6 +226,9 @@ class ResamplingParameterSummary(BaseModel):
     interval_95_upper: Optional[float] = None
     eti_95_lower: Optional[float] = None
     eti_95_upper: Optional[float] = None
+    percentile_68_lower: Optional[float] = None
+    percentile_68_upper: Optional[float] = None
+    half_percentile_68_width: Optional[float] = None
     lower_1sigma: Optional[float] = None
     upper_1sigma: Optional[float] = None
     stderr: Optional[float] = None
@@ -234,6 +238,7 @@ class ResamplingParameterSummary(BaseModel):
     is_skewed: Optional[bool] = False
     deterministic_value: Optional[float] = None
     bias: Optional[float] = None
+    uncertainty_kind: Optional[str] = None
 
 
 class McmcParameterSummary(BaseModel):
@@ -255,6 +260,9 @@ class McmcParameterSummary(BaseModel):
     percentile_95_upper: Optional[float] = None
     interval_95_lower: Optional[float] = None
     interval_95_upper: Optional[float] = None
+    credible_interval_68_lower: Optional[float] = None
+    credible_interval_68_upper: Optional[float] = None
+    half_credible_interval_68_width: Optional[float] = None
     lower_1sigma: Optional[float] = None
     upper_1sigma: Optional[float] = None
     stderr: Optional[float] = None
@@ -267,6 +275,7 @@ class McmcParameterSummary(BaseModel):
     effective_sample_size: Optional[float] = None
     mcse_mean: Optional[float] = None
     rhat: Optional[float] = None
+    uncertainty_kind: Optional[str] = None
 
 
 class ResamplingDiagnostics(BaseModel):

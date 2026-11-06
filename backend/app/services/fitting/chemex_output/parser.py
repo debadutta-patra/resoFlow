@@ -345,6 +345,19 @@ def _extract_step_residues(
                 kex_ab = g_map.get("KEX_AB") or g_map.get("kex_ab") or g_map.get("KEX") or g_map.get("kex")
             if pb is None:
                 pb = g_map.get("PB") or g_map.get("pb")
+            if pb is None:
+                keq_cand = g_map.get("KEQ_AB") or g_map.get("keq_ab") or g_map.get("KEQ") or g_map.get("keq")
+                if keq_cand is not None and keq_cand.value is not None:
+                    kv = keq_cand.value
+                    derived_pb = kv / (1.0 + kv)
+                    pb = UncertaintyValue(
+                        name="PB",
+                        section="CONSTRAINED",
+                        key="PB",
+                        value=derived_pb,
+                        has_stderr=False,
+                        is_derived=True,
+                    )
             if pa is None:
                 pa = g_map.get("PA") or g_map.get("pa")
             if kab is None:
@@ -660,8 +673,18 @@ def _parse_step_directory(
     pa = globals_dict.get("pa") or globals_dict.get("PA")
 
     # If kab/kba are not in globals_dict but kex_ab and pb are available in globals_dict:
-    kex_glob = globals_dict.get("kex_ab") or globals_dict.get("KEX_AB")
+    kex_glob = globals_dict.get("kex_ab") or globals_dict.get("KEX_AB") or globals_dict.get("kex") or globals_dict.get("KEX")
     pb_glob = globals_dict.get("pb") or globals_dict.get("PB")
+    if pb_glob is None:
+        keq_cand = globals_dict.get("keq_ab") or globals_dict.get("KEQ_AB") or globals_dict.get("keq") or globals_dict.get("KEQ")
+        if keq_cand is not None and keq_cand.value is not None:
+            kv = keq_cand.value
+            derived_pb = kv / (1.0 + kv)
+            pb_glob = UncertaintyValue(
+                name="PB", section="GLOBAL", key="PB", value=derived_pb, has_stderr=False, is_derived=True
+            )
+            globals_dict["pb"] = pb_glob
+            globals_dict["PB"] = pb_glob
     if kex_glob is not None and pb_glob is not None and kex_glob.value is not None and pb_glob.value is not None:
         if kab is None:
             kab_val = kex_glob.value * pb_glob.value

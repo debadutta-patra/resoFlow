@@ -1,0 +1,4 @@
+schema_version = 2
+status = "incomplete"
+failure_stage = "STEP2"
+failure_reason = "Process killed in STEP2"

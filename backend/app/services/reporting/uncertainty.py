@@ -303,56 +303,21 @@ class UncertaintyResolver:
 
     def _load_grid_and_resampling_data(self) -> None:
         """Discover and index grid search profiles and Monte Carlo / Bootstrap / MCMC replicate arrays."""
-        # 1. Grid search indexing — use same discovery pattern as resampling
+        from ..fitting.chemex_output import locate
+
+        # 1. Grid search indexing via locate helper
         grid_candidates: List[Path] = []
         seen_grid: set = set()
 
-        def _add_grid(path: Path) -> None:
-            try:
-                resolved = path.resolve()
-            except (OSError, ValueError):
-                resolved = path
-            if resolved not in seen_grid and path.is_dir():
-                seen_grid.add(resolved)
-                grid_candidates.append(path)
-
-        def _scan_grid_container(container: Path) -> None:
-            if not container.is_dir():
-                return
-            _add_grid(container / "Grid")
-            for child in sorted(container.iterdir()):
-                if not child.is_dir():
-                    continue
-                if child.name.upper().startswith("STEP"):
-                    _add_grid(child / "Grid")
-                    if (child / "Groups").is_dir():
-                        for g_c in (child / "Groups").iterdir():
-                            if g_c.is_dir():
-                                _add_grid(g_c / "Grid")
-                elif child.name == "Groups":
-                    for g_c in child.iterdir():
-                        if g_c.is_dir():
-                            _add_grid(g_c / "Grid")
-
-        if self.step_name:
-            _add_grid(self.output_dir / self.step_name / "Grid")
-            _add_grid(self.analysis_dir / self.step_name / "Grid")
-            if (self.output_dir / self.step_name / "Groups").is_dir():
-                for g_c in (self.output_dir / self.step_name / "Groups").iterdir():
-                    if g_c.is_dir():
-                        _add_grid(g_c / "Grid")
-            if (self.analysis_dir / self.step_name / "Groups").is_dir():
-                for g_c in (self.analysis_dir / self.step_name / "Groups").iterdir():
-                    if g_c.is_dir():
-                        _add_grid(g_c / "Grid")
-        else:
-            if self.primary_step and self.primary_step.name:
-                _add_grid(self.output_dir / self.primary_step.name / "Grid")
-                _add_grid(self.analysis_dir / self.primary_step.name / "Grid")
-
-            _scan_grid_container(self.output_dir)
-            if self.output_dir != self.analysis_dir:
-                _scan_grid_container(self.analysis_dir)
+        for container in [self.output_dir, self.analysis_dir]:
+            for gd in locate.all_grid_dirs(container, self.step_name):
+                try:
+                    resolved = gd.resolve()
+                except (OSError, ValueError):
+                    resolved = gd
+                if resolved not in seen_grid and gd.is_dir():
+                    seen_grid.add(resolved)
+                    grid_candidates.append(gd)
 
         from ..fitting.param_canonicalizer import canonicalize
         from ..fitting.chemex_output.grid_parser import (

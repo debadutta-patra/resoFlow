@@ -1,0 +1,19 @@
+[GLOBAL]
+KAB =  2.25000e+01 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([KEX_AB] * [PB])
+KBA =  2.77500e+02 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([KEX_AB] * [PA])
+PA  =  9.25000e-01 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; (1.0 - [PB])
+
+[CS_B]
+15N =  1.21980e+02 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([CS_A, NUC->15N] + [DW_AB, NUC->15N])
+
+["R1_B, B0->500.0MHZ"]
+15N =  2.62465e+00 # ([R1_A, NUC->15N, B0->500.0MHZ])
+
+["R1_B, B0->800.0MHZ"]
+15N =  1.96637e+00 # ([R1_A, NUC->15N, B0->800.0MHZ])
+
+["R2_B, B0->500.0MHZ"]
+15N =  4.00995e+00 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R2_A, NUC->15N, B0->500.0MHZ])
+
+["R2_B, B0->800.0MHZ"]
+15N =  6.67323e+00 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R2_A, NUC->15N, B0->800.0MHZ])

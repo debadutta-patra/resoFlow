@@ -86,12 +86,22 @@ def parse_grid_directory(
     residue_labels_map: Optional[Dict[str, str]] = None,
 ) -> Optional[GridResultModel]:
     """
-    Parse Grid/ directory containing optional grid PDFs and/or Groups/*.out files.
-    Detection rule: Grid/ exists AND contains at least one of grid_1d.pdf, grid_2d.pdf,
-    or Groups/*.out (or root *.out).
+    Parse Grid/ directory containing optional grid PDFs and/or Groups/*.out files (v1)
+    or summary.toml, Profiles/, Factors/ (v2).
     """
     if not grid_dir.exists() or not grid_dir.is_dir():
         return None
+
+    # Check for v2 layout first
+    from .grid_parser_v2 import is_v2_grid_dir, parse_v2_grid_directory
+    if is_v2_grid_dir(grid_dir):
+        return parse_v2_grid_directory(
+            grid_dir,
+            warnings=warnings,
+            step_name=step_name,
+            run_info_dir=run_info_dir,
+            residue_labels_map=residue_labels_map,
+        )
 
     grid_1d = grid_dir / "grid_1d.pdf"
     grid_2d = grid_dir / "grid_2d.pdf"

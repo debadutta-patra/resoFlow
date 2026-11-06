@@ -215,16 +215,27 @@ def parse_resampling_directory(
             rep_data["replicates"],
             rep_data["parameter_names"],
         )
+        kind_map = {"MonteCarlo": "mc", "Bootstrap": "bs", "BootstrapNS": "bsn"}
+        u_kind = kind_map.get(method_type, method_type.lower())
         for p_name, p_stat in calc_summary.items():
-            summary_map[p_name] = ResamplingParameterSummary(**p_stat)
+            summary_map[p_name] = ResamplingParameterSummary(**p_stat, uncertainty_kind=u_kind)
     elif summary_file.exists():
         # Fallback to summary.toml if no samples/npz exists
         try:
             s_data = tomllib.loads(summary_file.read_text(encoding="utf-8"))
+            kind_map = {"MonteCarlo": "mc", "Bootstrap": "bs", "BootstrapNS": "bsn"}
+            u_kind = kind_map.get(method_type, method_type.lower())
             for param_key, p_dict in s_data.items():
                 if isinstance(p_dict, dict):
                     clean_pname = param_key.strip("[]")
-                    std_val = _safe_float(p_dict.get("standard_deviation"))
+                    std_val = _safe_float(p_dict.get("standard_deviation")) or _safe_float(p_dict.get("std_dev"))
+                    p68_low = _safe_float(p_dict.get("percentile_68_lower")) or _safe_float(p_dict.get("lower_1sigma"))
+                    p68_high = _safe_float(p_dict.get("percentile_68_upper")) or _safe_float(p_dict.get("upper_1sigma"))
+                    stderr_val = (
+                        _safe_float(p_dict.get("half_percentile_68_width"))
+                        or _safe_float(p_dict.get("stderr"))
+                        or (float(p68_high - p68_low) / 2.0 if (p68_low is not None and p68_high is not None) else None)
+                    )
                     summary_map[clean_pname] = ResamplingParameterSummary(
                         parameter_name=clean_pname,
                         interval=str(p_dict.get("interval", "95% percentile")),
@@ -233,7 +244,7 @@ def parse_resampling_directory(
                         standard_deviation=std_val,
                         std_dev=std_val,
                         std=std_val,
-                        sem=_safe_float(p_dict.get("stderr")),
+                        sem=stderr_val,
                         median=_safe_float(p_dict.get("median")),
                         percentile_95_lower=_safe_float(p_dict.get("percentile_95_lower")),
                         percentile_95_upper=_safe_float(p_dict.get("percentile_95_upper")),
@@ -241,9 +252,13 @@ def parse_resampling_directory(
                         interval_95_upper=_safe_float(p_dict.get("percentile_95_upper")),
                         eti_95_lower=_safe_float(p_dict.get("percentile_95_lower")),
                         eti_95_upper=_safe_float(p_dict.get("percentile_95_upper")),
-                        lower_1sigma=_safe_float(p_dict.get("lower_1sigma")),
-                        upper_1sigma=_safe_float(p_dict.get("upper_1sigma")),
-                        stderr=_safe_float(p_dict.get("stderr")),
+                        percentile_68_lower=p68_low,
+                        percentile_68_upper=p68_high,
+                        half_percentile_68_width=stderr_val,
+                        lower_1sigma=p68_low,
+                        upper_1sigma=p68_high,
+                        stderr=stderr_val,
+                        uncertainty_kind=u_kind,
                     )
         except Exception as exc:
             warnings.append(
@@ -260,7 +275,7 @@ def parse_resampling_directory(
     failures = _parse_failures_tsv(failures_file)
 
     # Determine status
-    if diagnostics and diagnostics.requested_samples and diagnostics.completed_samples:
+    if diagnostics and diagnostics.requested_samples is not None and diagnostics.completed_samples is not None:
         if diagnostics.completed_samples >= diagnostics.requested_samples and bool(summary_map):
             status = "complete"
         else:
@@ -394,6 +409,7 @@ def parse_mcmc_directory(
                 prior_upper=meta_info.get("prior_upper"),
                 effective_sample_size=meta_info.get("effective_sample_size"),
                 mcse_mean=meta_info.get("mcse_mean"),
+                uncertainty_kind="mcmc",
             )
     elif summary_file.exists():
         # Fallback to summary.toml
@@ -402,9 +418,16 @@ def parse_mcmc_directory(
             for param_key, p_dict in s_data.items():
                 if isinstance(p_dict, dict):
                     clean_pname = param_key.strip("[]")
-                    std_val = _safe_float(p_dict.get("standard_deviation"))
+                    std_val = _safe_float(p_dict.get("standard_deviation")) or _safe_float(p_dict.get("std_dev"))
                     eti_low = _safe_float(p_dict.get("eti_95_lower")) or _safe_float(p_dict.get("percentile_95_lower"))
                     eti_high = _safe_float(p_dict.get("eti_95_upper")) or _safe_float(p_dict.get("percentile_95_upper"))
+                    c68_low = _safe_float(p_dict.get("credible_interval_68_lower")) or _safe_float(p_dict.get("lower_1sigma"))
+                    c68_high = _safe_float(p_dict.get("credible_interval_68_upper")) or _safe_float(p_dict.get("upper_1sigma"))
+                    stderr_val = (
+                        _safe_float(p_dict.get("half_credible_interval_68_width"))
+                        or _safe_float(p_dict.get("stderr"))
+                        or (float(c68_high - c68_low) / 2.0 if (c68_low is not None and c68_high is not None) else None)
+                    )
                     summary_map[clean_pname] = McmcParameterSummary(
                         parameter_name=clean_pname,
                         prior=str(p_dict.get("prior", "uniform")),
@@ -415,7 +438,7 @@ def parse_mcmc_directory(
                         standard_deviation=std_val,
                         std_dev=std_val,
                         std=std_val,
-                        sem=_safe_float(p_dict.get("stderr")),
+                        sem=stderr_val,
                         median=_safe_float(p_dict.get("median")),
                         eti_95_lower=eti_low,
                         eti_95_upper=eti_high,
@@ -423,11 +446,15 @@ def parse_mcmc_directory(
                         percentile_95_upper=eti_high,
                         interval_95_lower=eti_low,
                         interval_95_upper=eti_high,
-                        lower_1sigma=_safe_float(p_dict.get("lower_1sigma")),
-                        upper_1sigma=_safe_float(p_dict.get("upper_1sigma")),
-                        stderr=_safe_float(p_dict.get("stderr")),
+                        credible_interval_68_lower=c68_low,
+                        credible_interval_68_upper=c68_high,
+                        half_credible_interval_68_width=stderr_val,
+                        lower_1sigma=c68_low,
+                        upper_1sigma=c68_high,
+                        stderr=stderr_val,
                         effective_sample_size=_safe_float(p_dict.get("effective_sample_size")),
                         mcse_mean=_safe_float(p_dict.get("mcse_mean")),
+                        uncertainty_kind="mcmc",
                     )
         except Exception:
             pass

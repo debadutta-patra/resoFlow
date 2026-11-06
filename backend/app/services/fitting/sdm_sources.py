@@ -340,22 +340,15 @@ def _parameter_file_candidates(run_dir: str) -> List[str]:
     Later files override earlier ones, so the final fitted values win over
     starting parameters.
     """
-    names = ["parameters.toml", "fitted.toml"]
-    dirs = [
-        run_dir,
-        os.path.join(run_dir, "Parameters"),
-        os.path.join(run_dir, "Output"),
-        os.path.join(run_dir, "Output", "Parameters"),
-        os.path.join(run_dir, "Output", "All", "Parameters"),
-    ]
-    if os.path.isdir(os.path.join(run_dir, "Output")):
-        output = os.path.join(run_dir, "Output")
-        for step in sorted(
-            d for d in os.listdir(output) if d.upper().startswith("STEP")
-        ):
-            dirs.append(os.path.join(output, step, "Parameters"))
-            dirs.append(os.path.join(output, step, "All", "Parameters"))
-    return [os.path.join(d, n) for d in dirs for n in names]
+    from .chemex_output import locate
+    root = locate.resolve_run_dir(run_dir)
+    candidates: list[str] = [str(p) for p in locate.all_parameter_files(root)]
+    for s in locate.step_names(root):
+        for p in locate.all_parameter_files(root, s):
+            p_str = str(p)
+            if p_str not in candidates:
+                candidates.append(p_str)
+    return candidates
 
 
 def _parse_field_mhz(field: Optional[str]) -> Optional[float]:

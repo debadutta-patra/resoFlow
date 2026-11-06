@@ -1,0 +1,13 @@
+status = "complete"
+selected_chi_square = 69.25081883988184
+factor_count = 1
+
+[[selected_axes]]
+parameter_id = '__KEX_AB'
+name = '[KEX_AB]'
+value = 300.0
+
+[[selected_axes]]
+parameter_id = '__PB'
+name = '[PB]'
+value = 0.07500000000000001

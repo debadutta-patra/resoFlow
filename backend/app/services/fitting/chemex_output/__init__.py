@@ -33,6 +33,8 @@ from .models import (
 )
 from .parser import parse_output_tree
 from .grid import parse_grid_directory
+from .layout import detect_layout, LayoutVersion
+from . import locate
 from .grid_parser import (
     compute_1d_profiles,
     compute_2d_surface,

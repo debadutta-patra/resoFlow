@@ -1,0 +1,1397 @@
+{
+  "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+  "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+  "artifact_type": "native_covariance_evidence",
+  "bundle_identity": "ecd166e4c7dba5f0460e20cac9df02a90da86f1698715bd36b786f8fc0f5baa3",
+  "correlations": {
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "artifact_type": "CorrelationEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.9cd802817fb39p+2",
+        "name": "CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.a9dc489e310b4p+11; upper[0] zeta=0x1.986e5d0530c54p+11; lower[1] zeta=0x1.b0d488ee1badcp+4; upper[1] zeta=0x1.17f7078cdbe34p+16; lower[2] zeta=0x1.6dcfe26b19835p+5; upper[2] zeta=0x1.3fcfb3040cee1p+9; lower[3] zeta=0x1.aaa8663103ecdp+4; upper[3] zeta=0x1.a3be939fbc915p+12; lower[4] zeta=0x1.66959c82ac1b6p+4; upper[4] zeta=0x1.b50b51fb6d932p+11",
+        "name": "BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_ENTRY_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.096d773f6cea4p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.096d773f6cea4p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d2a9b88b24336p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d2a9b88b24336p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.096d773f6cea4p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.096d773f6cea4p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5a68797d03617p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5a68797d03617p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5a5d7a4b5b37dp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5a5d7a4b5b37dp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.aff1d3eb8bf6cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.aff1d3eb8bf6cp-3"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d2a9b88b24336p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d2a9b88b24336p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5a68797d03617p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5a68797d03617p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.b43033baed672p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.b43033baed672p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0edc282dbd6fcp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0edc282dbd6fcp-3"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d5bb06932e9abp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5a5d7a4b5b37dp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5a5d7a4b5b37dp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.b43033baed672p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.b43033baed672p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.d6cfa29906de4p-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.aff1d3eb8bf6cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.aff1d3eb8bf6cp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0edc282dbd6fcp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0edc282dbd6fcp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6af91f816e4e5p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        }
+      ]
+    ],
+    "identity": "e8a475b175f9fb2402fb06deee0fd140d68784d48a7e4791781fcbb6238aae76",
+    "output_ids": [
+      "__DW_AB_15N",
+      "__KEX_AB",
+      "__PB",
+      "__R2_A_15N_500_0MHZ",
+      "__R2_A_15N_800_0MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "local_covariance",
+    "source_identity": "0c43dd3aa055685df450d0609da599a1cc34f5382c5f48e6a923eddc26aa3b19",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "covariance": {
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "accepted_vector": [
+      {
+        "binary64": "0x1.0b6860989dab1p+1"
+      },
+      {
+        "binary64": "0x1.794d85b536b05p+8"
+      },
+      {
+        "binary64": "0x1.114901acd0010p-4"
+      },
+      {
+        "binary64": "0x1.fa39a6c477d49p+1"
+      },
+      {
+        "binary64": "0x1.97a0123afe3bcp+2"
+      }
+    ],
+    "artifact_type": "CovarianceEvidence",
+    "calibration_identity": "native-product-local-covariance-numerics-v2",
+    "chi_square": {
+      "binary64": "0x1.ae30d0c5a3a00p+5"
+    },
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.9cd802817fb39p+2",
+        "name": "CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.a9dc489e310b4p+11; upper[0] zeta=0x1.986e5d0530c54p+11; lower[1] zeta=0x1.b0d488ee1badcp+4; upper[1] zeta=0x1.17f7078cdbe34p+16; lower[2] zeta=0x1.6dcfe26b19835p+5; upper[2] zeta=0x1.3fcfb3040cee1p+9; lower[3] zeta=0x1.aaa8663103ecdp+4; upper[3] zeta=0x1.a3be939fbc915p+12; lower[4] zeta=0x1.66959c82ac1b6p+4; upper[4] zeta=0x1.b50b51fb6d932p+11",
+        "name": "BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      }
+    ],
+    "controlled_coordinate_count": 5,
+    "controlled_ids": [
+      "__DW_AB_15N",
+      "__KEX_AB",
+      "__PB",
+      "__R2_A_15N_500_0MHZ",
+      "__R2_A_15N_800_0MHZ"
+    ],
+    "coordinate_scales": [
+      {
+        "binary64": "0x1.a8f97fe0fb118p-7"
+      },
+      {
+        "binary64": "0x1.3cc2a6a6ca69bp+2"
+      },
+      {
+        "binary64": "0x1.fda0d2cbf5172p-12"
+      },
+      {
+        "binary64": "0x1.2917c8df20fafp-3"
+      },
+      {
+        "binary64": "0x1.18e0c1035b754p-2"
+      }
+    ],
+    "covariance": [
+      [
+        {
+          "binary64": "0x1.d6c6a00cc5dcap-11"
+        },
+        {
+          "binary64": "-0x1.bbbb5fd2523f0p-4"
+        },
+        {
+          "binary64": "-0x1.4e4c3dd14d7e8p-16"
+        },
+        {
+          "binary64": "-0x1.0b361f80608a5p-11"
+        },
+        {
+          "binary64": "-0x1.0099e0b5ed9f0p-16"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.bbbb5fd2523f0p-4"
+        },
+        {
+          "binary64": "0x1.850efafac0b03p+7"
+        },
+        {
+          "binary64": "-0x1.c32dc013fa046p-7"
+        },
+        {
+          "binary64": "-0x1.663cbbc503da2p-3"
+        },
+        {
+          "binary64": "-0x1.ac06af5320383p-1"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.4e4c3dd14d7e8p-16"
+        },
+        {
+          "binary64": "-0x1.c32dc013fa046p-7"
+        },
+        {
+          "binary64": "0x1.1dbffac1ab17ap-19"
+        },
+        {
+          "binary64": "0x1.82a16a41f24bep-16"
+        },
+        {
+          "binary64": "0x1.cc0c25426cff1p-15"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0b361f80608a5p-11"
+        },
+        {
+          "binary64": "-0x1.663cbbc503da2p-3"
+        },
+        {
+          "binary64": "0x1.82a16a41f24bep-16"
+        },
+        {
+          "binary64": "0x1.6862da98e8119p-6"
+        },
+        {
+          "binary64": "0x1.e9900717b78fbp-10"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0099e0b5ed9f0p-16"
+        },
+        {
+          "binary64": "-0x1.ac06af5320383p-1"
+        },
+        {
+          "binary64": "0x1.cc0c25426cff1p-15"
+        },
+        {
+          "binary64": "0x1.e9900717b78fbp-10"
+        },
+        {
+          "binary64": "0x1.4acf802e0074bp-4"
+        }
+      ]
+    ],
+    "evaluation_plan_identity": "5f48715442ba4f3bf1267c773fc3a475b1be7eb9b9089d29efabb109660a44c6",
+    "factor": [
+      [
+        {
+          "binary64": "-0x1.17f139c0df1bfp-8"
+        },
+        {
+          "binary64": "-0x1.c29cdb31eff94p-12"
+        },
+        {
+          "binary64": "0x1.931251529e7f9p-10"
+        },
+        {
+          "binary64": "-0x1.d6a18a6d81956p-6"
+        },
+        {
+          "binary64": "-0x1.d8a2a0c5832c6p-8"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.a87a51c314a79p+0"
+        },
+        {
+          "binary64": "0x1.16bdcb8b5e638p-3"
+        },
+        {
+          "binary64": "0x1.a61b3379c9607p-2"
+        },
+        {
+          "binary64": "0x1.c201b968e983cp+2"
+        },
+        {
+          "binary64": "-0x1.7d8702949efccp+3"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.546c9ae8efbe8p-13"
+        },
+        {
+          "binary64": "0x1.0f8bac095b15cp-20"
+        },
+        {
+          "binary64": "0x1.6476f855cd343p-14"
+        },
+        {
+          "binary64": "0x1.851443857fa5fp-12"
+        },
+        {
+          "binary64": "0x1.6eca663ad3014p-10"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.86d81b61f1e92p-7"
+        },
+        {
+          "binary64": "-0x1.b6014cce03af4p-4"
+        },
+        {
+          "binary64": "-0x1.98c9579e6d111p-4"
+        },
+        {
+          "binary64": "0x1.6eae8c14d8029p-7"
+        },
+        {
+          "binary64": "0x1.2b2423b12bff9p-6"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.9b5b6062428c1p-6"
+        },
+        {
+          "binary64": "0x1.7a25e9a603691p-3"
+        },
+        {
+          "binary64": "-0x1.a627aed2d26a0p-3"
+        },
+        {
+          "binary64": "-0x1.7dc1cb9625a96p-6"
+        },
+        {
+          "binary64": "0x1.c151e8c49a9b6p-5"
+        }
+      ]
+    ],
+    "factorization": "column-equilibrated-svd-factor-gram-v4",
+    "identity": "0c43dd3aa055685df450d0609da599a1cc34f5382c5f48e6a923eddc26aa3b19",
+    "information_condition": {
+      "binary64": "0x1.4ce3ff2a86cbep+5"
+    },
+    "jacobian_condition": {
+      "binary64": "0x1.9cd802817fb39p+2"
+    },
+    "nominal_residual_degrees_of_freedom": 39,
+    "numerical_compatibility_requirement": "binary64-retained-scipy-2point-gesdd-column-equilibrated-v1",
+    "parameterization_identity": "be90d7fbeccfde8ba775e2f40f0b4be50f0340ae298983c3bba7526ba3156ee4",
+    "policy_identity": "ea7df2e5d2ae0e8be4fa8d46ae28b90db8f3ab9c396bfd3b93204d7475e1430f",
+    "problem_identity": "6a4096e035a5696b3744754ab4baa9aceca6007cdf8b653125e7912dff92a535",
+    "profiled_normalization_count": 2,
+    "rank": 5,
+    "rank_diagnostic_identity": "b7b581160a4a9d99b4a92bd5fcd79cce710bb8f7e919b10087c55878f2a160e4",
+    "rank_threshold": {
+      "binary64": "0x1.382d0d1cd8383p-46"
+    },
+    "request_identity": "975306ef5470d481d11e58bbcd4b446779efec90bb51e5b027a8e843594243b6",
+    "residual_variance_scale": {
+      "binary64": "0x1.0000000000000p+0"
+    },
+    "residual_variance_scaling": "absolute_observation_uncertainties",
+    "retained_residual_count": 46,
+    "singular_values": [
+      {
+        "binary64": "0x1.b254f0da37f52p+0"
+      },
+      {
+        "binary64": "0x1.0034ea65b5a03p+0"
+      },
+      {
+        "binary64": "0x1.ea7de67e93980p-1"
+      },
+      {
+        "binary64": "0x1.756a917b414a2p-2"
+      },
+      {
+        "binary64": "0x1.0d53117a263ecp-2"
+      }
+    ],
+    "source_jacobian_identity": "b86b51d744527846447bc2c412f445dbbf660a83827ce4d3089ec39f24585d2b",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ],
+    "unscaled_covariance": [
+      [
+        {
+          "binary64": "0x1.d6c6a00cc5dcap-11"
+        },
+        {
+          "binary64": "-0x1.bbbb5fd2523f0p-4"
+        },
+        {
+          "binary64": "-0x1.4e4c3dd14d7e8p-16"
+        },
+        {
+          "binary64": "-0x1.0b361f80608a5p-11"
+        },
+        {
+          "binary64": "-0x1.0099e0b5ed9f0p-16"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.bbbb5fd2523f0p-4"
+        },
+        {
+          "binary64": "0x1.850efafac0b03p+7"
+        },
+        {
+          "binary64": "-0x1.c32dc013fa046p-7"
+        },
+        {
+          "binary64": "-0x1.663cbbc503da2p-3"
+        },
+        {
+          "binary64": "-0x1.ac06af5320383p-1"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.4e4c3dd14d7e8p-16"
+        },
+        {
+          "binary64": "-0x1.c32dc013fa046p-7"
+        },
+        {
+          "binary64": "0x1.1dbffac1ab17ap-19"
+        },
+        {
+          "binary64": "0x1.82a16a41f24bep-16"
+        },
+        {
+          "binary64": "0x1.cc0c25426cff1p-15"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0b361f80608a5p-11"
+        },
+        {
+          "binary64": "-0x1.663cbbc503da2p-3"
+        },
+        {
+          "binary64": "0x1.82a16a41f24bep-16"
+        },
+        {
+          "binary64": "0x1.6862da98e8119p-6"
+        },
+        {
+          "binary64": "0x1.e9900717b78fbp-10"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0099e0b5ed9f0p-16"
+        },
+        {
+          "binary64": "-0x1.ac06af5320383p-1"
+        },
+        {
+          "binary64": "0x1.cc0c25426cff1p-15"
+        },
+        {
+          "binary64": "0x1.e9900717b78fbp-10"
+        },
+        {
+          "binary64": "0x1.4acf802e0074bp-4"
+        }
+      ]
+    ]
+  },
+  "failures": [],
+  "marginal_standard_errors": {
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "artifact_type": "MarginalErrorEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.9cd802817fb39p+2",
+        "name": "CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.a9dc489e310b4p+11; upper[0] zeta=0x1.986e5d0530c54p+11; lower[1] zeta=0x1.b0d488ee1badcp+4; upper[1] zeta=0x1.17f7078cdbe34p+16; lower[2] zeta=0x1.6dcfe26b19835p+5; upper[2] zeta=0x1.3fcfb3040cee1p+9; lower[3] zeta=0x1.aaa8663103ecdp+4; upper[3] zeta=0x1.a3be939fbc915p+12; lower[4] zeta=0x1.66959c82ac1b6p+4; upper[4] zeta=0x1.b50b51fb6d932p+11",
+        "name": "BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_VARIANCE_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__DW_AB_15N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.eaf498234fef0p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__KEX_AB",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.be50e49007d52p+3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__PB",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.7e7f3bbca739fp-10"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_A_15N_500_0MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.2fbdce18e6644p-3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_A_15N_800_0MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.2302dbff0b2ddp-2"
+        }
+      }
+    ],
+    "identity": "b024f0cc2eec47e7d2bb5cf8cd8ad4c90935688d765fd2765dd8fedc3daec519",
+    "output_ids": [
+      "__DW_AB_15N",
+      "__KEX_AB",
+      "__PB",
+      "__R2_A_15N_500_0MHZ",
+      "__R2_A_15N_800_0MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "local_covariance",
+    "source_identity": "0c43dd3aa055685df450d0609da599a1cc34f5382c5f48e6a923eddc26aa3b19",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "operations": [
+    {
+      "artifact_identity": "b86b51d744527846447bc2c412f445dbbf660a83827ce4d3089ec39f24585d2b",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "96c419b88b7df34e7cfe292724380a39cf53498ca32fedb0cc86d44dde44c0a2",
+      "occurrence_identity": "c52e50dbd61f43c0819f45f20ed6a2a9",
+      "request_identity": "f3b38d77fdfe6db0d5f6e8eaddd01a45fd9bbfc5ee2588416e2913241446e152",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "residual_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "0c43dd3aa055685df450d0609da599a1cc34f5382c5f48e6a923eddc26aa3b19",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "ffb4e6a107e67d7ee1674ebb4d4292e9b60fcaf1216f1f12aebd4b819fd7fa31",
+      "occurrence_identity": "cd7d02804a2149098a7e935a887d3b55",
+      "request_identity": "975306ef5470d481d11e58bbcd4b446779efec90bb51e5b027a8e843594243b6",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "covariance",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "b024f0cc2eec47e7d2bb5cf8cd8ad4c90935688d765fd2765dd8fedc3daec519",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "d20761f5089fe91cc9d145f23ad8c011862d52554491c28db14b9f4af8f37260",
+      "occurrence_identity": "6ee5e2727b404f2088f51899055c63d1",
+      "request_identity": "a609e64e9c46f157ac7103f5284729cfa0c9cd3dda56e91533260944bb62fc45",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "e8a475b175f9fb2402fb06deee0fd140d68784d48a7e4791781fcbb6238aae76",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "138454cb16fe77aa0c519619cd40e804a6b1c73dba1741da3eb53e998d20e02c",
+      "occurrence_identity": "5cf23d3cbb414ddcbc27c03c5cfce668",
+      "request_identity": "339e2b7b9e597eb01fb3872519e16179140ac45701b67ad25cceddf5d09cf281",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "correlations",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "d62272108c8ec267a8ad13f92c167206d922a43369844402d1a20160441e73eb",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "47489f34a0d18cf3eb6caad7eee49c75b3e972a3267cc310a4cefa1419e1687e",
+      "occurrence_identity": "83d19317524142b3ba4dc7258ddd13b9",
+      "request_identity": "8bbd953d170178c73fefb570523c048f635ab3b16025c69e5380a3a9b92a8669",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constraint_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "93add4f733c3b6433423ca42ef59bbd9b779731c284c5eac47797317d15232a6",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "3ead6b0f0dcdd80b461250c99b0fcadb07b1c20fd3f78bbfa542b72895316e86",
+      "occurrence_identity": "5b0ec9a9e3a145ee8d5899517f97deef",
+      "request_identity": "fb8072262995df74a649a8ee430079dbeac31c9aea02998ce7d27e3b1d8f4869",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constrained_propagation",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "74b1c9ff5d491249528b769c4eee7596c51d5f0e3530ccc20fac091d61df95d1",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "c6914d8c309f7d17154698ad7d8d3a197ad7cdc5c3a0f6ecb831ef8e4f28b09e",
+      "occurrence_identity": "1f58e6efa0f1443bba0dfcaae9a87614",
+      "request_identity": "71ccf03f239500eca47deef7b506d5dc4940d5c68307dff337b5472e96b73c6b",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constrained_marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "33c6ebefd53474d241fe10d3efa2b6edbbfb8f93468e3edd46e02851cc8e0f1b",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "8788506d0c3b68376517cfc857f0a0e399864f1a7f6a1268329bc85431b2b44d",
+      "occurrence_identity": "11bae283738649d3a2772b0d8d7a9059",
+      "request_identity": "d290b9a48b7ac02c2a6c6d2856ebcd61fbf164769467b0210964556dd05aecc1",
+      "resolved_environment_identity": "0af06f086030dbb28d301a06c33cbb83c683e55ad5f408f121867096afd21e41",
+      "stage": "constrained_correlations",
+      "terminal": "completed"
+    }
+  ],
+  "policy_identity": "ea7df2e5d2ae0e8be4fa8d46ae28b90db8f3ab9c396bfd3b93204d7475e1430f",
+  "rank_diagnostic": {
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "artifact_type": "RankDiagnostic",
+    "controlled_ids": [
+      "__DW_AB_15N",
+      "__KEX_AB",
+      "__PB",
+      "__R2_A_15N_500_0MHZ",
+      "__R2_A_15N_800_0MHZ"
+    ],
+    "equilibration_scales": [
+      {
+        "binary64": "0x1.a8f97fe0fb118p-7"
+      },
+      {
+        "binary64": "0x1.3cc2a6a6ca69bp+2"
+      },
+      {
+        "binary64": "0x1.fda0d2cbf5172p-12"
+      },
+      {
+        "binary64": "0x1.2917c8df20fafp-3"
+      },
+      {
+        "binary64": "0x1.18e0c1035b754p-2"
+      }
+    ],
+    "identifiable_projector_binary64_sha256": "d255589dba9284465743c96cb94eefd5a645cf0fcff59eb9e0cf662285827df0",
+    "identity": "b7b581160a4a9d99b4a92bd5fcd79cce710bb8f7e919b10087c55878f2a160e4",
+    "normalized_singular_values": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.2e05acb34ed74p-1"
+      },
+      {
+        "binary64": "0x1.2119f0a806d1fp-1"
+      },
+      {
+        "binary64": "0x1.b831019d619b5p-3"
+      },
+      {
+        "binary64": "0x1.3d7c56fa6e989p-3"
+      }
+    ],
+    "null_projector_binary64_sha256": "798bdabc8292e05fb348be0d63a98ecf41c0eb09a3fc175ac0971fe2ed893016",
+    "projector_shape": [
+      5,
+      5
+    ],
+    "rank": 5,
+    "request_identity": "975306ef5470d481d11e58bbcd4b446779efec90bb51e5b027a8e843594243b6",
+    "scaled_column_norms": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.fffffffffffffp-1"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.ffffffffffffbp-1"
+      }
+    ],
+    "singular_values": [
+      {
+        "binary64": "0x1.b254f0da37f52p+0"
+      },
+      {
+        "binary64": "0x1.0034ea65b5a03p+0"
+      },
+      {
+        "binary64": "0x1.ea7de67e93980p-1"
+      },
+      {
+        "binary64": "0x1.756a917b414a2p-2"
+      },
+      {
+        "binary64": "0x1.0d53117a263ecp-2"
+      }
+    ],
+    "source_jacobian_identity": "b86b51d744527846447bc2c412f445dbbf660a83827ce4d3089ec39f24585d2b",
+    "subspaces": [],
+    "threshold": {
+      "binary64": "0x1.382d0d1cd8383p-46"
+    },
+    "weak_projector_binary64_sha256": "798bdabc8292e05fb348be0d63a98ecf41c0eb09a3fc175ac0971fe2ed893016",
+    "weak_threshold": {
+      "binary64": "0x1.c76e0e08a68c4p-20"
+    }
+  },
+  "request_identity": "d0ed5613585ba8a498d83a054fba26c7027825d34df7b4bfcc506f30bbf47b74",
+  "residual_jacobian": {
+    "accepted_evaluation_identity": "faa3b5c847d8806661f2857cb482846bdaee7528addb32245f0c460d2dd1a842",
+    "accepted_occurrence_identity": "95e6c57f13bf4362b140d796fb585e75",
+    "accepted_result_identity": "403a03481f16204494d4ece3cd07461ac4251e5f055ed00d45327dbae5cebeee",
+    "accepted_vector": [
+      {
+        "binary64": "0x1.0b6860989dab1p+1"
+      },
+      {
+        "binary64": "0x1.794d85b536b05p+8"
+      },
+      {
+        "binary64": "0x1.114901acd0010p-4"
+      },
+      {
+        "binary64": "0x1.fa39a6c477d49p+1"
+      },
+      {
+        "binary64": "0x1.97a0123afe3bcp+2"
+      }
+    ],
+    "artifact_type": "ResidualJacobianEvidence",
+    "calibration_identity": "native-product-local-covariance-numerics-v2",
+    "columns": [],
+    "complete_reliable": true,
+    "constraint_program_identity": "d68217655f9e8e66f92cc418d2c7854e639003438eb5431aaa2fece87c5d013f",
+    "controlled_ids": [
+      "__DW_AB_15N",
+      "__KEX_AB",
+      "__PB",
+      "__R2_A_15N_500_0MHZ",
+      "__R2_A_15N_800_0MHZ"
+    ],
+    "coordinate_scales": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      }
+    ],
+    "evaluation_count": 0,
+    "evaluation_plan_identity": "5f48715442ba4f3bf1267c773fc3a475b1be7eb9b9089d29efabb109660a44c6",
+    "evaluator_parameterization_identity": "ab5f44bcb00203204f8620a9bcc9fe74185d120a02c8c79ff2cb29d6d1d5c4d5",
+    "identity": "b86b51d744527846447bc2c412f445dbbf660a83827ce4d3089ec39f24585d2b",
+    "matrix_binary64_sha256": "11d17c85e4162f208777d650937f306815a05dcdae9ee4ac10f470f97fa63cd5",
+    "matrix_shape": [
+      46,
+      5
+    ],
+    "method": "retained-scipy-final-2-point",
+    "numerical_compatibility_requirement": "binary64-retained-scipy-2point-gesdd-column-equilibrated-v1",
+    "parameterization_identity": "be90d7fbeccfde8ba775e2f40f0b4be50f0340ae298983c3bba7526ba3156ee4",
+    "policy_identity": "ea7df2e5d2ae0e8be4fa8d46ae28b90db8f3ab9c396bfd3b93204d7475e1430f",
+    "problem_identity": "6a4096e035a5696b3744754ab4baa9aceca6007cdf8b653125e7912dff92a535",
+    "request_identity": "f3b38d77fdfe6db0d5f6e8eaddd01a45fd9bbfc5ee2588416e2913241446e152",
+    "source_revision": 0,
+    "source_snapshot_occurrence_identity": "183593a0903341529e4f5d3e83fd0543",
+    "trajectory_fingerprint": "7a2928153b084a0b6ec2e2b80de7dfb92f0dc07be842ff1bba164985dc0091dc"
+  },
+  "schema_version": 2
+}

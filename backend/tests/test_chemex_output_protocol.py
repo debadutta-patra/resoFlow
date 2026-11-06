@@ -20,15 +20,18 @@ from app.services.fitting.chemex_output.parameters import parse_parameter_file
 from app.services.fitting.chemex_output.statistics import parse_statistics_toml
 
 FIXTURES_ROOT = Path(__file__).parent / "fixtures" / "chemex_trees"
+FIXTURES_ROOT_2026_9 = Path(__file__).parent / "fixtures" / "chemex_trees_2026_9"
+ALL_FIXTURE_ROOTS = [FIXTURES_ROOT, FIXTURES_ROOT_2026_9]
 
 
 # ==========================================
 # §1.1 Layout Discrimination Conformance
 # ==========================================
 
-def test_protocol_1_1_single_step_layout():
+@pytest.mark.parametrize("fixtures_root", ALL_FIXTURE_ROOTS, ids=lambda p: p.name)
+def test_protocol_1_1_single_step_layout(fixtures_root: Path):
     """Verify single-step fit produces scientific outputs directly at root."""
-    path = FIXTURES_ROOT / "single_step"
+    path = fixtures_root / "single_step"
     res = parse_output_tree(path)
 
     assert res.is_multi_step is False
@@ -41,9 +44,10 @@ def test_protocol_1_1_single_step_layout():
     assert res.primary_step.statistics.chisqr is not None
 
 
-def test_protocol_1_1_multi_step_layout():
+@pytest.mark.parametrize("fixtures_root", ALL_FIXTURE_ROOTS, ids=lambda p: p.name)
+def test_protocol_1_1_multi_step_layout(fixtures_root: Path):
     """Verify multi-step fit produces subdirectories matching declared steps."""
-    path = FIXTURES_ROOT / "multi_step"
+    path = fixtures_root / "multi_step"
     res = parse_output_tree(path)
 
     assert res.is_multi_step is True
@@ -283,9 +287,10 @@ def test_protocol_1_6_masked_points(tmp_path: Path):
 # §1.7 Grid Search Conformance
 # ==========================================
 
-def test_protocol_1_7_grid_search():
+@pytest.mark.parametrize("fixtures_root", ALL_FIXTURE_ROOTS, ids=lambda p: p.name)
+def test_protocol_1_7_grid_search(fixtures_root: Path):
     """Verify Grid/grid.out matrix parsing and PDF cataloguing."""
-    path = FIXTURES_ROOT / "grid_fit"
+    path = fixtures_root / "grid_fit"
     res = parse_output_tree(path)
 
     assert res.primary_step is not None
@@ -334,9 +339,10 @@ def test_protocol_1_8_statistics_toml_mapping_and_unknown_keys(tmp_path: Path):
 # §1.9 Statistics Trees Conformance
 # ==========================================
 
-def test_protocol_1_9_resampling_and_mcmc_statistics():
+@pytest.mark.parametrize("fixtures_root", ALL_FIXTURE_ROOTS, ids=lambda p: p.name)
+def test_protocol_1_9_resampling_and_mcmc_statistics(fixtures_root: Path):
     """Verify parsing of MonteCarlo, Bootstrap, and MCMC outputs."""
-    path = FIXTURES_ROOT / "stat_fit"
+    path = fixtures_root / "stat_fit"
     res = parse_output_tree(path)
 
     step = res.primary_step
@@ -363,12 +369,13 @@ def test_protocol_1_9_resampling_and_mcmc_statistics():
     assert mcmc_kex.stderr is not None
     assert stats.mcmc.diagnostics is not None
     assert stats.mcmc.diagnostics.sampler == "emcee via ChemEx direct EnsembleSampler"
-    assert stats.mcmc.diagnostics.workers == 8
+    assert stats.mcmc.diagnostics.workers is not None and stats.mcmc.diagnostics.workers > 0
 
 
-def test_protocol_1_9_interrupted_statistics():
+@pytest.mark.parametrize("fixtures_root", ALL_FIXTURE_ROOTS, ids=lambda p: p.name)
+def test_protocol_1_9_interrupted_statistics(fixtures_root: Path):
     """Verify interrupted statistics parsing with completed_samples = 0."""
-    path = FIXTURES_ROOT / "stat_interrupted"
+    path = fixtures_root / "stat_interrupted"
     res = parse_output_tree(path)
 
     step = res.primary_step
@@ -386,9 +393,10 @@ def test_protocol_1_9_interrupted_statistics():
 # §1.10 Directory Reuse Semantics Conformance
 # ==========================================
 
-def test_protocol_1_10_directory_reuse_stale_step_warning():
+@pytest.mark.parametrize("fixtures_root", ALL_FIXTURE_ROOTS, ids=lambda p: p.name)
+def test_protocol_1_10_directory_reuse_stale_step_warning(fixtures_root: Path):
     """Verify single-step run on top of old multi-step directory warns and ignores stale folders."""
-    path = FIXTURES_ROOT / "reused_multitosingle"
+    path = fixtures_root / "reused_multitosingle"
     res = parse_output_tree(path)
 
     assert res.is_multi_step is False

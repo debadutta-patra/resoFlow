@@ -1,0 +1,23 @@
+[GLOBAL]
+KEX_AB =  3.00000e+02 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+PB     =  5.50000e-03 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+
+[DW_AB]
+14N =  6.36585e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+55N =  4.03241e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+65N =  3.11694e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+
+["R1_A, B0->600.3MHZ"]
+14N =  1.94938e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+55N =  1.58554e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+65N =  1.59186e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+
+["R2_A, B0->600.3MHZ"]
+14N =  1.02357e+01 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+55N =  9.46904e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+65N =  9.10536e+00 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+
+["R2_B, B0->600.3MHZ"]
+14N =  1.50618e+02 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+55N =  2.99787e+02 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)
+65N =  4.58782e+02 # (error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF)

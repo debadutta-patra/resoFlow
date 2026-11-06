@@ -1,0 +1,45 @@
+# ChemEx run information.
+# Archived inputs are verbatim copies of the invocation TOML files.
+
+schema_version = 2
+created_at_utc = "2026-11-06T15:14:20.750509+00:00"
+
+[run]
+kind = "fit"
+working_directory = "/home/debadutta/Documents/resoFlow/backend"
+requested_output_path = "tests/fixtures/chemex_trees_2026_9/reused_output"
+resolved_output_path = "/home/debadutta/Documents/resoFlow/backend/tests/fixtures/chemex_trees_2026_9/reused_output"
+model = "2st"
+
+[command]
+arguments = ["/home/debadutta/Documents/resoFlow/backend/.venv/bin/chemex", "fit", "-e", "tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Experiments/500mhz.toml", "tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Experiments/800mhz.toml", "-p", "tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Parameters/parameters.toml", "--include", "31", "-o", "tests/fixtures/chemex_trees_2026_9/reused_output"]
+
+[selection]
+include = ["31"]
+exclude = []
+
+[execution]
+workers = 8
+native_threads = "automatic"
+
+[software]
+chemex = "2026.9.2"
+python = "3.13.11"
+numpy = "2.4.2"
+scipy = "1.18.1"
+emcee = "3.1.6"
+
+[[inputs.experiments]]
+provided_path = "tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Experiments/500mhz.toml"
+resolved_path = "/home/debadutta/Documents/resoFlow/backend/tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Experiments/500mhz.toml"
+copied_path = "inputs/experiments/500mhz.toml"
+
+[[inputs.experiments]]
+provided_path = "tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Experiments/800mhz.toml"
+resolved_path = "/home/debadutta/Documents/resoFlow/backend/tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Experiments/800mhz.toml"
+copied_path = "inputs/experiments/800mhz.toml"
+
+[[inputs.parameters]]
+provided_path = "tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Parameters/parameters.toml"
+resolved_path = "/home/debadutta/Documents/resoFlow/backend/tests/fixtures/baselines/2026.6.1/cpmg_15n_ip/inputs/Parameters/parameters.toml"
+copied_path = "inputs/parameters/parameters.toml"

@@ -369,24 +369,22 @@ def stream_analysis_zip(
 
     # Statistics and Grid directories (from all root, step, and group folders)
     if include_statistics:
-        stat_search_dirs = [
-            out_dir / "Statistics",
-            a_path / "Statistics",
-            out_dir / "Grid",
-            a_path / "Grid",
-        ]
+        from ..fitting.chemex_output import locate
+        stat_search_dirs = []
         for root_dir in [out_dir, a_path]:
             if root_dir.is_dir():
-                for child in root_dir.iterdir():
-                    if child.is_dir():
-                        if child.name.startswith("STEP") or child.name.startswith("step") or child.name == "Groups":
-                            stat_search_dirs.append(child / "Statistics")
-                            stat_search_dirs.append(child / "Grid")
-                            if (child / "Groups").is_dir():
-                                for g_child in (child / "Groups").iterdir():
-                                    if g_child.is_dir():
-                                        stat_search_dirs.append(g_child / "Statistics")
-                                        stat_search_dirs.append(g_child / "Grid")
+                stat_search_dirs.extend(locate.all_grid_dirs(root_dir))
+                if (root_dir / "Statistics").is_dir():
+                    stat_search_dirs.append(root_dir / "Statistics")
+                for s in locate.step_names(root_dir):
+                    s_stat = root_dir / s / "Statistics"
+                    if s_stat.is_dir():
+                        stat_search_dirs.append(s_stat)
+                for g_parent in [root_dir / "Groups", *(root_dir / s / "Groups" for s in locate.step_names(root_dir))]:
+                    if g_parent.is_dir():
+                        for g_child in g_parent.iterdir():
+                            if (g_child / "Statistics").is_dir():
+                                stat_search_dirs.append(g_child / "Statistics")
 
         seen_stat_files = set()
         for s_dir in stat_search_dirs:

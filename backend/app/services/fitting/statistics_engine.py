@@ -137,6 +137,12 @@ def compute_parameter_summary(
             "eti_95_upper": p_high,
             "lower_1sigma": sig1_low,
             "upper_1sigma": sig1_high,
+            "percentile_68_lower": sig1_low,
+            "percentile_68_upper": sig1_high,
+            "half_percentile_68_width": float((sig1_high - sig1_low) / 2.0),
+            "credible_interval_68_lower": sig1_low,
+            "credible_interval_68_upper": sig1_high,
+            "half_credible_interval_68_width": float((sig1_high - sig1_low) / 2.0),
             "stderr": std_val,  # For ChemEx resampling, stderr was replicate SD
             "skew": skew_val,
             "asymmetric_lower": asym_lower,
@@ -219,6 +225,9 @@ def compute_parameter_histogram(
     std_val = float(np.std(valid, ddof=1)) if n > 1 else 0.0
     p_low = float(np.percentile(valid, 2.5))
     p_high = float(np.percentile(valid, 97.5))
+    p68_low = float(np.percentile(valid, 16.0))
+    p68_high = float(np.percentile(valid, 84.0))
+    p68_half_width = float((p68_high - p68_low) / 2.0)
 
     # Compute skew
     if n >= 3 and std_val > 1e-15:
@@ -238,6 +247,15 @@ def compute_parameter_histogram(
         "std_dev": std_val,
         "percentile_95_lower": p_low,
         "percentile_95_upper": p_high,
+        "percentile_68_lower": p68_low,
+        "percentile_68_upper": p68_high,
+        "half_percentile_68_width": p68_half_width,
+        "credible_interval_68_lower": p68_low,
+        "credible_interval_68_upper": p68_high,
+        "half_credible_interval_68_width": p68_half_width,
+        "lower_1sigma": p68_low,
+        "upper_1sigma": p68_high,
+        "stderr": p68_half_width,
         "deterministic_value": deterministic_value,
         "skew": skew_val,
         "is_skewed": bool(abs(skew_val) > 0.45 or abs((median_val - p_low) - (p_high - median_val)) / max(std_val, 1e-6) > 0.3),
@@ -622,30 +640,22 @@ def load_replicates_or_fallback(
                 }
 
     # 3. Check group directories (e.g. Groups/*/Statistics/{dir_name})
-    possible_groups_dirs = [
-        method_dir.parent.parent / "Groups",
-        method_dir.parent / "Groups",
-        method_dir.parent.parent / "groups",
-    ]
-    for groups_dir in possible_groups_dirs:
-        if groups_dir.is_dir():
-            group_dirs = sorted(d for d in groups_dir.iterdir() if d.is_dir())
-            all_p_names: list[str] = []
-            all_reps: list[np.ndarray] = []
-            all_chisqr: list[np.ndarray] = []
-            for g in group_dirs:
-                g_method_dir = g / "Statistics" / method_dir.name
-                if not g_method_dir.is_dir():
-                    g_method_dir = g / "statistics" / method_dir.name
-                if g_method_dir.is_dir():
-                    g_rep = load_replicates_or_fallback(g_method_dir, method_type)
-                    if g_rep is not None and g_rep.get("replicates") is not None and len(g_rep["parameter_names"]) > 0:
-                        all_p_names.extend(g_rep["parameter_names"])
-                        all_reps.append(g_rep["replicates"])
-                        if g_rep.get("chisqr") is not None:
-                            all_chisqr.append(g_rep["chisqr"])
+    from .chemex_output import locate
+    all_stat_dirs = locate.all_statistics_dirs(method_dir.parent.parent, method_dir.name)
+    group_dirs_to_check = [d for d in all_stat_dirs if d != method_dir and "Groups" in d.parts]
+    if group_dirs_to_check:
+        all_p_names: list[str] = []
+        all_reps: list[np.ndarray] = []
+        all_chisqr: list[np.ndarray] = []
+        for g_method_dir in group_dirs_to_check:
+            g_rep = load_replicates_or_fallback(g_method_dir, method_type)
+            if g_rep is not None and g_rep.get("replicates") is not None and len(g_rep["parameter_names"]) > 0:
+                all_p_names.extend(g_rep["parameter_names"])
+                all_reps.append(g_rep["replicates"])
+                if g_rep.get("chisqr") is not None:
+                    all_chisqr.append(g_rep["chisqr"])
 
-            if all_reps and all_p_names:
+        if all_reps and all_p_names:
                 min_rows = min(r.shape[0] for r in all_reps)
                 trimmed_reps = [r[:min_rows] for r in all_reps]
                 combined_reps = np.hstack(trimmed_reps)

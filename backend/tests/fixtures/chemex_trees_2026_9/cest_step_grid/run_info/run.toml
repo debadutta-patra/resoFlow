@@ -1,0 +1,50 @@
+# ChemEx run information.
+# Archived inputs are verbatim copies of the invocation TOML files.
+
+schema_version = 2
+created_at_utc = "2026-11-06T15:12:31.626318+00:00"
+
+[run]
+kind = "fit"
+working_directory = "/home/debadutta/Documents/resoFlow/backend"
+requested_output_path = "/tmp/test_cest_grid_run"
+resolved_output_path = "/tmp/test_cest_grid_run"
+model = "2st"
+
+[command]
+arguments = ["/home/debadutta/Documents/resoFlow/backend/.venv/bin/chemex", "fit", "-e", "tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Experiments/cest_b1_0.toml", "tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Experiments/cest_b1_1.toml", "-p", "tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Parameters/parameters.toml", "-m", "/tmp/cest_step_grid_test_method.toml", "-o", "/tmp/test_cest_grid_run"]
+
+[selection]
+include = []
+exclude = []
+
+[execution]
+workers = 8
+native_threads = "automatic"
+
+[software]
+chemex = "2026.9.2"
+python = "3.13.11"
+numpy = "2.4.2"
+scipy = "1.18.1"
+emcee = "3.1.6"
+
+[[inputs.experiments]]
+provided_path = "tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Experiments/cest_b1_0.toml"
+resolved_path = "/home/debadutta/Documents/resoFlow/backend/tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Experiments/cest_b1_0.toml"
+copied_path = "inputs/experiments/cest_b1_0.toml"
+
+[[inputs.experiments]]
+provided_path = "tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Experiments/cest_b1_1.toml"
+resolved_path = "/home/debadutta/Documents/resoFlow/backend/tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Experiments/cest_b1_1.toml"
+copied_path = "inputs/experiments/cest_b1_1.toml"
+
+[[inputs.parameters]]
+provided_path = "tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Parameters/parameters.toml"
+resolved_path = "/home/debadutta/Documents/resoFlow/backend/tests/fixtures/baselines/2026.6.1/resoflow_cest/inputs/Parameters/parameters.toml"
+copied_path = "inputs/parameters/parameters.toml"
+
+[[inputs.methods]]
+provided_path = "/tmp/cest_step_grid_test_method.toml"
+resolved_path = "/tmp/cest_step_grid_test_method.toml"
+copied_path = "inputs/methods/cest_step_grid_test_method.toml"

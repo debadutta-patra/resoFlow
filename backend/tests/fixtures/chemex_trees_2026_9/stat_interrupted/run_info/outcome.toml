@@ -1,0 +1,4 @@
+schema_version = 2
+status = "incomplete"
+failure_stage = "statistics"
+failure_reason = "SIGINT received"

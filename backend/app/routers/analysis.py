@@ -2080,71 +2080,11 @@ def download_statistics_plots(
 
 
 def _locate_all_statistics_method_dirs(analysis: models.Analysis, method_name: str, step_name: Optional[str] = None):
-    from pathlib import Path
+    from ..services.fitting.chemex_output import locate
     run_dir = _locate_analysis_run_dir(analysis)
-
-    method_dir_map = {
-        "covariance": "Covariance",
-        "cov": "Covariance",
-        "mc": "MonteCarlo",
-        "monte_carlo": "MonteCarlo",
-        "montecarlo": "MonteCarlo",
-        "bs": "Bootstrap",
-        "bootstrap": "Bootstrap",
-        "bootstrap_case": "Bootstrap",
-        "bs_case": "Bootstrap",
-        "bootstrap_residuals": "Bootstrap",
-        "bsn": "BootstrapNS",
-        "bootstrap_ns": "BootstrapNS",
-        "bootstrapns": "BootstrapNS",
-        "mcmc": "MCMC",
-    }
-    dir_name = method_dir_map.get(method_name.lower(), method_name)
-
-    # 1. Check top-level single statistics directories
-    top_candidates = []
-    if step_name:
-        top_candidates.extend([
-            run_dir / step_name / "Statistics" / dir_name,
-            run_dir / "Output" / step_name / "Statistics" / dir_name,
-        ])
-    top_candidates.extend([
-        run_dir / "Output" / "STEP2" / "Statistics" / dir_name,
-        run_dir / "STEP2" / "Statistics" / dir_name,
-        run_dir / "Output" / "STEP1" / "Statistics" / dir_name,
-        run_dir / "STEP1" / "Statistics" / dir_name,
-        run_dir / "Output" / "Statistics" / dir_name,
-        run_dir / "Statistics" / dir_name,
-    ])
-    for p in top_candidates:
-        if p.is_dir():
-            return [p]
-
-    # 2. Check for Groups/ folders across potential roots
-    group_parents = []
-    if step_name:
-        group_parents.extend([
-            run_dir / step_name / "Groups",
-            run_dir / "Output" / step_name / "Groups",
-        ])
-    group_parents.extend([
-        run_dir / "Output" / "Groups",
-        run_dir / "Groups",
-        run_dir / "Output" / "STEP2" / "Groups",
-        run_dir / "STEP2" / "Groups",
-        run_dir / "Output" / "STEP1" / "Groups",
-        run_dir / "STEP1" / "Groups",
-    ])
-    for g_parent in group_parents:
-        if g_parent.is_dir():
-            group_dirs = []
-            for g_dir in sorted(g_parent.iterdir()):
-                stat_sub = g_dir / "Statistics" / dir_name
-                if stat_sub.is_dir():
-                    group_dirs.append(stat_sub)
-            if group_dirs:
-                return group_dirs
-
+    dirs = locate.all_statistics_dirs(run_dir, method_name, step_name)
+    if dirs:
+        return dirs
     raise HTTPException(status_code=404, detail=f"No {method_name} statistics directory found.")
 
 
@@ -2154,75 +2094,29 @@ def _locate_statistics_method_dir(analysis: models.Analysis, method_name: str, s
 
 
 def _get_step_deterministic_values(analysis: models.Analysis, step_name: Optional[str] = None) -> Dict[str, float]:
-    from pathlib import Path
     import tomllib
+    from ..services.fitting.chemex_output import locate
     run_dir = _locate_analysis_run_dir(analysis)
 
-    fitted_candidates = []
-    if step_name:
-        fitted_candidates.extend([
-            run_dir / step_name / "Parameters" / "fitted.toml",
-            run_dir / "Output" / step_name / "Parameters" / "fitted.toml",
-            run_dir / step_name / "All" / "Parameters" / "fitted.toml",
-            run_dir / "Output" / step_name / "All" / "Parameters" / "fitted.toml",
-        ])
-    fitted_candidates.extend([
-        run_dir / "Output" / "All" / "Parameters" / "fitted.toml",
-        run_dir / "All" / "Parameters" / "fitted.toml",
-        run_dir / "Output" / "STEP2" / "Parameters" / "fitted.toml",
-        run_dir / "STEP2" / "Parameters" / "fitted.toml",
-        run_dir / "Output" / "STEP1" / "Parameters" / "fitted.toml",
-        run_dir / "STEP1" / "Parameters" / "fitted.toml",
-        run_dir / "Output" / "Parameters" / "fitted.toml",
-        run_dir / "Parameters" / "fitted.toml",
-    ])
-
     det_map: Dict[str, float] = {}
-    for p in fitted_candidates:
-        if p.is_file():
-            try:
-                data = tomllib.loads(p.read_text(encoding="utf-8"))
-                for section, val in data.items():
-                    if isinstance(val, dict):
-                        for sub_k, sub_v in val.items():
-                            if isinstance(sub_v, (int, float)):
-                                det_map[f"{section}, {sub_k}"] = float(sub_v)
-                                det_map[f"{section}, NUC->{sub_k}"] = float(sub_v)
-                                det_map[sub_k] = float(sub_v)
-                                det_map[f"{section}_{sub_k}"] = float(sub_v)
-                    elif isinstance(val, (int, float)):
-                        det_map[section] = float(val)
-                if det_map:
-                    return det_map
-            except Exception:
-                pass
-
-    # Per-group fitted.toml
-    group_parents = [
-        run_dir / "Output" / "Groups",
-        run_dir / "Groups",
-        run_dir / "Output" / "STEP2" / "Groups",
-        run_dir / "STEP2" / "Groups",
-    ]
-    for g_parent in group_parents:
-        if g_parent.is_dir():
-            for g_dir in g_parent.iterdir():
-                fitted_f = g_dir / "Parameters" / "fitted.toml"
-                if fitted_f.is_file():
-                    try:
-                        data = tomllib.loads(fitted_f.read_text(encoding="utf-8"))
-                        for section, val in data.items():
-                            if isinstance(val, dict):
-                                for sub_k, sub_v in val.items():
-                                    if isinstance(sub_v, (int, float)):
-                                        det_map[f"{section}, {sub_k}"] = float(sub_v)
-                                        det_map[f"{section}, NUC->{sub_k}"] = float(sub_v)
-                                        det_map[sub_k] = float(sub_v)
-                                        det_map[f"{section}_{sub_k}"] = float(sub_v)
-                            elif isinstance(val, (int, float)):
-                                det_map[section] = float(val)
-                    except Exception:
-                        pass
+    fitted_f = locate.fitted_params(run_dir, step_name)
+    if fitted_f and fitted_f.is_file():
+        try:
+            data = tomllib.loads(fitted_f.read_text(encoding="utf-8"))
+            for section, val in data.items():
+                if isinstance(val, dict):
+                    for sub_k, sub_v in val.items():
+                        if isinstance(sub_v, (int, float)):
+                            det_map[f"{section}, {sub_k}"] = float(sub_v)
+                            det_map[f"{section}, NUC->{sub_k}"] = float(sub_v)
+                            det_map[sub_k] = float(sub_v)
+                            det_map[f"{section}_{sub_k}"] = float(sub_v)
+                elif isinstance(val, (int, float)):
+                    det_map[section] = float(val)
+            if det_map:
+                return det_map
+        except Exception:
+            pass
     if det_map:
         return det_map
 
@@ -2801,25 +2695,8 @@ def generate_cest_files(
 
 
 def _locate_step_grid_dir(run_dir: Path, step_name: str) -> Optional[Path]:
-    clean_step = step_name.strip()
-    candidates = []
-    if clean_step and clean_step.lower() != "root":
-        candidates.extend([
-            run_dir / clean_step / "Grid",
-            run_dir / "Output" / clean_step / "Grid",
-            run_dir / clean_step / "All" / "Grid",
-            run_dir / "Output" / clean_step / "All" / "Grid",
-        ])
-    candidates.extend([
-        run_dir / "Grid",
-        run_dir / "Output" / "Grid",
-        run_dir / "All" / "Grid",
-        run_dir / "Output" / "All" / "Grid",
-    ])
-    for p in candidates:
-        if p.is_dir():
-            return p
-    return None
+    from ..services.fitting.chemex_output import locate
+    return locate.grid_dir(run_dir, step_name)
 
 
 def _get_analysis_residue_mapping(run_dir: Path) -> dict[str, str]:
@@ -2922,27 +2799,39 @@ def get_step_grid_info(
 
     min_point = None
     fitted_point = {}
-    try:
-        from ..services.fitting.chemex_output import load_grid_file
-        global_params, agg_data, _ = get_grid_data_for_group(grid_dir, None, residue_mapping=res_map)
-        global_min = compute_grid_minimum(global_params, agg_data)
-        all_min_coords = dict(global_min["coordinates"])
+    from ..services.fitting.chemex_output.grid_parser_v2 import (
+        is_v2_grid_dir,
+        load_v2_1d_profiles,
+        load_v2_2d_surface,
+    )
+    if is_v2_grid_dir(grid_dir):
+        if grid_res.best_point:
+            min_point = {
+                "chisqr": grid_res.best_point.chisqr,
+                "coordinates": grid_res.best_point.values,
+            }
+    else:
+        try:
+            from ..services.fitting.chemex_output import load_grid_file
+            global_params, agg_data, _ = get_grid_data_for_group(grid_dir, None, residue_mapping=res_map)
+            global_min = compute_grid_minimum(global_params, agg_data)
+            all_min_coords = dict(global_min["coordinates"])
 
-        out_files = sorted((grid_dir / "Groups").glob("*.out"))
-        for f in out_files:
-            pnames, g_data = load_grid_file(f)
-            g_min = compute_grid_minimum(pnames, g_data)
-            for p in pnames:
-                if p not in global_params and p in g_min["coordinates"]:
-                    all_min_coords[p] = g_min["coordinates"][p]
+            out_files = sorted((grid_dir / "Groups").glob("*.out"))
+            for f in out_files:
+                pnames, g_data = load_grid_file(f)
+                g_min = compute_grid_minimum(pnames, g_data)
+                for p in pnames:
+                    if p not in global_params and p in g_min["coordinates"]:
+                        all_min_coords[p] = g_min["coordinates"][p]
 
-        min_point = {
-            "chisqr": global_min["chisqr"],
-            "coordinates": all_min_coords,
-            "point_index": global_min.get("point_index"),
-        }
-    except Exception:
-        pass
+            min_point = {
+                "chisqr": global_min["chisqr"],
+                "coordinates": all_min_coords,
+                "point_index": global_min.get("point_index"),
+            }
+        except Exception:
+            pass
 
     # Extract fitted point for this step if available
     try:
@@ -3028,6 +2917,25 @@ def get_grid_1d_profiles(
     except Exception:
         pass
     step_res = out_tree.steps.get(step_name) if out_tree else None
+
+    from ..services.fitting.chemex_output.grid_parser_v2 import (
+        is_v2_grid_dir,
+        load_v2_1d_profiles,
+        load_v2_2d_surface,
+    )
+    if is_v2_grid_dir(grid_dir):
+        profiles = load_v2_1d_profiles(grid_dir, target_param=param)
+        for prof in profiles:
+            prof["fitted_val"] = _lookup_fitted_param(step_res, prof["parameter"]) if step_res else None
+        min_coords = {p["parameter"]: p["min_val"] for p in profiles}
+        min_chi2 = min((p["min_chisqr"] for p in profiles), default=0.0)
+        return sanitize_floats_for_json({
+            "step_name": step_name,
+            "group": group or "All Groups",
+            "parameters": [p["parameter"] for p in profiles],
+            "profiles": profiles,
+            "min_point": {"chisqr": min_chi2, "coordinates": min_coords},
+        })
 
     if group:
         try:
@@ -3131,6 +3039,28 @@ def get_grid_2d_surface(
         raise HTTPException(status_code=404, detail="Grid directory not found for this step.")
 
     res_map = _get_analysis_residue_mapping(run_dir)
+    out_tree = None
+    try:
+        out_tree = parse_output_tree(run_dir if (run_dir / "run_info").exists() else (run_dir / "Output"))
+    except Exception:
+        pass
+    step_res = out_tree.steps.get(step_name) if out_tree else None
+
+    from ..services.fitting.chemex_output.grid_parser_v2 import is_v2_grid_dir, load_v2_2d_surface
+    if is_v2_grid_dir(grid_dir):
+        try:
+            surf_data = load_v2_2d_surface(grid_dir, x_param=x, y_param=y)
+            x_p = surf_data["x_param"]
+            y_p = surf_data["y_param"]
+            surf_data["fitted_point"] = {
+                "x": _lookup_fitted_param(step_res, x_p) if step_res else None,
+                "y": _lookup_fitted_param(step_res, y_p) if step_res else None,
+            }
+            surf_data["group"] = group or "All Groups"
+            return sanitize_floats_for_json(surf_data)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
     out_files = sorted((grid_dir / "Groups").glob("*.out"))
 
     # Map parameters to group stems

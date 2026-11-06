@@ -156,6 +156,28 @@ def parse_parameter_file(
             near_boundary=False,
         )
 
+        # Handle B9 alias: KD_APP <-> KD_EFF
+        alias_key = None
+        if key.upper() == "KD_APP":
+            alias_key = "KD_EFF"
+        elif key.upper() == "KD_EFF":
+            alias_key = "KD_APP"
+        if alias_key:
+            alias_name = f"[{current_section}]/{alias_key}" if current_section != "GLOBAL" else alias_key
+            result[current_section][alias_key] = UncertaintyValue(
+                name=alias_name,
+                section=current_section,
+                key=alias_key,
+                value=val,
+                stderr=stderr,
+                has_stderr=has_stderr,
+                error_reason=error_reason,
+                expression=expr,
+                is_fixed=is_fixed,
+                is_constrained=is_constrained,
+                near_boundary=False,
+            )
+
     return result
 
 

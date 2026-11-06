@@ -1,0 +1,26 @@
+# Original invocation start used by ChemEx.
+# This file reproduces the original start; it is not the latest fitted state.
+# Independent coordinates use [value, minimum, maximum].
+# Protected model constants are scalars.
+
+["CS_A"]
+"31N" = [126.388, -100.0, 300.0]
+
+["DW_AB"]
+"31N" = [2.0, -100.0, 100.0]
+
+["GLOBAL"]
+"KEX_AB" = [400.0, 0.0, 1000000.0]
+"PB" = [0.07, 0.0, 1.0]
+
+["R1_A, B0->500.0MHZ"]
+"31N" = [2.6246505411660848, 0.0, 1000.0]
+
+["R1_A, B0->800.0MHZ"]
+"31N" = [1.966371826839898, 0.0, 1000.0]
+
+["R2_A, B0->500.0MHZ"]
+"31N" = [4.5551345598138235, 0.0, 1000.0]
+
+["R2_A, B0->800.0MHZ"]
+"31N" = [5.274540394660508, 0.0, 1000.0]

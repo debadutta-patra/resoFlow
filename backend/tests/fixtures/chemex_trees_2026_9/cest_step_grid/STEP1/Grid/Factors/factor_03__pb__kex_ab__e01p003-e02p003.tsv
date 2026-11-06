@@ -1,0 +1,10 @@
+point	profiles	pb	kex_ab	chi_square	status	selected	objective_evaluations	failure
+0	experiment_1:profile_3;experiment_2:profile_3	0.001	100.0	1481.2587428653778	success	false	1024	
+1	experiment_1:profile_3;experiment_2:profile_3	0.001	300.0	975.6622934200259	success	false	111	
+2	experiment_1:profile_3;experiment_2:profile_3	0.001	500.0	897.6571019454278	success	false	292	
+3	experiment_1:profile_3;experiment_2:profile_3	0.0055000000000000005	100.0	239.48636470676996	success	false	45	
+4	experiment_1:profile_3;experiment_2:profile_3	0.0055000000000000005	300.0	493.0041248015789	success	true	80	
+5	experiment_1:profile_3;experiment_2:profile_3	0.0055000000000000005	500.0	600.3931717187544	success	false	65	
+6	experiment_1:profile_3;experiment_2:profile_3	0.01	100.0	707.5336295262969	success	false	155	
+7	experiment_1:profile_3;experiment_2:profile_3	0.01	300.0	674.3086149704276	success	false	70	
+8	experiment_1:profile_3;experiment_2:profile_3	0.01	500.0	704.7274520481561	success	false	60	
