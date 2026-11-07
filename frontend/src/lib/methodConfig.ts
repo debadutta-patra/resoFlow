@@ -58,7 +58,7 @@ export interface McmcConfig {
   enabled: boolean;
   steps: number;
   burn: number | 'auto';
-  thin: number;
+  thin?: number;
   walkers?: number;
   seed?: number;
   workers?: number;
