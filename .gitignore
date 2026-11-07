@@ -73,6 +73,7 @@ htmlcov/
 *.swp
 *.swo
 backend/tests/fixtures/chemex_trees/single_step/plots_emerald_green.zip
+backend/tests/fixtures/chemex_trees/**/results/
 
 # Agent context artifacts (local only)
 /CLAUDE.md
