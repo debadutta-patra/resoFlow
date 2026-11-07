@@ -5,7 +5,7 @@ import uuid
 import shutil
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session

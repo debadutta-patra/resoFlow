@@ -365,3 +365,74 @@ def test_ingest_results_task_aborts_if_container_is_running(client_and_db) -> No
     verify_db.close()
 
 
+def test_run_cest_analysis_endpoint_queues_cleanly(client_and_db, tmp_path: Path) -> None:
+    """Ensure POST /cest/run executes cleanly, stores queued_at, and sets status to PENDING."""
+    import json
+    client, SessionLocal, _ = client_and_db
+    db = SessionLocal()
+
+    user = models.User(
+        email="queueuser@test.com",
+        hashed_password=security.get_password_hash("password123"),
+        full_name="Queue User",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+
+    proj_dir = tmp_path / "queue_proj"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+
+    project = models.Project(
+        project_uuid="proj-queue-1",
+        name="Queue Project",
+        user_id=user.id,
+        local_directory_path=str(proj_dir),
+    )
+    db.add(project)
+    db.commit()
+
+    analysis_uuid = "analysis-queue-test"
+    run_dir = proj_dir / "cest_fitting" / analysis_uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis = models.Analysis(
+        analysis_uuid=analysis_uuid,
+        name="Queue Test",
+        analysis_type="15N-CEST",
+        project_id=project.id,
+        status="COMPLETED",
+    )
+    db.add(analysis)
+    db.commit()
+
+    user_email = user.email
+    proj_uuid = project.project_uuid
+    an_uuid = analysis.analysis_uuid
+    db.close()
+
+    token = security.create_access_token({"sub": user_email})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("app.services.fitting.cest_tasks.run_cest_analysis_task.apply_async") as mock_apply:
+        res = client.post(
+            f"/api/projects/{proj_uuid}/analysis/{an_uuid}/cest/run",
+            json={"model": "2st", "fit_mode": "global"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        data = res.json()
+        assert data["status"] == "PENDING"
+        assert data["analysis_uuid"] == an_uuid
+        mock_apply.assert_called_once()
+
+    verify_db = SessionLocal()
+    check_a = verify_db.query(models.Analysis).filter_by(analysis_uuid=an_uuid).first()
+    assert check_a.status == "PENDING"
+    assert check_a.celery_task_id is not None
+    params = json.loads(check_a.parameters)
+    assert "queued_at" in params
+    verify_db.close()
+
+
+
