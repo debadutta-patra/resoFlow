@@ -61,13 +61,40 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
         if is_chemex_container_running(analysis.analysis_uuid):
             continue
 
+        # Determine reference queue / update timestamp for re-run liveness checks
+        ref_time = None
+        if analysis.parameters:
+            try:
+                params = json.loads(analysis.parameters)
+                if params.get("queued_at"):
+                    ref_time = datetime.fromisoformat(params["queued_at"])
+                    if ref_time.tzinfo is None:
+                        ref_time = ref_time.replace(tzinfo=timezone.utc)
+            except Exception:
+                pass
+        if ref_time is None and analysis.log_path and os.path.exists(analysis.log_path):
+            try:
+                mtime = os.path.getmtime(analysis.log_path)
+                ref_time = datetime.fromtimestamp(mtime, tz=timezone.utc)
+            except Exception:
+                pass
+        if ref_time is None and analysis.created_at:
+            ref_time = analysis.created_at.replace(tzinfo=timezone.utc) if analysis.created_at.tzinfo is None else analysis.created_at
+
         # 1c. If PENDING and not in Celery or container:
         if analysis.status == "PENDING":
-            if analysis.created_at:
-                created_tz = analysis.created_at.replace(tzinfo=timezone.utc) if analysis.created_at.tzinfo is None else analysis.created_at
-                now_tz = datetime.now(timezone.utc)
-                if (now_tz - created_tz).total_seconds() < 60:
-                    continue
+            now_tz = datetime.now(timezone.utc)
+            if ref_time and (now_tz - ref_time).total_seconds() < 300:
+                continue
+            if analysis.celery_task_id:
+                try:
+                    from celery.result import AsyncResult
+                    task_res = AsyncResult(analysis.celery_task_id, app=celery_app)
+                    if task_res.state in ("PENDING", "STARTED"):
+                        if ref_time and (now_tz - ref_time).total_seconds() < 600:
+                            continue
+                except Exception:
+                    pass
             analysis.status = "FAILED"
             analysis.error_message = "Analysis queued but never started by worker"
             analysis.completed_at = datetime.now(timezone.utc)
@@ -95,10 +122,9 @@ def reconcile_orphaned_runs(db: Session, user_id: int):
                     continue
             except Exception:
                 pass
-        elif analysis.created_at:
-            created_tz = analysis.created_at.replace(tzinfo=timezone.utc) if analysis.created_at.tzinfo is None else analysis.created_at
+        elif ref_time:
             now_tz = datetime.now(timezone.utc)
-            if (now_tz - created_tz).total_seconds() < 300:
+            if (now_tz - ref_time).total_seconds() < 300:
                 continue
 
         # 1f. Check if job finished successfully in the log before worker process terminated

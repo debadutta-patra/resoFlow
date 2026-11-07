@@ -51,7 +51,33 @@ def ingest_results_task(self, analysis_uuid: str) -> Dict[str, Any]:
         if not analysis:
             raise ValueError(f"Analysis {analysis_uuid} not found")
 
+        # Guard: do not ingest if ChemEx container is actively running
+        from ..fitting.chemex_runner import is_chemex_container_running
+        if is_chemex_container_running(analysis_uuid):
+            logger.warning(
+                "Ingest requested for %s while ChemEx container is actively running; aborting ingest.",
+                analysis_uuid,
+            )
+            return {"status": "aborted", "reason": "container_still_running"}
+
+        # Guard: do not ingest if analysis is PENDING or CANCELLED
+        if analysis.status in ("PENDING", "CANCELLED"):
+            logger.warning(
+                "Ingest requested for %s with status %s; aborting ingest.",
+                analysis_uuid,
+                analysis.status,
+            )
+            return {"status": "aborted", "reason": f"invalid_status_{analysis.status}"}
+
         run_dir = _resolve_run_dir(analysis)
+        output_dir = os.path.join(run_dir, "Output")
+        if not os.path.exists(output_dir):
+            logger.warning(
+                "Ingest requested for %s but Output directory does not exist at %s; aborting.",
+                analysis_uuid,
+                output_dir,
+            )
+            return {"status": "aborted", "reason": "output_dir_not_found"}
         logger.info("Ingesting results bundle for analysis %s at %s", analysis_uuid, run_dir)
 
         meta = ingest_results(

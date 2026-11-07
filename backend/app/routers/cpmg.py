@@ -572,12 +572,21 @@ def run_cpmg_analysis(
         except OSError:
             pass
 
+    task_id = str(uuid.uuid4())
     analysis.log_path = os.path.join(run_dir, "chemex.log")
     analysis.results_path = os.path.join(run_dir, "results.json")
     analysis.status = "PENDING"
     analysis.cancel_requested = False
     analysis.completed_at = None
     analysis.error_message = None
+    analysis.celery_task_id = task_id
+    analysis.bundle_status = "NONE"
+    analysis.summary_redchi = None
+    analysis.summary_n_residues = None
+
+    # Backup previous outputs immediately so no stale outputs exist during the run
+    from ..services.fitting.cest_tasks import _backup_output_directory
+    _backup_output_directory(run_dir)
 
     # Initialize / clear log for the new run
     try:
@@ -586,10 +595,10 @@ def run_cpmg_analysis(
     except Exception:
         pass
 
-    task_id = str(uuid.uuid4())
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params["cpmg_config_path"] = config_path
     params["task_id"] = task_id
+    params["queued_at"] = datetime.now(timezone.utc).isoformat()
     analysis.parameters = json.dumps(params)
     db.commit()
 

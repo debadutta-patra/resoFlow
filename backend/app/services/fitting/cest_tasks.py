@@ -224,15 +224,34 @@ def _setup_cest_directory(run_dir: str, config: dict):
 
 
 def _backup_output_directory(run_dir: str):
-    """Backup any existing Output, results.json, and chemex.log."""
+    """Backup any existing Output, results bundle, results.json, and chemex.log."""
     output_dir = os.path.join(run_dir, "Output")
     output_bak = os.path.join(run_dir, "Output_bak")
+
+    bundle_dir = os.path.join(run_dir, "results")
+    bundle_bak = os.path.join(run_dir, "results_bak")
     
     results_path = os.path.join(run_dir, "results.json")
     results_bak = os.path.join(run_dir, "results_bak.json")
     
     log_path = os.path.join(run_dir, "chemex.log")
     log_bak = os.path.join(run_dir, "chemex_bak.log")
+
+    # Invalidate results bundle fingerprint cache
+    try:
+        from ..results_bundle.fingerprint import invalidate_fingerprint_cache
+        invalidate_fingerprint_cache(run_dir)
+    except Exception:
+        pass
+
+    # Backup results bundle directory
+    if os.path.exists(bundle_dir):
+        try:
+            if os.path.exists(bundle_bak):
+                shutil.rmtree(bundle_bak, ignore_errors=True)
+            shutil.move(bundle_dir, bundle_bak)
+        except Exception as e:
+            logger.warning(f"Failed to backup results bundle directory: {e}")
 
     # Backup Output folder
     if os.path.exists(output_dir):

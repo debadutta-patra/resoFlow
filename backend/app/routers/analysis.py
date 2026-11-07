@@ -387,8 +387,11 @@ def get_analysis_results(
     response: Response,
     analysis: models.Analysis = Depends(get_analysis)
 ):
-    if analysis.status in ["RUNNING", "PENDING"]:
+    if analysis.status in ["RUNNING", "PENDING", "CANCELLING"]:
         return {"status": analysis.status, "results": None}
+
+    if analysis.status in ["FAILED", "CANCELLED"]:
+        return {"status": analysis.status, "error_message": analysis.error_message, "results": None}
 
     run_dir = _get_analysis_run_dir(analysis)
     from ..services.results_bundle import store, is_bundle_valid
@@ -422,9 +425,15 @@ def get_analysis_results(
             headers={"ETag": etag},
         )
 
-    # 2. Lazy migration fallback: bundle missing or stale
+    # 2. Lazy migration fallback: bundle missing or stale for completed runs
     # Parse raw tree once, return results, and enqueue background ingest
-    if run_dir and os.path.exists(run_dir) and analysis.analysis_type.lower() in ["cest", "15n-cest", "cpmg", "exchange"]:
+    if (
+        analysis.status == "COMPLETED"
+        and run_dir
+        and os.path.exists(run_dir)
+        and analysis.analysis_type
+        and analysis.analysis_type.lower() in ["cest", "15n-cest", "cpmg", "exchange"]
+    ):
         try:
             from ..services.fitting.cest_tasks import _parse_chemex_output
             parsed = _parse_chemex_output(run_dir)
@@ -487,6 +496,11 @@ def get_analysis_results_summary(
     analysis: models.Analysis = Depends(get_analysis)
 ):
     """Serve eager summary payload (< 200 kB) with ETag support."""
+    if analysis.status in ["RUNNING", "PENDING", "CANCELLING"]:
+        raise HTTPException(status_code=409, detail="Analysis is currently running")
+    if analysis.status in ["FAILED", "CANCELLED"]:
+        raise HTTPException(status_code=400, detail="Analysis failed; results unavailable")
+
     run_dir = _get_analysis_run_dir(analysis)
     if not run_dir or not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
@@ -495,6 +509,8 @@ def get_analysis_results_summary(
     from ..services.results_bundle.tasks import ingest_results_task
 
     if not is_bundle_valid(run_dir):
+        if analysis.status != "COMPLETED":
+            raise HTTPException(status_code=404, detail="Results bundle not available")
         try:
             from ..services.results_bundle.ingest import ingest_results
             ingest_results(run_dir, analysis_uuid=analysis.analysis_uuid, chemex_version=analysis.chemex_version, analysis_name=analysis.name, analysis_type=analysis.analysis_type or "CEST")
@@ -520,12 +536,19 @@ def get_analysis_residue_details(
     analysis: models.Analysis = Depends(get_analysis),
 ):
     """Lazy query for a single residue's parameters, profiles, and residuals from results.sqlite."""
+    if analysis.status in ["RUNNING", "PENDING", "CANCELLING"]:
+        raise HTTPException(status_code=409, detail="Analysis is currently running")
+    if analysis.status in ["FAILED", "CANCELLED"]:
+        raise HTTPException(status_code=400, detail="Analysis failed; results unavailable")
+
     run_dir = _get_analysis_run_dir(analysis)
     if not run_dir or not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Analysis results directory not found")
 
     from ..services.results_bundle import store, is_bundle_valid
     if not is_bundle_valid(run_dir):
+        if analysis.status != "COMPLETED":
+            raise HTTPException(status_code=404, detail="Results bundle not available")
         try:
             from ..services.results_bundle.ingest import ingest_results
             ingest_results(run_dir, analysis_uuid=analysis.analysis_uuid, chemex_version=analysis.chemex_version, analysis_name=analysis.name, analysis_type=analysis.analysis_type or "CEST")
@@ -672,6 +695,13 @@ def run_cest_analysis(
     analysis.completed_at = None
     analysis.error_message = None
     analysis.celery_task_id = task_id
+    analysis.bundle_status = "NONE"
+    analysis.summary_redchi = None
+    analysis.summary_n_residues = None
+
+    # Backup previous outputs immediately so no stale outputs exist during the run
+    from ..services.fitting.cest_tasks import _backup_output_directory
+    _backup_output_directory(run_dir)
 
     # Initialize / clear log for the new run
     try:
@@ -683,6 +713,7 @@ def run_cest_analysis(
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params["config_path"] = config_path
     params["task_id"] = task_id
+    params["queued_at"] = datetime.now(timezone.utc).isoformat()
     analysis.parameters = json.dumps(params)
     db.commit()
 
@@ -1426,6 +1457,23 @@ def restore_cest_analysis(
             os.rename(results_bak, results_path)
         if os.path.exists(results_tmp):
             os.rename(results_tmp, results_bak)
+
+        # Swap Results bundle directories
+        bundle_dir = os.path.join(run_dir, "results")
+        bundle_bak = os.path.join(run_dir, "results_bak")
+        bundle_tmp = os.path.join(run_dir, "results_bundle_tmp")
+        if os.path.exists(bundle_dir):
+            os.rename(bundle_dir, bundle_tmp)
+        if os.path.exists(bundle_bak):
+            os.rename(bundle_bak, bundle_dir)
+        if os.path.exists(bundle_tmp):
+            os.rename(bundle_tmp, bundle_bak)
+
+        try:
+            from ..services.results_bundle.fingerprint import invalidate_fingerprint_cache
+            invalidate_fingerprint_cache(run_dir)
+        except Exception:
+            pass
 
         # Swap Log files
         if os.path.exists(log_path):

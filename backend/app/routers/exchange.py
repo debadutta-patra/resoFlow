@@ -692,6 +692,7 @@ def run_exchange_analysis(
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2, default=str)
 
+    task_id = str(uuid.uuid4())
     log_path = os.path.join(run_dir, "chemex.log")
     analysis.log_path = log_path
     analysis.results_path = os.path.join(run_dir, "results.json")
@@ -699,6 +700,14 @@ def run_exchange_analysis(
     analysis.cancel_requested = False
     analysis.completed_at = None
     analysis.error_message = None
+    analysis.celery_task_id = task_id
+    analysis.bundle_status = "NONE"
+    analysis.summary_redchi = None
+    analysis.summary_n_residues = None
+
+    # Backup previous outputs immediately so no stale outputs exist during the run
+    from ..services.fitting.cest_tasks import _backup_output_directory
+    _backup_output_directory(run_dir)
 
     try:
         with open(log_path, "w") as f:
@@ -706,10 +715,10 @@ def run_exchange_analysis(
     except Exception:
         pass
 
-    task_id = str(uuid.uuid4())
     params = json.loads(analysis.parameters) if analysis.parameters else {}
     params["task_id"] = task_id
     params["config_path"] = config_path
+    params["queued_at"] = datetime.now(timezone.utc).isoformat()
     analysis.parameters = json.dumps(params)
     db.commit()
 
