@@ -285,6 +285,7 @@ def run_chemex_job(
         target_dir / "heartbeat",
         target_dir / "progress.jsonl",
         target_dir / "progress.json",
+        target_dir / "engine.log",
         final_output_dir / "engine_result.json",
         tmp_output_dir / "engine_result.json",
     ]:

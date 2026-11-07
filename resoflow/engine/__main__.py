@@ -91,7 +91,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Redirect stdout and stderr to engine.log
     engine_log_path = job_dir / "engine.log"
-    log_fd = open(engine_log_path, "a", buffering=1, encoding="utf-8")
+    log_fd = open(engine_log_path, "w", buffering=1, encoding="utf-8")
     orig_stdout_fd = sys.stdout.fileno()
     orig_stderr_fd = sys.stderr.fileno()
     os.dup2(log_fd.fileno(), orig_stdout_fd)
