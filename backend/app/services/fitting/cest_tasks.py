@@ -107,12 +107,14 @@ def _setup_cest_directory(run_dir: str, config: dict):
       - exclude: list[int]     (residue numbers to exclude, optional)
     """
     experiments_dir = os.path.join(run_dir, "Experiments")
+    experiments_dir_lower = os.path.join(run_dir, "experiments")
     parameters_dir = os.path.join(run_dir, "Parameters")
     methods_dir = os.path.join(run_dir, "Methods")
     data_dir = os.path.join(run_dir, "Data")
+    data_dir_lower = os.path.join(run_dir, "data")
     output_dir = os.path.join(run_dir, "Output")
 
-    for d in [experiments_dir, parameters_dir, methods_dir, data_dir, output_dir]:
+    for d in [experiments_dir, experiments_dir_lower, parameters_dir, methods_dir, data_dir, data_dir_lower, output_dir]:
         os.makedirs(d, exist_ok=True)
 
     # Clean up any stale or dangling symlinks in data_dir

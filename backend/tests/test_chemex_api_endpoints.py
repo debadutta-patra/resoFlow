@@ -267,3 +267,68 @@ def test_continue_from_run(db_session, test_project, auth_headers):
     new_param_file = new_run_dir / "Parameters" / "parameters.toml"
     assert new_param_file.exists()
     assert "[PB]" in new_param_file.read_text(encoding="utf-8")
+
+
+def test_validate_and_inspect_with_analysis_uuid_lowercase_data(db_session, test_project):
+    """Verify POST /api/chemex/validate and /parameters/inspect resolve lowercase data/ paths from analysis_uuid."""
+    fixture_dir = (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "baselines"
+        / "2026.6.1"
+        / "cest_15n"
+        / "inputs"
+    )
+    if not fixture_dir.exists():
+        pytest.skip("Baseline inputs for cest_15n not found.")
+
+    analysis_uuid = "analysis-cest-lowercase-data-1234"
+    analysis = Analysis(
+        analysis_uuid=analysis_uuid,
+        name="CESTLowercaseDataRun",
+        analysis_type="15N-CEST",
+        project_id=test_project.id,
+        status="PENDING",
+    )
+    db_session.add(analysis)
+    db_session.commit()
+
+    run_dir = Path(test_project.local_directory_path) / "cest_fitting" / analysis_uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy Parameters
+    shutil.copytree(fixture_dir / "Parameters", run_dir / "Parameters", dirs_exist_ok=True)
+
+    # Create lowercase 'data' directory (simulating spectrum extraction in analysis.py)
+    data_dir = run_dir / "data" / "600MHz_28hz"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    for f in (fixture_dir / "Data" / "13Hz").glob("*.out"):
+        shutil.copy2(f, data_dir / f.name)
+
+    # Create Experiments pointing to lowercase '../data/600MHz_28hz'
+    exp_dir = run_dir / "Experiments"
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    exp_toml_content = (fixture_dir / "Experiments" / "13hz.toml").read_text(encoding="utf-8")
+    exp_toml_content = exp_toml_content.replace('"../Data/13Hz/"', '"../data/600MHz_28hz"')
+    (exp_dir / "cest_15n_600mhz_28hz.toml").write_text(exp_toml_content, encoding="utf-8")
+
+    # 1. Test POST /api/chemex/validate
+    payload = {
+        "analysis_uuid": analysis_uuid,
+        "model": "2st",
+        "include": ["13N"],
+    }
+    res_val = client.post("/api/chemex/validate", json=payload)
+    assert res_val.status_code == 200
+    report = res_val.json()
+    assert report["valid"] is True, f"Validation failed: {report.get('errors')}"
+    assert report["errors"] == []
+
+    # 2. Test POST /api/chemex/parameters/inspect
+    res_insp = client.post("/api/chemex/parameters/inspect", json=payload)
+    assert res_insp.status_code == 200
+    insp_data = res_insp.json()
+    assert "parameters" in insp_data
+    assert len(insp_data["parameters"]) > 0
+    assert any(p["name"] == "PB" for p in insp_data["parameters"])
+
