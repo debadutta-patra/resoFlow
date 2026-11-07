@@ -5,6 +5,9 @@
 export const MAX_SAFE_RELATIVE_ERROR = 0.50; // Flag uncertainty if sigma / |value| > 50%
 export const CS_TOLERANCE_PPM = 0.01;        // Threshold for pick vs inherited cs_a conflict
 
+/** Analysis types whose fitted ChemEx parameters can seed another ChemEx analysis. */
+export const isChemexSourceType = (type: string) => type.includes('CEST') || type === 'CPMG' || type === 'EXCHANGE';
+
 export interface SourceRunSummary {
   analysis_uuid: string;
   name: string;
@@ -42,7 +45,7 @@ export interface CompatibilityResult {
 
 /**
  * Evaluates whether a source run can be inherited into a target analysis.
- * - Block: Different kinetic model (2st vs 3st), different nucleus, non-CEST experiment.
+ * - Block: Different kinetic model (2st vs 3st), different nucleus, non-ChemEx experiment.
  * - Warn: Different temperature (> 1.0 K difference).
  * - Allow: Different static field (B0).
  */
@@ -66,7 +69,7 @@ export function evaluateRunCompatibility(
   const warningReasons: string[] = [];
 
   const srcType = (source.analysis_type || '').toUpperCase();
-  if (srcType && !srcType.includes('CEST')) {
+  if (srcType && !isChemexSourceType(srcType)) {
     blockReasons.push(`Incompatible experiment type: ${source.analysis_type || 'Unknown'}`);
   }
 

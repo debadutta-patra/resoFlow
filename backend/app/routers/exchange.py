@@ -17,6 +17,8 @@ from ..services.fitting.experiments.cpmg_builder import build_cpmg_experiment
 from ..services.fitting.chemex_runner import run_chemex_job, cancel_chemex_job, is_chemex_container_running
 from ..services.path_utils import to_container_path, to_host_path
 from .deps import get_analysis
+from ..services.fitting.param_catalog import method_parameters_response
+from ..services.fitting.config_normalizer import merge_chemex_config, normalize_chemex_config
 
 router = APIRouter(
     prefix="/api/projects/{project_uuid}/analysis/{analysis_uuid}/exchange",
@@ -68,7 +70,7 @@ def generate_exchange_files(
     if os.path.exists(config_path):
         try:
             with open(config_path, "r") as f:
-                existing_cfg = json.load(f)
+                existing_cfg = normalize_chemex_config(json.load(f))
         except Exception:
             pass
 
@@ -321,7 +323,7 @@ def generate_exchange_files(
     else:
         unified_param_config["excludedResidues"] = excluded_residues
 
-    parameters_toml = existing_cfg.get("parameters_toml", "")
+    parameters_toml = normalize_chemex_config(existing_cfg).get("parameter_toml", "")
     if not parameters_toml:
         globals_dict = unified_param_config.get("globals", {})
         toml_lines = [
@@ -393,7 +395,7 @@ def get_exchange_config(
     if os.path.exists(cfg_path):
         try:
             with open(cfg_path, "r") as f:
-                return json.load(f)
+                return normalize_chemex_config(json.load(f))
         except Exception as e:
             logger.warning(f"Failed to read exchange config: {e}")
     return {}
@@ -417,7 +419,7 @@ def update_exchange_config(
         except Exception:
             pass
 
-    existing_cfg.update(request)
+    existing_cfg = merge_chemex_config(existing_cfg, request)
     with open(cfg_path, "w") as f:
         json.dump(existing_cfg, f, indent=2, default=str)
 
@@ -458,216 +460,7 @@ def get_exchange_method_parameters(
     current_user: models.User = Depends(security.get_current_user),
 ):
     """Return available parameters for method step configuration."""
-    params_2st = [
-        {
-            "name": "PB",
-            "gloss": "Population of minor state B (0 - 0.5)",
-            "scope": "global",
-            "default_mode": "default",
-            "default_bounds": "< 0.5",
-            "category": "kinetic",
-            "is_primary": True,
-        },
-        {
-            "name": "KEX_AB",
-            "gloss": "Exchange rate between states A and B (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True,
-        },
-        {
-            "name": "CS_A",
-            "gloss": "Chemical shift of major state A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True,
-        },
-        {
-            "name": "DW_AB",
-            "gloss": "Chemical shift difference between states B and A: CS_B - CS_A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True,
-        },
-        {
-            "name": "R1_A",
-            "gloss": "Longitudinal relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R2_A",
-            "gloss": "Transverse relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R1_B",
-            "gloss": "Longitudinal relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R1_A]",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R2_B",
-            "gloss": "Transverse relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R2_A]",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "TAUC_A",
-            "gloss": "Rotational correlation time of state A (ns)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "hydrodynamic",
-            "is_primary": False,
-        },
-    ]
-
-    params_3st = [
-        {
-            "name": "PB",
-            "gloss": "Population of state B (0 - 1)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True,
-        },
-        {
-            "name": "PC",
-            "gloss": "Population of state C (0 - 1)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True,
-        },
-        {
-            "name": "KEX_AB",
-            "gloss": "Exchange rate between states A and B (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True,
-        },
-        {
-            "name": "KEX_AC",
-            "gloss": "Exchange rate between states A and C (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True,
-        },
-        {
-            "name": "KEX_BC",
-            "gloss": "Exchange rate between states B and C (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": False,
-        },
-        {
-            "name": "CS_A",
-            "gloss": "Chemical shift of major state A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True,
-        },
-        {
-            "name": "DW_AB",
-            "gloss": "Chemical shift difference CS_B - CS_A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True,
-        },
-        {
-            "name": "DW_AC",
-            "gloss": "Chemical shift difference CS_C - CS_A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True,
-        },
-        {
-            "name": "R1_A",
-            "gloss": "Longitudinal relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R2_A",
-            "gloss": "Transverse relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R1_B",
-            "gloss": "Longitudinal relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R1_A]",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R2_B",
-            "gloss": "Transverse relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R2_A]",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R1_C",
-            "gloss": "Longitudinal relaxation rate of state C (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R1_A]",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "R2_C",
-            "gloss": "Transverse relaxation rate of state C (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R2_A]",
-            "category": "relaxation",
-            "is_primary": True,
-        },
-        {
-            "name": "TAUC_A",
-            "gloss": "Rotational correlation time of state A (ns)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "hydrodynamic",
-            "is_primary": False,
-        },
-    ]
-
-    model_clean = (model or "2st").lower()
-    if "3st" in model_clean or "3" in model_clean:
-        return {"model": model, "parameters": params_3st}
-
-    return {"model": model, "parameters": params_2st}
+    return method_parameters_response(model)
 
 
 @router.post("/run")
@@ -688,7 +481,7 @@ def run_exchange_analysis(
         except Exception:
             pass
 
-    existing_config.update(request)
+    existing_config = merge_chemex_config(existing_config, request)
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2, default=str)
 

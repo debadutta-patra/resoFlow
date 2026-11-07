@@ -17,6 +17,7 @@ import type {
   ParameterConfig,
   ResidueParams,
   PickSetData,
+  ProfileRef,
 } from '../../lib/parameterConfig';
 import {
   computePickHash,
@@ -25,20 +26,48 @@ import {
   getCanonicalResidueKey,
   isResidueExcluded,
   toggleExcludeResidue,
+  isPickSourceStale,
 } from '../../lib/parameterConfig';
 import type { MethodConfig } from '../../lib/methodConfig';
+import type { ResidueProfileCell } from '../../lib/experimentPlugin';
 import { ParameterBadge } from './ParameterBadge';
 import { ProfileThumbnail, type CestProfile } from './ProfileThumbnail';
 
-interface ResidueParametersTableProps {
+export type { ResidueProfileCell };
+
+export interface ResidueParametersTableProps {
   config: ParameterConfig;
   onChange: (updatedConfig: ParameterConfig) => void;
+  /** Starting-value "picks" per residue: CEST dip picks, or CPMG peak-fit CS_A. */
   picks: Record<string, PickSetData>;
-  profiles: CestProfile[];
+  profiles: ProfileRef[];
   methodConfig?: MethodConfig;
   activeStepIdx?: number;
   onNavigateToMethods?: () => void;
+  /**
+   * Experiment capabilities (declared by the experiment plugin). Defaults reproduce
+   * the CEST table: picks carry a B-state shift, rows show a CEST profile.
+   */
+  expectsBPicks?: boolean;
+  profileTitle?: string;
+  pickNoun?: string;
+  pickedLabel?: string;
+  staleLabel?: string;
+  renderProfile?: (row: ResidueProfileCell, size: 'thumb' | 'large') => React.ReactNode;
+  /** Optional override for excluding a residue (defaults to toggling config.excludedResidues). */
+  onToggleExclude?: (resKey: string) => void;
 }
+
+const defaultRenderProfile = (row: ResidueProfileCell, size: 'thumb' | 'large') => (
+  <ProfileThumbnail
+    profile={row.profile as CestProfile | undefined}
+    csA={row.cs_a}
+    csB={row.cs_b}
+    width={size === 'thumb' ? 130 : 480}
+    height={size === 'thumb' ? 34 : 120}
+    className={size === 'large' ? 'w-full' : undefined}
+  />
+);
 
 export type FilterSource = 'all' | 'picked' | 'manual' | 'stale' | 'no_b' | 'imported' | 'excluded';
 export type SortField = 'residue' | 'cs_a' | 'cs_b' | 'dw_ab' | 'source';
@@ -58,7 +87,7 @@ interface TableRowData {
   hasPick: boolean;
   isExcluded: boolean;
   methodTreatment?: string;
-  profile?: CestProfile;
+  profile?: ProfileRef;
 }
 
 export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
@@ -69,6 +98,13 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   methodConfig,
   activeStepIdx = 0,
   onNavigateToMethods,
+  expectsBPicks = true,
+  profileTitle = 'CEST Profile',
+  pickNoun = 'pick',
+  pickedLabel = 'Picked',
+  staleLabel = 'Pick Moved',
+  renderProfile = defaultRenderProfile,
+  onToggleExclude,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
@@ -82,7 +118,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
 
   // Quick lookup for profiles
   const profileMap = useMemo(() => {
-    const map: Record<string, CestProfile> = {};
+    const map: Record<string, ProfileRef> = {};
     for (const p of profiles) {
       map[p.residue] = p;
       if (p.full_residue) map[p.full_residue] = p;
@@ -133,7 +169,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       canonicalKey: string;
       label: string;
       aliases: string[];
-      profile?: CestProfile;
+      profile?: ProfileRef;
     }>();
 
     // 1. Register from profiles (ground truth experiment files)
@@ -222,23 +258,10 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       }
 
       // Check staleness
-      let isStale = false;
-      const currentHash = computePickHash(pk);
-      if (rParams.cs_a?.source.kind === 'pick') {
-        const storedHash = (rParams.cs_a.source as any).pickSetHash;
-        if (storedHash && storedHash !== currentHash) {
-          isStale = true;
-        }
-      }
-      if (rParams.dw_ab?.source.kind === 'pick') {
-        const storedHash = (rParams.dw_ab.source as any).pickSetHash;
-        if (storedHash && storedHash !== currentHash) {
-          isStale = true;
-        }
-      }
+      const isStale = isPickSourceStale(rParams.cs_a?.source, pk) || isPickSourceStale(rParams.dw_ab?.source, pk);
 
       const hasPick = pk?.cs_a != null;
-      const hasNoBPick = pk?.cs_a != null && (pk.cs_b == null || isNaN(pk.cs_b));
+      const hasNoBPick = expectsBPicks && pk?.cs_a != null && (pk.cs_b == null || isNaN(pk.cs_b));
 
       // Method treatment
       let methodTreatment = methodTreatmentMap[canonicalKey];
@@ -272,7 +295,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
         profile: prof,
       };
     });
-  }, [config.residues, config.excludedResidues, picks, profiles, profileMap, methodTreatmentMap]);
+  }, [config.residues, config.excludedResidues, picks, profiles, profileMap, methodTreatmentMap, expectsBPicks]);
 
   // Aggregate Counts for Summary Header
   const counts = useMemo(() => {
@@ -480,9 +503,14 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   };
 
   const handleToggleExclude = (resKey: string) => {
-    const updated = toggleExcludeResidue(config, resKey, profiles);
-    onChange(updated);
+    if (onToggleExclude) {
+      onToggleExclude(resKey);
+      return;
+    }
+    onChange(toggleExcludeResidue(config, resKey, profiles));
   };
+
+  const columnCount = expectsBPicks ? 9 : 8;
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -520,7 +548,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
             }`}
           >
             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-            Picked ({counts.picked})
+            {pickedLabel} ({counts.picked})
           </button>
           <button
             onClick={() => { setSourceFilter('manual'); setPage(0); }}
@@ -543,7 +571,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
               }`}
             >
               <AlertTriangle className="w-3 h-3 text-amber-500 animate-pulse" />
-              Pick Moved ({counts.stale})
+              {staleLabel} ({counts.stale})
             </button>
           )}
           {counts.no_b > 0 && (
@@ -614,16 +642,18 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </th>
-                <th
-                  onClick={() => toggleSort('cs_b')}
-                  className="px-3 py-2.5 cursor-pointer hover:text-slate-900 dark:hover:text-white"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>CS_B (ppm)</span>
-                    <span className="text-[9px] font-normal text-slate-400 lowercase">(calc)</span>
-                    <ArrowUpDown className="w-3 h-3" />
-                  </div>
-                </th>
+                {expectsBPicks && (
+                  <th
+                    onClick={() => toggleSort('cs_b')}
+                    className="px-3 py-2.5 cursor-pointer hover:text-slate-900 dark:hover:text-white"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>CS_B (ppm)</span>
+                      <span className="text-[9px] font-normal text-slate-400 lowercase">(calc)</span>
+                      <ArrowUpDown className="w-3 h-3" />
+                    </div>
+                  </th>
+                )}
                 <th
                   onClick={() => toggleSort('dw_ab')}
                   className="px-3 py-2.5 cursor-pointer hover:text-slate-900 dark:hover:text-white"
@@ -650,7 +680,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
             <tbody className="divide-y divide-slate-150 dark:divide-slate-800">
               {paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400 text-xs">
+                  <td colSpan={columnCount} className="py-12 text-center text-slate-400 text-xs">
                     No residues found matching the current filter.
                   </td>
                 </tr>
@@ -708,7 +738,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                         </td>
 
                         {/* CS_B Input (Computed display helper: dw_ab = cs_b - cs_a) */}
-                        <td className="px-3 py-2">
+                        {expectsBPicks && <td className="px-3 py-2">
                           <input
                             type="number"
                             step="0.001"
@@ -720,7 +750,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                             placeholder="—"
                             title="Editing CS_B updates Δω_AB = CS_B - CS_A"
                           />
-                        </td>
+                        </td>}
 
                         {/* DW_AB Input */}
                         <td className="px-3 py-2">
@@ -742,15 +772,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
 
                         {/* Profile Thumbnail */}
                         <td className="px-3 py-2">
-                          <div className="inline-block">
-                            <ProfileThumbnail
-                              profile={row.profile}
-                              csA={row.cs_a}
-                              csB={row.cs_b}
-                              width={130}
-                              height={34}
-                            />
-                          </div>
+                          <div className="inline-block">{renderProfile(row, 'thumb')}</div>
                         </td>
 
                         {/* Provenance Badge */}
@@ -794,7 +816,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                 type="button"
                                 onClick={() => handleResyncSingleRow(row.resKey)}
                                 className="p-1 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
-                                title="Re-sync this row from its peak pick"
+                                title={`Re-sync this row from its ${pickNoun}`}
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
                               </button>
@@ -826,15 +848,15 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                       {/* Expanded Row View */}
                       {isExpanded && (
                         <tr className="bg-slate-50/70 dark:bg-slate-850/70 border-b border-slate-200 dark:border-slate-800">
-                          <td colSpan={9} className="p-4">
+                          <td colSpan={columnCount} className="p-4">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                               {/* Enlarged Profile Preview */}
                               <div className="md:col-span-2 bg-slate-900 p-3 rounded-xl border border-slate-700 flex flex-col justify-between">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs font-bold text-white flex items-center gap-2">
-                                    <span>CEST Profile: {row.label}</span>
+                                    <span>{profileTitle}: {row.label}</span>
                                     <span className="text-[10px] font-normal text-slate-400">
-                                      (A: {row.cs_a?.toFixed(3) || '—'} ppm | B: {row.cs_b?.toFixed(3) || '—'} ppm | Δω: {row.dw_ab?.toFixed(3) || '—'} ppm)
+                                      (A: {row.cs_a?.toFixed(3) || '—'} ppm{expectsBPicks && <> | B: {row.cs_b?.toFixed(3) || '—'} ppm</>} | Δω: {row.dw_ab?.toFixed(3) || '—'} ppm)
                                     </span>
                                   </span>
                                   {row.dw_ab != null ? (
@@ -843,18 +865,11 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                     </span>
                                   ) : (
                                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                                      No B-Pick
+                                      {expectsBPicks ? 'No B-Pick' : 'No Δω'}
                                     </span>
                                   )}
                                 </div>
-                                <ProfileThumbnail
-                                  profile={row.profile}
-                                  csA={row.cs_a}
-                                  csB={row.cs_b}
-                                  width={480}
-                                  height={120}
-                                  className="w-full"
-                                />
+                                {renderProfile(row, 'large')}
                               </div>
 
                               {/* Additional Parameters (R1, R2, etc.) */}

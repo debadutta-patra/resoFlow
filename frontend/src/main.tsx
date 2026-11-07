@@ -5,6 +5,7 @@ import './index.css'
 import { ThemeProvider } from './context/ThemeContext'
 import './plugins/cestPlugin'
 import './plugins/cpmgPlugin'
+import './plugins/exchangePlugin'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

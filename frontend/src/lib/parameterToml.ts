@@ -279,3 +279,13 @@ export function applyExclusionsToExperimentToml(
 
   return outLines.join('\n');
 }
+
+/** parameters.toml reader/writer pair; experiments may wrap the default codec. */
+export interface ParameterCodec {
+  toToml: (config: ParameterConfig) => string;
+  fromToml: (toml: string) => TomlParseResult;
+  /** Convert a config saved by an older version of a page (optional). */
+  migrate?: (raw: unknown) => ParameterConfig;
+}
+
+export const DEFAULT_PARAMETER_CODEC: ParameterCodec = { toToml: configToToml, fromToml: tomlToConfig };

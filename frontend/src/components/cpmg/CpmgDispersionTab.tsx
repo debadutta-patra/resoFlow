@@ -31,6 +31,8 @@ export interface CpmgProfileItem {
   residue: string;
   full_residue: string;
   experiments: CpmgExpCurve[];
+  /** Ground-state shift from peak fitting (ppm), when available. */
+  cs_a?: number;
   overall_rex?: number;
   estimated_dw?: number;
 }

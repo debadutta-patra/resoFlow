@@ -20,6 +20,7 @@ from ... import models, database
 from .chemex_runner import run_chemex_job, get_chemex_image_info
 from .chemex_jobs import build_fit_spec
 from ..path_utils import resolve_existing_path
+from .config_normalizer import normalize_chemex_config
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ def _setup_cest_directory(run_dir: str, config: dict):
       - include: list[int]     (residue numbers to include, optional)
       - exclude: list[int]     (residue numbers to exclude, optional)
     """
+    config = normalize_chemex_config(config)
     experiments_dir = os.path.join(run_dir, "Experiments")
     experiments_dir_lower = os.path.join(run_dir, "experiments")
     parameters_dir = os.path.join(run_dir, "Parameters")

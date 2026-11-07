@@ -21,6 +21,7 @@ from .cest_tasks import _update_experiment_toml_exclusions, _backup_output_direc
 from .chemex_runner import run_chemex_job, get_chemex_image_info
 from .chemex_jobs import build_fit_spec
 from ..path_utils import to_container_path, resolve_existing_path
+from .config_normalizer import merge_chemex_config, normalize_chemex_config
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ def _setup_exchange_directory(run_dir: str, config: dict) -> dict:
     """
     Create the ChemEx directory structure and write all config files for Combined Exchange.
     """
+    config = normalize_chemex_config(config)
     experiments_dir = os.path.join(run_dir, "Experiments")
     experiments_dir_lower = os.path.join(run_dir, "experiments")
     parameters_dir = os.path.join(run_dir, "Parameters")
@@ -182,8 +184,7 @@ def run_exchange_analysis_task(self, analysis_uuid: str, config: dict):
             try:
                 with open(cfg_path, "r") as f:
                     saved_cfg = json.load(f)
-                    saved_cfg.update(config)
-                    config = saved_cfg
+                    config = merge_chemex_config(saved_cfg, config)
             except Exception:
                 pass
 

@@ -115,3 +115,13 @@ describe('Uncertainty and Tolerance helpers', () => {
     expect(CS_TOLERANCE_PPM).toBe(0.01);
   });
 });
+
+describe('cross-experiment inheritance', () => {
+  it('allows CPMG and EXCHANGE runs as sources, blocks non-ChemEx runs', () => {
+    const tgt = { analysis_type: 'CPMG', model: '2st', nucleus: '15N', temperature: 298.15, static_field: 600 };
+    for (const t of ['15N-CEST', 'CPMG', 'EXCHANGE']) {
+      expect(evaluateRunCompatibility({ ...tgt, analysis_type: t }, tgt).isCompatible).toBe(true);
+    }
+    expect(evaluateRunCompatibility({ ...tgt, analysis_type: 'R1' }, tgt).isCompatible).toBe(false);
+  });
+});

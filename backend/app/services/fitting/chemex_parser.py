@@ -10,6 +10,7 @@ import math
 import json
 from typing import Dict, Any, Optional, List, Tuple
 from .spin_system import SpinSystemKey
+from .config_normalizer import normalize_chemex_config
 
 
 # Regex for section headers, e.g. [GLOBAL], [CS_A], ["R1_A, B0->600.3MHZ"]
@@ -396,6 +397,7 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
     excluded_set = set()
     possible_config_paths = [
         os.path.join(run_dir, "config.json"),
+        os.path.join(run_dir, "cpmg_config.json"),
         os.path.join(output_dir, "config.json"),
         os.path.join(os.path.dirname(run_dir), "config.json"),
     ]
@@ -403,7 +405,7 @@ def parse_chemex_run_parameters(run_dir: str) -> Dict[str, Any]:
         if os.path.exists(cp):
             try:
                 with open(cp, "r") as cf:
-                    cfg = json.load(cf)
+                    cfg = normalize_chemex_config(json.load(cf))
                     p_cfg = cfg.get("parameter_config") or {}
                     if isinstance(p_cfg, dict) and p_cfg.get("excludedResidues"):
                         for r in p_cfg["excludedResidues"]:
@@ -692,7 +694,7 @@ def evaluate_source_compatibility(source_meta: dict, target_meta: dict) -> Tuple
     Evaluate compatibility rules:
     - Block on different kinetic model (2-state vs 3-state).
     - Block on different nucleus.
-    - Block on non-CEST experiment type.
+    - Block on experiment types that are not ChemEx fits (CEST / CPMG / EXCHANGE).
     - Warn prominently on different temperature.
     - Allow different static field (B0).
     """
@@ -702,7 +704,7 @@ def evaluate_source_compatibility(source_meta: dict, target_meta: dict) -> Tuple
 
     # Check Analysis Type
     src_type = (source_meta.get("analysis_type") or "").upper()
-    if src_type not in ["15N-CEST", "CEST"]:
+    if not ("CEST" in src_type or src_type in ("CPMG", "EXCHANGE")):
         is_compatible = False
         block_reasons.append(f"Incompatible experiment type: {source_meta.get('analysis_type')}")
 

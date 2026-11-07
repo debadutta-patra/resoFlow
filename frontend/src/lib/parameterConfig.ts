@@ -360,3 +360,49 @@ export function applyGridCoordinatesToConfig(
   return { nextConfig, updatedCount };
 }
 
+
+/**
+ * Hash marker written by the old CPMG page for peak-fit seeded CS_A values. It never
+ * matches a real pick hash, so it must not be reported as "stale".
+ */
+export const LEGACY_PEAK_FIT_HASH = 'peak_fit';
+
+/** True when a value seeded from a pick no longer matches the current pick. */
+export function isPickSourceStale(source: Source | undefined, pick: PickSetData | null | undefined): boolean {
+  if (!source || source.kind !== 'pick') return false;
+  const stored = source.pickSetHash;
+  if (!stored || stored === LEGACY_PEAK_FIT_HASH) return false;
+  return stored !== computePickHash(pick);
+}
+
+/** Residues whose CS_A or DW_AB were seeded from a pick that has since moved. */
+export function staleResidueKeys(config: ParameterConfig, picks: Record<string, PickSetData>): string[] {
+  return Object.entries(config.residues || {})
+    .filter(([res, p]) => isPickSourceStale(p?.cs_a?.source, picks[res]) || isPickSourceStale(p?.dw_ab?.source, picks[res]))
+    .map(([res]) => res);
+}
+
+/**
+ * Starting values shown in the Methods tab, taken from every [GLOBAL] parameter
+ * (lower- and upper-case keys), with the standard defaults as fallback.
+ */
+export function startingValuesFromGlobals(config: ParameterConfig): Record<string, number> {
+  const defaults: Record<string, number> = { pb: 0.05, kex_ab: 500.0, tauc_a: 4.0 };
+  const out: Record<string, number> = {};
+  const keys = new Set([...Object.keys(defaults), ...Object.keys(config.globals || {})]);
+  for (const key of keys) {
+    const v = config.globals?.[key]?.value ?? defaults[key];
+    if (v === undefined || Number.isNaN(v)) continue;
+    out[key.toLowerCase()] = v;
+    out[key.toUpperCase()] = v;
+  }
+  return out;
+}
+
+/** A [GLOBAL] field beyond the model catalogue, declared by an experiment plugin. */
+export interface ExtraGlobalField {
+  key: string;
+  label: string;
+  hint?: string;
+  defaultValue: number;
+}

@@ -1,26 +1,24 @@
-import type { ParamValue } from "./parameterConfig";
-import { sortSpinKeys, SpinSystemKey } from "./spinSystem";
+/**
+ * CPMG specifics on top of the shared ChemEx parameter model.
+ *
+ * CPMG analyses use the same `ParameterConfig` and the same parameters.toml codec as
+ * CEST and EXCHANGE (`parameterToml.ts`). What remains here is genuinely CPMG-specific:
+ * default globals (universal DW_AB), canonical single-spin residue keys (`3LYS` → `3N`),
+ * migration of configs saved by the old CPMG-only model, and grid-search application.
+ */
 
-export interface CpmgResidueParams {
-  cs_a?: ParamValue; // Ground state chemical shift in ppm (inherited from peak fitting)
-  dw_ab?: ParamValue; // Optional override
-  r2_a?: Record<string, ParamValue>;
-  r2_b?: Record<string, ParamValue>;
-}
+import type { ParameterConfig, ParamValue, PickSetData, ResidueParams } from "./parameterConfig";
+import { computePickHash } from "./parameterConfig";
+import { configToToml, tomlToConfig, type TomlParseResult } from "./parameterToml";
+import { SpinSystemKey } from "./spinSystem";
 
-export interface CpmgParameterConfig {
-  globals: Record<string, ParamValue>;
-  residues: Record<string, CpmgResidueParams>;
-  excludedResidues?: string[];
-  rawOverride?: string;
-  inheritedFrom?: {
-    analysisUuid: string;
-    analysisName: string;
-    timestamp: string;
-  };
-}
+/** @deprecated CPMG uses the shared model; kept as an alias for existing imports. */
+export type CpmgParameterConfig = ParameterConfig;
+/** @deprecated CPMG uses the shared model; kept as an alias for existing imports. */
+export type CpmgResidueParams = ResidueParams;
+export type CpmgParseResult = TomlParseResult;
 
-export function createDefaultCpmgParameterConfig(): CpmgParameterConfig {
+export function createDefaultCpmgParameterConfig(): ParameterConfig {
   return {
     globals: {
       pb: { value: 0.05, source: { kind: "default" } },
@@ -33,196 +31,136 @@ export function createDefaultCpmgParameterConfig(): CpmgParameterConfig {
   };
 }
 
-export function configToCpmgToml(config?: CpmgParameterConfig, _fields: number[] = [600]): string {
-  if (!config) {
-    return "# Auto-generated ChemEx parameter file\n\n[GLOBAL]\nPB = 0.05\nKEX_AB = 500.0\nDW_AB = 2.0\nTAUC_A = 4.0\n";
-  }
-  if (config.rawOverride && config.rawOverride.trim() !== "") {
-    return config.rawOverride;
-  }
-
-  const sections: string[] = ["# Auto-generated ChemEx parameter file"];
-
-  // 1. [GLOBAL] section
-  const globalLines: string[] = ["[GLOBAL]"];
-  if (config.globals?.pb?.value !== undefined && !isNaN(config.globals.pb.value)) {
-    globalLines.push(`PB = ${config.globals.pb.value}`);
-  }
-  if (config.globals?.kex_ab?.value !== undefined && !isNaN(config.globals.kex_ab.value)) {
-    globalLines.push(`KEX_AB = ${config.globals.kex_ab.value}`);
-  }
-  if (config.globals?.dw_ab?.value !== undefined && !isNaN(config.globals.dw_ab.value)) {
-    globalLines.push(`DW_AB = ${config.globals.dw_ab.value}`);
-  }
-  if (config.globals?.tauc_a?.value !== undefined && !isNaN(config.globals.tauc_a.value)) {
-    globalLines.push(`TAUC_A = ${config.globals.tauc_a.value}`);
-  }
-  if (globalLines.length > 1) {
-    sections.push(globalLines.join("\n"));
-  }
-
-  // 2. [CS_A] - per-residue ground state chemical shift sorted numerically
-  const excluded = new Set((config.excludedResidues || []).map((r) => r.toUpperCase()));
-
-  // Canonicalize and deduplicate residue entries to guarantee only standard keys (e.g. 3N, not 3LYS)
-  const canonicalResidues: Record<string, CpmgResidueParams> = {};
-  for (const [rawKey, rParams] of Object.entries(config.residues || {})) {
-    const parsed = SpinSystemKey.parse(rawKey);
-    const canonKey = (parsed.resNum > 0 && parsed.spins.length <= 1)
-      ? `${parsed.resNum}N`
-      : (parsed.short || rawKey);
-    
-    // Prefer exact canonKey or preserve if not yet set
-    if (!canonicalResidues[canonKey] || rawKey === canonKey) {
-      canonicalResidues[canonKey] = rParams;
-    }
-  }
-
-  const residueKeys = sortSpinKeys(Object.keys(canonicalResidues));
-
-  if (residueKeys.length > 0) {
-    const csLines: string[] = ["[CS_A]"];
-    for (const resKey of residueKeys) {
-      const rParams = canonicalResidues[resKey];
-      if (rParams?.cs_a?.value !== undefined && !isNaN(rParams.cs_a.value)) {
-        const valStr = rParams.cs_a.value.toFixed(3);
-        if (excluded.has(resKey.toUpperCase())) {
-          csLines.push(`# ${resKey} = ${valStr}`);
-        } else {
-          csLines.push(`${resKey} = ${valStr}`);
-        }
-      }
-    }
-    if (csLines.length > 1) {
-      sections.push(csLines.join("\n"));
-    }
-
-    // 3. [DW_AB] - per-residue chemical shift difference (if present)
-    const dwLines: string[] = ["[DW_AB]"];
-    for (const resKey of residueKeys) {
-      const rParams = canonicalResidues[resKey];
-      if (rParams?.dw_ab?.value !== undefined && !isNaN(rParams.dw_ab.value)) {
-        const valStr = rParams.dw_ab.value.toFixed(3);
-        if (excluded.has(resKey.toUpperCase())) {
-          dwLines.push(`# ${resKey} = ${valStr}`);
-        } else {
-          dwLines.push(`${resKey} = ${valStr}`);
-        }
-      }
-    }
-    if (dwLines.length > 1) {
-      sections.push(dwLines.join("\n"));
-    }
-  }
-
-  return sections.join("\n\n") + "\n";
+/** Canonical CPMG residue key: single-spin keys collapse to `<num>N` (e.g. `3LYS` → `3N`). */
+export function canonicalCpmgResidueKey(rawKey: string): string {
+  const parsed = SpinSystemKey.parse(rawKey);
+  return parsed.resNum > 0 && parsed.spins.length <= 1 ? `${parsed.resNum}N` : parsed.short || rawKey;
 }
 
-export interface CpmgParseResult {
-  config: CpmgParameterConfig;
-  unparsed: string[];
+/**
+ * Merge residue aliases onto canonical keys, parameter by parameter; for a parameter
+ * present under several aliases, the entry already on the canonical key wins.
+ */
+export function canonicalizeCpmgResidues(config: ParameterConfig): ParameterConfig {
+  const residues: Record<string, ResidueParams> = {};
+  for (const [rawKey, params] of Object.entries(config.residues || {})) {
+    const key = canonicalCpmgResidueKey(rawKey);
+    residues[key] = rawKey === key ? { ...residues[key], ...params } : { ...params, ...residues[key] };
+  }
+  const excluded = Array.from(new Set((config.excludedResidues || []).map(canonicalCpmgResidueKey)));
+  return { ...config, residues, excludedResidues: excluded };
 }
 
-export function cpmgTomlToConfig(tomlText: string): CpmgParseResult {
-  const config = createDefaultCpmgParameterConfig();
-  const unparsed: string[] = [];
-  const excludedSet = new Set<string>();
+const isParamValue = (v: unknown): v is ParamValue =>
+  !!v && typeof v === "object" && typeof (v as ParamValue).value === "number" && "source" in (v as object);
 
-  const lines = tomlText.split("\n");
-  let currentSection = "";
+/**
+ * Convert a parameter config saved by the old CPMG-only model into the shared model:
+ * - default globals are filled in,
+ * - residue keys are canonicalized,
+ * - legacy per-field records (`r2_a: { "600": {...} }`) are dropped (they were never
+ *   written to parameters.toml, so dropping them keeps the emitted TOML unchanged),
+ * - `inheritedFrom` is converted to the shared `{ sourceRunId, sourceRunLabel, at }` shape.
+ */
+export function migrateLegacyCpmgParameterConfig(raw: any): ParameterConfig {
+  const defaults = createDefaultCpmgParameterConfig();
+  if (!raw || typeof raw !== "object") return defaults;
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    const secMatch = line.match(/^\[([^\]]+)\]$/);
-    if (secMatch) {
-      currentSection = secMatch[1].trim().toUpperCase();
-      continue;
+  const residues: Record<string, ResidueParams> = {};
+  for (const [key, params] of Object.entries<any>(raw.residues || {})) {
+    const clean: ResidueParams = {};
+    for (const [pKey, pVal] of Object.entries<any>(params || {})) {
+      if (isParamValue(pVal)) clean[pKey] = pVal;
     }
-
-    // Check if line is commented out (e.g. # 4N = 118.445)
-    let isCommented = false;
-    let effectiveLine = line;
-    if (line.startsWith("#")) {
-      const withoutHash = line.replace(/^#+\s*/, "");
-      const commentedKv = withoutHash.match(/^["']?([^"'=\s]+)["']?\s*=\s*(.+)$/);
-      if (commentedKv && (currentSection === "CS_A" || currentSection === "CS")) {
-        isCommented = true;
-        effectiveLine = withoutHash;
-      } else {
-        unparsed.push(rawLine);
-        continue;
-      }
-    }
-
-    const kvMatch = effectiveLine.match(/^["']?([^"'=\s]+)["']?\s*=\s*(.+)$/);
-    if (!kvMatch) {
-      unparsed.push(rawLine);
-      continue;
-    }
-
-    const rawKey = kvMatch[1].trim();
-    const parsedKey = SpinSystemKey.parse(rawKey);
-    const key = (parsedKey.resNum > 0 && parsedKey.spins.length <= 1)
-      ? `${parsedKey.resNum}N`
-      : (parsedKey.short || rawKey);
-
-    let valStr = kvMatch[2].trim();
-    const commentIdx = valStr.indexOf("#");
-    if (commentIdx !== -1) {
-      valStr = valStr.substring(0, commentIdx).trim();
-    }
-    const numVal = parseFloat(valStr);
-
-    if (currentSection === "GLOBAL") {
-      const lowerKey = rawKey.toLowerCase();
-      config.globals[lowerKey] = {
-        value: isNaN(numVal) ? 0 : numVal,
-        source: { kind: "imported" },
-      };
-    } else if (currentSection === "CS_A" || currentSection === "CS") {
-      if (!config.residues[key]) {
-        config.residues[key] = {};
-      }
-      config.residues[key].cs_a = {
-        value: isNaN(numVal) ? 0.0 : numVal,
-        source: { kind: "imported" },
-      };
-      if (isCommented) {
-        excludedSet.add(key);
-      }
-    } else if (currentSection === "DW_AB" || currentSection.startsWith("DW")) {
-      if (!config.residues[key]) {
-        config.residues[key] = {};
-      }
-      config.residues[key].dw_ab = {
-        value: isNaN(numVal) ? 1.0 : Math.abs(numVal),
-        source: { kind: "imported" },
-      };
-    } else if (currentSection.startsWith("R2_A") || currentSection === "R2") {
-      if (!config.residues[key]) {
-        config.residues[key] = {};
-      }
-      if (!config.residues[key].r2_a) {
-        config.residues[key].r2_a = {};
-      }
-      let fieldKey = "default";
-      const mField = currentSection.match(/R2_A_(\d+(?:\.\d+)?)MHZ/i);
-      if (mField) {
-        fieldKey = String(parseFloat(mField[1]));
-      }
-      config.residues[key].r2_a![fieldKey] = {
-        value: isNaN(numVal) ? 15.0 : numVal,
-        source: { kind: "imported" },
-      };
-    } else {
-      unparsed.push(rawLine);
-    }
+    residues[key] = clean;
   }
 
-  config.excludedResidues = Array.from(excludedSet);
-  return { config, unparsed };
+  const inh = raw.inheritedFrom;
+  const inheritedFrom = inh
+    ? {
+        sourceRunId: inh.sourceRunId ?? inh.analysisUuid ?? "",
+        sourceRunLabel: inh.sourceRunLabel ?? inh.analysisName ?? "",
+        at: inh.at ?? inh.timestamp ?? "",
+      }
+    : undefined;
+
+  return canonicalizeCpmgResidues({
+    ...raw,
+    globals: { ...defaults.globals, ...(raw.globals || {}) },
+    residues,
+    excludedResidues: Array.isArray(raw.excludedResidues) ? raw.excludedResidues : [],
+    ...(inheritedFrom ? { inheritedFrom } : {}),
+  });
+}
+
+/** Minimal profile shape needed to seed CS_A from peak fitting. */
+export interface PeakFitProfileRef {
+  residue: string;
+  full_residue?: string;
+  cs_a?: number | null;
+}
+
+/**
+ * CPMG's equivalent of CEST picks: the ground-state shift measured by peak fitting.
+ * There is no B-state pick, so `cs_b` is always null.
+ */
+export function peakFitPicks(profiles: PeakFitProfileRef[]): Record<string, PickSetData> {
+  const out: Record<string, PickSetData> = {};
+  for (const p of profiles) {
+    if (p?.residue && typeof p.cs_a === "number" && !Number.isNaN(p.cs_a)) {
+      out[p.residue] = { cs_a: p.cs_a, cs_b: null };
+    }
+  }
+  return out;
+}
+
+/**
+ * Build the residue map for the current profiles, keeping existing per-residue values
+ * and seeding missing CS_A from peak fitting (with a real pick hash for stale detection).
+ */
+export function seedCpmgResiduesFromProfiles(
+  config: ParameterConfig,
+  profiles: PeakFitProfileRef[],
+  at: string = new Date().toISOString()
+): ParameterConfig {
+  const picks = peakFitPicks(profiles);
+  const residues: Record<string, ResidueParams> = {};
+  for (const p of profiles) {
+    if (!p?.residue) continue;
+    const existing = config.residues?.[p.residue] || (p.full_residue ? config.residues?.[p.full_residue] : undefined) || {};
+    const pick = picks[p.residue];
+    residues[p.residue] = {
+      ...existing,
+      cs_a:
+        existing.cs_a ||
+        (pick ? { value: pick.cs_a as number, source: { kind: "pick", pickSetHash: computePickHash(pick), at } } : undefined),
+    };
+  }
+  return { ...config, residues };
+}
+
+/** CPMG parameters.toml writer: the shared writer over canonical CPMG residue keys. */
+export function configToCpmgToml(config?: ParameterConfig, _fields: number[] = [600]): string {
+  return configToToml(canonicalizeCpmgResidues(config ?? createDefaultCpmgParameterConfig()));
+}
+
+/** CPMG parameters.toml reader: the shared reader, defaults filled in, keys canonicalized. */
+export function cpmgTomlToConfig(tomlText: string): TomlParseResult {
+  const parsed = tomlToConfig(tomlText);
+  const defaults = createDefaultCpmgParameterConfig();
+  // CPMG dispersion is insensitive to the sign of Δω; keep magnitudes as before.
+  for (const params of Object.values(parsed.config.residues)) {
+    for (const [pKey, pVal] of Object.entries(params)) {
+      if (pKey.startsWith("dw_") && pVal) params[pKey] = { ...pVal, value: Math.abs(pVal.value) };
+    }
+  }
+  return {
+    config: canonicalizeCpmgResidues({
+      ...parsed.config,
+      globals: { ...defaults.globals, ...parsed.config.globals },
+    }),
+    unparsed: parsed.unparsed,
+  };
 }
 
 /**
@@ -270,7 +208,7 @@ export function applyGridCoordinatesToCpmgConfig(
       !['TAUC_A', 'TAUC'].includes(kUpper);
 
     if (isPerResidue) {
-      let paramSection: keyof CpmgResidueParams | null = null;
+      let paramSection: "cs_a" | "dw_ab" | null = null;
       if (kUpper.includes('CS_A') || kUpper.startsWith('CS')) paramSection = 'cs_a';
       else if (kUpper.includes('DW_AB') || kUpper.includes('DW_') || kUpper.startsWith('DW')) paramSection = 'dw_ab';
 

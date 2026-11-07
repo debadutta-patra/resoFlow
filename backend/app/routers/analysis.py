@@ -28,6 +28,9 @@ from .deps import get_project, get_analysis
 from ..celery_app import celery_app
 from ..services.fitting.cest_report import generate_cest_pdf_report
 from ..services.fitting.cest_tasks import _update_experiment_toml_exclusions
+from ..services.fitting.param_catalog import method_parameters_response
+from ..services.fitting.config_normalizer import merge_chemex_config, normalize_chemex_config
+from ..services.fitting.run_dirs import chemex_run_dir, load_chemex_config
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse, Response
 from ..services.reporting.model import build_report_model
 from ..services.reporting.render import render_html, render_pdf
@@ -671,7 +674,7 @@ def run_cest_analysis(
             existing_config = json.load(f)
     
     # Merge new fit parameters into config
-    existing_config.update(request)
+    existing_config = merge_chemex_config(existing_config, request)
     
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2)
@@ -830,7 +833,7 @@ def get_cest_config(
         config = json.load(f)
     
     output_bak = os.path.join(run_dir, "Output_bak")
-    return {"config": config, "has_backup": os.path.exists(output_bak)}
+    return {"config": normalize_chemex_config(config), "has_backup": os.path.exists(output_bak)}
 
 
 @router.get("/{analysis_uuid}/cest/method-parameters")
@@ -841,218 +844,7 @@ def get_cest_method_parameters(
     """
     Return the parameter definitions, glosses, and metadata for a given kinetic model in ChemEx.
     """
-    # Base parameters available for 2-state models
-    params_2st = [
-        {
-            "name": "PB",
-            "gloss": "Population of minor state B (0 - 0.5)",
-            "scope": "global",
-            "default_mode": "default",
-            "default_bounds": "< 0.5",
-            "category": "kinetic",
-            "is_primary": True
-        },
-        {
-            "name": "KEX_AB",
-            "gloss": "Exchange rate between states A and B (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True
-        },
-        {
-            "name": "CS_A",
-            "gloss": "Chemical shift of major ground state A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True
-        },
-        {
-            "name": "DW_AB",
-            "gloss": "Chemical shift difference between states B and A: CS_B - CS_A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True
-        },
-        {
-            "name": "R1_A",
-            "gloss": "Longitudinal relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R2_A",
-            "gloss": "Transverse relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R1_B",
-            "gloss": "Longitudinal relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R1_A]",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R2_B",
-            "gloss": "Transverse relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R2_A]",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "TAUC_A",
-            "gloss": "Rotational correlation time of state A (s)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "hydrodynamic",
-            "is_primary": False
-        },
-    ]
-
-    # Parameters for 3-state models
-    params_3st = [
-        {
-            "name": "PB",
-            "gloss": "Population of state B (0 - 1)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True
-        },
-        {
-            "name": "PC",
-            "gloss": "Population of state C (0 - 1)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True
-        },
-        {
-            "name": "KEX_AB",
-            "gloss": "Exchange rate between states A and B (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True
-        },
-        {
-            "name": "KEX_AC",
-            "gloss": "Exchange rate between states A and C (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": True
-        },
-        {
-            "name": "KEX_BC",
-            "gloss": "Exchange rate between states B and C (s⁻¹)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "kinetic",
-            "is_primary": False
-        },
-        {
-            "name": "CS_A",
-            "gloss": "Chemical shift of major state A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True
-        },
-        {
-            "name": "DW_AB",
-            "gloss": "Chemical shift difference CS_B - CS_A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True
-        },
-        {
-            "name": "DW_AC",
-            "gloss": "Chemical shift difference CS_C - CS_A (ppm)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "chemical_shift",
-            "is_primary": True
-        },
-        {
-            "name": "R1_A",
-            "gloss": "Longitudinal relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R2_A",
-            "gloss": "Transverse relaxation rate of state A (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R1_B",
-            "gloss": "Longitudinal relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R1_A]",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R2_B",
-            "gloss": "Transverse relaxation rate of state B (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R2_A]",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R1_C",
-            "gloss": "Longitudinal relaxation rate of state C (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R1_A]",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "R2_C",
-            "gloss": "Transverse relaxation rate of state C (s⁻¹)",
-            "scope": "residue",
-            "default_mode": "default",
-            "default_expression": "[R2_A]",
-            "category": "relaxation",
-            "is_primary": True
-        },
-        {
-            "name": "TAUC_A",
-            "gloss": "Rotational correlation time of state A (s)",
-            "scope": "global",
-            "default_mode": "default",
-            "category": "hydrodynamic",
-            "is_primary": False
-        },
-    ]
-
-    model_clean = (model or "2st").lower()
-    if "3st" in model_clean or "3" in model_clean:
-        return {"model": model, "parameters": params_3st}
-    
-    return {"model": model, "parameters": params_2st}
+    return method_parameters_response(model)
 
 
 @router.post("/{analysis_uuid}/methods/validate", response_model=schemas.MethodValidationResponse)
@@ -1128,17 +920,8 @@ def validate_method_endpoint(
 
 def _get_analysis_run_metadata(analysis: models.Analysis) -> Dict[str, Any]:
     """Extract metadata for an analysis from its config.json, database, and spectra."""
-    project = analysis.project
-    run_dir = os.path.join(project.local_directory_path, "cest_fitting", analysis.analysis_uuid)
-    config_path = os.path.join(run_dir, "config.json")
-
-    config = {}
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r") as cf:
-                config = json.load(cf)
-        except Exception:
-            pass
+    run_dir = chemex_run_dir(analysis)
+    config = load_chemex_config(analysis)
 
     # Extract model
     model = config.get("model") or "2st"
@@ -1333,7 +1116,7 @@ def get_cest_source_parameters(
         raise HTTPException(status_code=400, detail="Source analysis is not completed")
 
     from ..services.fitting.chemex_parser import parse_chemex_run_parameters
-    run_dir = os.path.join(project.local_directory_path, "cest_fitting", source_analysis.analysis_uuid)
+    run_dir = chemex_run_dir(source_analysis)
     if not os.path.exists(run_dir):
         raise HTTPException(status_code=404, detail="Source analysis run directory not found on disk")
 
@@ -1364,7 +1147,7 @@ def save_cest_config(
         with open(config_path, "r") as f:
             existing_config = json.load(f)
 
-    existing_config.update(request)
+    existing_config = merge_chemex_config(existing_config, request)
 
     # Sync exclusions to experiment TOML files on disk
     param_cfg = existing_config.get("parameter_config") or {}

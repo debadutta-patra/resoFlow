@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { Upload, X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { tomlToConfig } from '../../lib/parameterToml';
+import { DEFAULT_PARAMETER_CODEC, type ParameterCodec } from '../../lib/parameterToml';
 import type { ParameterConfig } from '../../lib/parameterConfig';
 
 interface ParametersImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImport: (importedConfig: ParameterConfig, unparsed: string[]) => void;
+  /** Experiment-specific parameters.toml codec (defaults to the shared one). */
+  codec?: ParameterCodec;
 }
 
 export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
   isOpen,
   onClose,
   onImport,
+  codec = DEFAULT_PARAMETER_CODEC,
 }) => {
   const [tomlText, setTomlText] = useState('');
   const [error, setError] = useState('');
@@ -25,7 +28,7 @@ export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
       return;
     }
     try {
-      const { config, unparsed } = tomlToConfig(tomlText);
+      const { config, unparsed } = codec.fromToml(tomlText);
       const globalCount = Object.keys(config.globals || {}).length;
       const residueCount = Object.keys(config.residues || {}).length;
 

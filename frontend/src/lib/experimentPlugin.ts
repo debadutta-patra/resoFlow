@@ -6,8 +6,55 @@
  */
 
 import React from "react";
-import type { ParameterConfig } from "./parameterConfig";
+import type { ExtraGlobalField, ParameterConfig, ProfileRef } from "./parameterConfig";
 import type { MethodConfig } from "./methodConfig";
+import type { ParameterCodec } from "./parameterToml";
+
+/** Which per-analysis ChemEx route family the page talks to (`/{uuid}/cest/...`, etc.). */
+export type ChemexEndpointFamily = "cest" | "cpmg" | "exchange";
+
+/** Row data handed to an experiment-specific residue profile renderer. */
+export interface ResidueProfileCell {
+  resKey: string;
+  label: string;
+  cs_a: number | null;
+  cs_b: number | null;
+  dw_ab: number | null;
+  profile?: ProfileRef;
+}
+
+/**
+ * What differs between experiments on the shared Parameters tab. Everything else
+ * (layout, raw TOML mode, import, inherit, validation, preview) is identical.
+ */
+export interface ParameterTabCapabilities {
+  /** Sub-title under "ChemEx Parameters Configuration". */
+  description: string;
+  createDefaultParameters: () => ParameterConfig;
+  /** parameters.toml codec; defaults to the shared CEST/EXCHANGE codec. */
+  codec?: ParameterCodec;
+  /** [GLOBAL] fields beyond the model catalogue (e.g. CPMG universal DW_AB). */
+  extraGlobals?: ExtraGlobalField[];
+  /** Re-sync starting values from the experiment's "picks". */
+  resync: {
+    buttonLabel: string;
+    buttonTitle: string;
+    /** Banner text when `count` residues have moved since they were seeded. */
+    staleBanner: (count: number) => string;
+    successMessage: string;
+  };
+  residueTable: {
+    heading: string;
+    /** Picks carry a B-state shift (CEST dips); false for CPMG peak-fit CS_A. */
+    expectsBPicks: boolean;
+    profileTitle: string;
+    pickNoun: string;
+    pickedLabel: string;
+    staleLabel: string;
+  };
+  /** Thumbnail/large profile preview in the residue table (defaults to CEST profile). */
+  renderResidueProfile?: (row: ResidueProfileCell, size: "thumb" | "large") => React.ReactNode;
+}
 
 export interface NucleusInfo {
   nucleus: '15N' | '13C' | '1H';
@@ -113,6 +160,10 @@ export interface ExperimentPlugin {
   readonly supportedModules: string[];
   readonly hasDataPrepTab: boolean;
   readonly dataPrepTabLabel?: string;
+  /** Route family for config / method-parameters / run endpoints. */
+  readonly endpointFamily: ChemexEndpointFamily;
+  /** Shared Parameters-tab capabilities. */
+  readonly parameters: ParameterTabCapabilities;
 
   /**
    * Render custom experiment setup (fields, carriers, acquisitions, etc.)

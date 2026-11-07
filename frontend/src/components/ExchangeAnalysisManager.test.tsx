@@ -38,14 +38,22 @@ vi.mock('./Plot', () => ({
   PLOT_COLORS: { primary: '#2563eb', secondary: '#9333ea' },
 }));
 
+/** Route a mocked GET of the saved exchange config; other GETs resolve empty. */
+const mockExchangeConfig = (api: any, data: any) =>
+  (api.get as any).mockImplementation((url: string) =>
+    Promise.resolve({ data: url.endsWith('/exchange/config') ? data : {} })
+  );
+
 describe('ExchangeAnalysisManager', () => {
   beforeEach(() => {
     window.alert = vi.fn();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
     vi.clearAllMocks();
+    const api = (await import('../services/api')).default;
+    (api.get as any).mockImplementation(() => Promise.resolve({ data: {} }));
   });
 
   const baseAnalysis = {
@@ -185,11 +193,9 @@ describe('ExchangeAnalysisManager', () => {
 
   it('calls exchange/run endpoint when Run ChemEx is clicked', async () => {
     const api = (await import('../services/api')).default;
-    (api.get as any).mockResolvedValueOnce({
-      data: {
-        generatedExperiments: [{ filename: 'exp1.toml', path: '/work/exp1.toml' }],
-        spectrum_ids: [1],
-      },
+    mockExchangeConfig(api, {
+      generatedExperiments: [{ filename: 'exp1.toml', path: '/work/exp1.toml' }],
+      spectrum_ids: [1],
     });
 
     render(
@@ -305,11 +311,9 @@ describe('ExchangeAnalysisManager', () => {
       },
     ];
 
-    (api.get as any).mockResolvedValueOnce({
-      data: {
-        cest_profiles: mockProfiles,
-        picks: {},
-      },
+    mockExchangeConfig(api, {
+      cest_profiles: mockProfiles,
+      picks: {},
     });
 
     render(
@@ -390,7 +394,8 @@ describe('ExchangeAnalysisManager', () => {
     // Click Templates button
     const templatesBtn = screen.getByRole('button', { name: /Templates/i });
     fireEvent.click(templatesBtn);
-    expect(screen.getByText(/Choose a pre-configured fitting protocol preset/i)).toBeDefined();
+    // Same Templates dialog as the CEST and CPMG pages
+    expect(screen.getByText(/Method Strategy Templates/i)).toBeDefined();
 
     // Apply template
     const useTemplateBtns = screen.getAllByRole('button', { name: /Use Template/i });
@@ -563,7 +568,7 @@ describe('ExchangeAnalysisManager', () => {
     const templatesBtn = screen.getByRole('button', { name: /Templates/i });
     fireEvent.click(templatesBtn);
 
-    expect(screen.getByText(/Method Templates/i)).toBeDefined();
+    expect(screen.getByText(/Method Strategy Templates/i)).toBeDefined();
     expect(screen.getByText(/2-State Combined Exchange \(CEST \+ CPMG\)/i)).toBeDefined();
     expect(screen.getByText(/Grid Search → Refinement \(Exchange\)/i)).toBeDefined();
   });

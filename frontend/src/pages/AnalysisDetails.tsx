@@ -139,6 +139,7 @@ const AnalysisDetails: React.FC = () => {
             analysis={selectedAnalysis}
             projectUuid={projectUuid!}
             spectra={project?.spectra || []}
+            allAnalyses={project?.analyses || []}
             onUpdate={() => fetchProjectDetails(false)}
           />
         ) : (

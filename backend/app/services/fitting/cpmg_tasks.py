@@ -20,6 +20,7 @@ from ... import models, database
 from .cest_tasks import _update_experiment_toml_exclusions, _backup_output_directory, _parse_chemex_output
 from .chemex_runner import run_chemex_job, get_chemex_image_info
 from .chemex_jobs import build_fit_spec
+from .config_normalizer import normalize_chemex_config
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ def _setup_cpmg_directory(run_dir: str, config: dict):
     """
     Create the ChemEx directory structure and write all config files for CPMG.
     """
+    config = normalize_chemex_config(config)
     experiments_dir = os.path.join(run_dir, "experiments")
     experiments_dir_cap = os.path.join(run_dir, "Experiments")
     parameters_dir = os.path.join(run_dir, "Parameters")

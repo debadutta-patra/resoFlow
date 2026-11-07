@@ -3,11 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import {
   Play, ChevronLeft, ChevronRight, FastForward,
-  Beaker, Loader2, RotateCcw, Square, Workflow, Sparkles, Code,
-  RefreshCw, Sliders, MinusCircle, PlusCircle,
-  Activity, X, Check, AlertCircle, Copy, Download, Upload,
-  AlertTriangle, ChevronDown, ChevronUp, Info,
-  FileCode, GitFork, ArrowUpDown, LayoutGrid, Maximize2, FileText, Search
+  Beaker, Loader2, RotateCcw, Square, Workflow, Sparkles, RefreshCw, Sliders, MinusCircle, PlusCircle,
+  Activity, X, Check, AlertCircle, Download, AlertTriangle, ChevronDown, ChevronUp, ArrowUpDown, LayoutGrid, Maximize2, FileText, Search
 } from 'lucide-react';
 import Plot, { PLOT_COLORS } from './Plot';
 import { useTheme } from '../context/ThemeContext';
@@ -16,41 +13,27 @@ import { formatUncertainty } from '../lib/uncertaintyFormatter';
 import { deduplicateSpinKeys } from '../lib/spinSystem';
 import StatisticsResultsSection from './methods/StatisticsResultsSection';
 import { GridSearchSection } from './grid/GridSearchSection';
-import type { MethodConfig, Step } from '../lib/methodConfig';
-import { createDefaultMethodConfig, createDefaultStep, KINETIC_MODELS } from '../lib/methodConfig';
-import { validateMethodConfig } from '../lib/methodValidation';
-import { METHOD_TEMPLATES, type MethodTemplate } from '../lib/methodTemplates';
-import { configToToml as methodConfigToToml, tomlToConfig as methodTomlToConfig } from '../lib/methodToml';
-import ParameterTable, { type AvailableParamMeta, DEFAULT_PARAM_METAS } from './methods/ParameterTable';
-import ResidueSelector, { type ResidueItem } from './methods/ResidueSelector';
-import StepTabs from './methods/StepTabs';
-import StepStatisticsSection from './methods/StepStatisticsSection';
-import type { ParameterConfig } from '../lib/parameterConfig';
+import { KINETIC_MODELS } from '../lib/methodConfig';
+import type { ResidueItem } from './methods/ResidueSelector';
+import { MethodsTab } from './methods/MethodsTab';
+import { ParametersTab } from './parameters/ParametersTab';
+import { ConfigChangedBadge, LineageBadge, StaleStartingValuesBadge } from './chemex/RunStatusBadges';
+import type { ProfileRef } from '../lib/parameterConfig';
 import {
-  createDefaultParameterConfig,
   computePickHash,
   canonicalizeParameterConfig,
   isResidueExcluded,
-  toggleExcludeResidue,
   sortSpinKeys,
   applyGridCoordinatesToConfig,
 } from '../lib/parameterConfig';
-import {
-  configToToml as paramConfigToToml,
-  tomlToConfig as paramTomlToConfig,
-} from '../lib/parameterToml';
-import { validateParameterConfig, type ParameterIssue } from '../lib/parameterValidation';
-import type { SourceRunSummary } from '../lib/compatibility';
-import { GlobalParametersCard } from './parameters/GlobalParametersCard';
-import { ResidueParametersTable } from './parameters/ResidueParametersTable';
-import { ResyncModal } from './parameters/ResyncModal';
-import { ParametersImportModal } from './parameters/ParametersImportModal';
-import { SourceRunPickerModal } from './parameters/SourceRunPickerModal';
-import { InheritParametersModal } from './parameters/InheritParametersModal';
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
 import { CpmgDispersionTab, type CpmgProfileItem } from './cpmg/CpmgDispersionTab';
 import { getNucleusInfoForModule } from '../lib/experimentPlugin';
+import { chemexConfigHash, findLineage, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from '../lib/chemexRun';
+import { useMethodEditor } from '../hooks/useMethodEditor';
+import { useParameterEditor } from '../hooks/useParameterEditor';
+import { exchangePlugin } from '../plugins/exchangePlugin';
 import nmrSpectraDark from '../assets/nmr_spectra_dark.jpg';
 import nmrSpectraLight from '../assets/nmr_spectra_light.jpg';
 import atomSpinDark from '../assets/atom_spin_dark.jpg';
@@ -143,11 +126,6 @@ const STATUS_COLORS: Record<string, string> = {
   FAILED: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
 };
 
-const DEFAULT_METHOD_TOML = `[STEP1]
-FIT = ["PB", "KEX_AB", "DW_AB", "CS_A"]
-CONSTRAINTS = ["[PB] < 0.5"]
-`;
-
 export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = ({
   analysis,
   projectUuid,
@@ -225,30 +203,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
   const [picks, setPicks] = useState<Record<string, CestPick>>({});
   const [pickMode, setPickMode] = useState<'cs_a' | 'cs_b' | 'cs_c'>('cs_a');
 
-  // Parameters State
-  const [parameterConfig, setParameterConfig] = useState<ParameterConfig>(() => createDefaultParameterConfig());
-  const [rawParamToml, setRawParamToml] = useState<string>('');
-  const [isRawParamEditMode, setIsRawParamEditMode] = useState<boolean>(false);
-  const [unparsedParamTomlLines, setUnparsedParamTomlLines] = useState<string[]>([]);
-  const [showParamGeneratedPreview, setShowParamGeneratedPreview] = useState<boolean>(false);
-  const [showResyncModal, setShowResyncModal] = useState<boolean>(false);
-  const [showParamImportModal, setShowParamImportModal] = useState<boolean>(false);
-  const [showSourcePickerModal, setShowSourcePickerModal] = useState<boolean>(false);
-  const [showInheritModal, setShowInheritModal] = useState<boolean>(false);
-  const [selectedSourceRun, setSelectedSourceRun] = useState<SourceRunSummary | null>(null);
   const [residueMapping, setResidueMapping] = useState<Record<string, string>>({});
-
-  // Methods State
-  const [methodConfig, setMethodConfig] = useState<MethodConfig>(() => createDefaultMethodConfig());
-  const [methodToml, setMethodToml] = useState<string>(() => methodConfigToToml(createDefaultMethodConfig()) || DEFAULT_METHOD_TOML);
-  const [isRawEditMode, setIsRawEditMode] = useState<boolean>(false);
-  const [unparsedTomlLines, setUnparsedTomlLines] = useState<string[]>([]);
-  const [showGeneratedPreview, setShowGeneratedPreview] = useState<boolean>(false);
-  const [showTemplateModal, setShowTemplateModal] = useState<boolean>(false);
-  const [showImportModal, setShowImportModal] = useState<boolean>(false);
-  const [importTomlText, setImportTomlText] = useState<string>('');
-  const [activeStepIdx, setActiveStepIdx] = useState<number>(0);
-  const [availableParamMetas, setAvailableParamMetas] = useState<AvailableParamMeta[]>(DEFAULT_PARAM_METAS);
 
   // Run & Logs State
   const [logs, setLogs] = useState<string>('');
@@ -302,34 +257,80 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     });
   }, [cestProfiles, cpmgProfiles]);
 
-  // Effective TOML strings
-  const effectiveParameterToml = useMemo(() => {
-    return isRawParamEditMode ? rawParamToml : paramConfigToToml(parameterConfig);
-  }, [isRawParamEditMode, rawParamToml, parameterConfig]);
+  const notify = (msg: string, ms = 3000) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(''), ms);
+  };
 
-  const effectiveMethodToml = useMemo(() => {
-    return isRawEditMode ? methodToml : methodConfigToToml(methodConfig);
-  }, [isRawEditMode, methodToml, methodConfig]);
+  /** Profiles shown in the Parameters table: CEST profile, else the CPMG dispersion. */
+  const tableProfiles = useMemo<ProfileRef[]>(() => {
+    const cestKeys = new Set(cestProfiles.map(p => p.residue));
+    return [...cestProfiles, ...cpmgProfiles.filter(p => !cestKeys.has(p.residue))];
+  }, [cestProfiles, cpmgProfiles]);
 
-  // Stale pick count detection across all residues
-  const staleParamCount = useMemo(() => {
-    let count = 0;
-    for (const [res, rParams] of Object.entries(parameterConfig.residues || {})) {
-      const pk = picks[res];
-      const currentHash = computePickHash(pk);
-      let resStale = false;
-      if (rParams?.cs_a?.source.kind === 'pick') {
-        const stored = (rParams.cs_a.source as any).pickSetHash;
-        if (stored && stored !== currentHash) resStale = true;
-      }
-      if (rParams?.dw_ab?.source.kind === 'pick') {
-        const stored = (rParams.dw_ab.source as any).pickSetHash;
-        if (stored && stored !== currentHash) resStale = true;
-      }
-      if (resStale) count++;
-    }
-    return count;
-  }, [parameterConfig.residues, picks]);
+  // ── Parameters & Methods (shared ChemEx editors) ──
+  const parameterEditor = useParameterEditor({
+    createDefault: exchangePlugin.parameters.createDefaultParameters,
+    codec: exchangePlugin.parameters.codec,
+    profiles: combinedProfiles,
+    picks: picks as any,
+  });
+  const { parameterConfig, setParameterConfig } = parameterEditor;
+
+  const residueItems: ResidueItem[] = useMemo(() => {
+    const withData = new Set([...cestProfiles.map(p => p.residue), ...cpmgProfiles.map(p => p.residue)]);
+    const keys = sortSpinKeys(Array.from(new Set([...Object.keys(parameterConfig.residues || {}), ...withData])));
+    return keys
+      .filter(k => !isResidueExcluded(parameterConfig, k, combinedProfiles))
+      .map(k => ({
+        id: k,
+        number: parseInt(k.replace(/\D/g, ''), 10) || 0,
+        label: residueMapping[k] || k,
+        hasData: withData.has(k),
+      }));
+  }, [parameterConfig, cestProfiles, cpmgProfiles, combinedProfiles, residueMapping]);
+
+  const methodEditor = useMethodEditor({
+    projectUuid,
+    analysisUuid: analysis.analysis_uuid,
+    family: exchangePlugin.endpointFamily,
+    model,
+    residueItems,
+    isResidueExcluded: parameterEditor.isExcluded,
+    exclusionKey: parameterConfig.excludedResidues,
+    notify,
+  });
+  const { methodConfig } = methodEditor;
+  const effectiveParameterToml = parameterEditor.effectiveParameterToml;
+  const effectiveMethodToml = methodEditor.effectiveMethodToml;
+  const staleParamCount = parameterEditor.staleResidues.length;
+
+  const [lastRunConfigHash, setLastRunConfigHash] = useState('');
+  const [lastRunTimestamp, setLastRunTimestamp] = useState('');
+  const currentConfigHash = chemexConfigHash({
+    parameterToml: effectiveParameterToml,
+    methodToml: effectiveMethodToml,
+    model,
+    fitMode: 'global',
+  });
+  const isConfigChangedSinceRun = status === 'COMPLETED' && !!lastRunConfigHash && currentConfigHash !== lastRunConfigHash;
+  const lineageInfo = useMemo(() => findLineage(parameterConfig), [parameterConfig]);
+  const sourceRunStillExists = !!lineageInfo && (_allAnalyses || []).some((a: any) => a.analysis_uuid === lineageInfo.sourceRunId);
+  const catalogGlobals = useMemo(
+    () => methodEditor.availableParamsMeta.filter(p => p.scope === 'global').map(p => p.name),
+    [methodEditor.availableParamsMeta]
+  );
+
+  /** Parameters/Methods payload shared by save and run (same keys on every ChemEx page). */
+  const chemexPayload = (overrides: { last_run_hash?: string; last_run_timestamp?: string } = {}) => ({
+    parameter_toml: effectiveParameterToml,
+    parameter_config: parameterEditor.parameterConfigForSave,
+    method_toml: effectiveMethodToml,
+    method_config: methodEditor.methodConfigForSave,
+    model,
+    last_run_hash: overrides.last_run_hash ?? lastRunConfigHash,
+    last_run_timestamp: overrides.last_run_timestamp ?? lastRunTimestamp,
+  });
 
   // Load existing config and results on mount
   useEffect(() => {
@@ -396,82 +397,15 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       if (cfg.residue_mapping) setResidueMapping(cfg.residue_mapping);
       if (cfg.picks) setPicks(cfg.picks);
 
-      if (cfg.parameter_config) {
-        const canon = canonicalizeParameterConfig(cfg.parameter_config, combinedProfiles);
-        setParameterConfig(canon);
-        setRawParamToml(cfg.parameters_toml || paramConfigToToml(canon));
-      } else {
-        setRawParamToml(paramConfigToToml(parameterConfig));
-      }
-
-      if (cfg.method_config && Array.isArray(cfg.method_config.steps) && cfg.method_config.steps.length > 0) {
-        // Auto-heal any steps that have neither fit nor grid search configured
-        const healedSteps = cfg.method_config.steps.map((st: Step) => {
-          const hasFit = st.parameters?.some(p => p.mode === 'fit' || p.mode === 'grid');
-          if (!hasFit) {
-            const fitNames = new Set(['PB', 'KEX_AB', 'DW_AB', 'CS_A']);
-            const updatedParams = (st.parameters || []).map(p => {
-              if (fitNames.has(p.name)) {
-                return { ...p, mode: 'fit', bounds: p.name === 'PB' ? (p.bounds || '< 0.5') : p.bounds };
-              }
-              return p;
-            });
-            for (const fn of fitNames) {
-              if (!updatedParams.some(p => p.name === fn)) {
-                updatedParams.unshift({ name: fn, mode: 'fit', bounds: fn === 'PB' ? '< 0.5' : undefined });
-              }
-            }
-            return { ...st, parameters: updatedParams };
-          }
-          return st;
-        });
-        const healedConfig = { ...cfg.method_config, steps: healedSteps };
-        setMethodConfig(healedConfig);
-        setMethodToml(cfg.method_toml || methodConfigToToml(healedConfig));
-        setIsRawEditMode(!!cfg.method_config.rawOverride);
-      } else if (cfg.method_toml) {
-        setMethodToml(cfg.method_toml);
-        const parsed = methodTomlToConfig(cfg.method_toml);
-        setMethodConfig(parsed.config);
-        setUnparsedTomlLines(parsed.unparsed);
-      } else {
-        setMethodToml(methodConfigToToml(methodConfig) || DEFAULT_METHOD_TOML);
-      }
-
-      // Load method parameter definitions
-      try {
-        const pRes = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/method-parameters`, {
-          params: { model: cfg.model || '2st' },
-        });
-        const paramList = pRes.data?.parameters || (Array.isArray(pRes.data) ? pRes.data : []);
-        if (paramList.length > 0) {
-          setAvailableParamMetas(paramList);
-        }
-      } catch (e) {}
-
+      if (cfg.last_run_hash) setLastRunConfigHash(cfg.last_run_hash);
+      if (cfg.last_run_timestamp) setLastRunTimestamp(cfg.last_run_timestamp);
+      const savedCombined: ProfileRef[] = [...(cfg.cest_profiles || []), ...(cfg.cpmg_profiles || [])];
+      parameterEditor.restore(cfg, savedCombined);
+      methodEditor.restore(cfg);
     } catch (e) {
       console.warn("No previous exchange config loaded or error:", e);
     }
   };
-
-  // Fetch Method Parameters Metadata from Backend whenever model changes
-  useEffect(() => {
-    const fetchParams = async () => {
-      try {
-        const res = await api.get(
-          `/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/method-parameters`,
-          { params: { model } }
-        );
-        const paramList = res.data?.parameters || (Array.isArray(res.data) ? res.data : []);
-        if (paramList.length > 0) {
-          setAvailableParamMetas(paramList);
-        }
-      } catch (err) {
-        console.warn('Failed to fetch exchange method parameters from backend', err);
-      }
-    };
-    fetchParams();
-  }, [model, projectUuid, analysis.analysis_uuid]);
 
   const loadResults = async () => {
     try {
@@ -565,14 +499,10 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         }
       }
       const nextCombined = Array.from(map.values());
-      setParameterConfig(prev => {
-        const base = (data.parameter_config && Object.keys(data.parameter_config.residues || {}).length > 0)
-          ? data.parameter_config
-          : prev;
-        const canon = canonicalizeParameterConfig(base, nextCombined);
-        setRawParamToml(paramConfigToToml(canon));
-        return canon;
-      });
+      const base = (data.parameter_config && Object.keys(data.parameter_config.residues || {}).length > 0)
+        ? data.parameter_config
+        : parameterConfig;
+      parameterEditor.replaceConfig(canonicalizeParameterConfig(base, nextCombined));
 
       onUpdate?.();
       setSuccessMsg("Exchange experiment files generated successfully!");
@@ -592,7 +522,6 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     try {
       const payload = {
         spectrum_ids: selectedSpectrumIds,
-        model,
         use_height: useHeight,
         cest_module_name: cestModuleName,
         cpmg_module_name: cpmgModuleName,
@@ -604,10 +533,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         cpmg_time_t2: cpmgTimeT2,
         cpmg_carrier: cpmgCarrier,
         picks,
-        parameter_config: parameterConfig,
-        parameters_toml: effectiveParameterToml,
-        method_config: isRawEditMode ? { ...methodConfig, rawOverride: methodToml } : methodConfig,
-        method_toml: effectiveMethodToml,
+        ...chemexPayload(),
         excluded_residues: parameterConfig.excludedResidues || [],
       };
       await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/config`, payload);
@@ -622,35 +548,33 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
 
   // Run / Start Fit
   const handleStartFit = async () => {
+    if (methodEditor.blockingErrors.length > 0) {
+      setError(`Cannot run ChemEx: ${methodEditor.blockingErrors[0].message}`);
+      return;
+    }
+    if (status === 'COMPLETED' && !window.confirm(RERUN_CONFIRM_MESSAGE)) return;
     setIsFitting(true);
     try {
-      // Pre-flight validation against ChemEx
-      try {
-        const valRes = await api.post('/api/chemex/validate', {
-          analysis_uuid: analysis.analysis_uuid,
-          project_uuid: projectUuid,
-          parameter_toml: effectiveParameterToml,
-          method_toml: effectiveMethodToml,
-          model,
-        });
-        if (valRes.data && !valRes.data.valid && valRes.data.errors && valRes.data.errors.length > 0) {
-          const errMsg = valRes.data.errors.map((e: any) => e.message || String(e)).join('\n');
-          setError(`ChemEx Validation Error:\n${errMsg}`);
-          setIsFitting(false);
-          setStatus("FAILED");
-          return;
-        }
-      } catch (valErr: any) {
-        console.warn("Validation pre-flight check failed to reach server:", valErr);
+      const validationError = await preflightChemexValidation({
+        projectUuid,
+        analysisUuid: analysis.analysis_uuid,
+        parameterToml: effectiveParameterToml,
+        methodToml: effectiveMethodToml,
+        model,
+      });
+      if (validationError) {
+        setError(validationError);
+        return;
       }
+
+      const runHash = currentConfigHash;
+      const runTime = new Date().toLocaleString();
+      setLastRunConfigHash(runHash);
+      setLastRunTimestamp(runTime);
 
       await api.post(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/run`, {
         spectrum_ids: selectedSpectrumIds,
-        model,
-        parameters_toml: effectiveParameterToml,
-        method_toml: effectiveMethodToml,
-        parameter_config: parameterConfig,
-        method_config: isRawEditMode ? { ...methodConfig, rawOverride: methodToml } : methodConfig,
+        ...chemexPayload({ last_run_hash: runHash, last_run_timestamp: runTime }),
       });
 
       setStatus('PENDING');
@@ -790,10 +714,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     setPickMode(modes[nextModeIdx]);
   };
 
-  const handleToggleExcludeResidue = (resKey: string) => {
-    const updated = toggleExcludeResidue(parameterConfig, resKey);
-    setParameterConfig(updated);
-  };
+  const handleToggleExcludeResidue = parameterEditor.toggleExclude;
 
   // Inspect Dispersion handlers
   const handleSeedSingleDw = (resKey: string, dwPpm: number) => {
@@ -825,189 +746,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     });
   };
 
-  const handleBulkSetExcluded = (excludedResidues: string[]) => {
-    setParameterConfig(prev => ({
-      ...prev,
-      excludedResidues: Array.from(new Set([...(prev.excludedResidues || []), ...excludedResidues])),
-    }));
-  };
-
-  // Convert profiles and parameter config into selectable ResidueItem list
-  const residueItems: ResidueItem[] = useMemo(() => {
-    const keys = sortSpinKeys(
-      Array.from(
-        new Set([
-          ...Object.keys(parameterConfig.residues || {}),
-          ...cestProfiles.map(p => p.residue),
-          ...cpmgProfiles.map(p => p.residue),
-        ])
-      )
-    );
-    return keys
-      .filter(k => !isResidueExcluded(parameterConfig, k))
-      .map(k => {
-        const num = parseInt(k.replace(/\D/g, ''), 10) || 0;
-        return {
-          id: k,
-          number: num,
-          label: residueMapping[k] || k,
-          hasData: true,
-        };
-      });
-  }, [parameterConfig, cestProfiles, cpmgProfiles, residueMapping]);
-
-  const activeStep = methodConfig.steps[activeStepIdx] || methodConfig.steps[0] || createDefaultStep();
-
-  const handleStepChange = (updatedStep: Step) => {
-    const nextSteps = [...methodConfig.steps];
-    nextSteps[activeStepIdx] = updatedStep;
-    const nextConfig = {
-      ...methodConfig,
-      steps: nextSteps,
-    };
-    setMethodConfig(nextConfig);
-    setMethodToml(methodConfigToToml(nextConfig));
-  };
-
-  const handleAddStep = () => {
-    const newStepNum = methodConfig.steps.length + 1;
-    const newStep = createDefaultStep(`STEP${newStepNum}`);
-    const nextConfig = {
-      ...methodConfig,
-      steps: [...methodConfig.steps, newStep],
-    };
-    setMethodConfig(nextConfig);
-    setActiveStepIdx(nextConfig.steps.length - 1);
-    setMethodToml(methodConfigToToml(nextConfig));
-  };
-
-  const handleDuplicateStep = (idx: number) => {
-    const src = methodConfig.steps[idx];
-    if (!src) return;
-    const dup: Step = {
-      ...JSON.parse(JSON.stringify(src)),
-      id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      name: `${src.name}_COPY`,
-    };
-    const nextSteps = [...methodConfig.steps];
-    nextSteps.splice(idx + 1, 0, dup);
-    const nextConfig = { ...methodConfig, steps: nextSteps };
-    setMethodConfig(nextConfig);
-    setActiveStepIdx(idx + 1);
-    setMethodToml(methodConfigToToml(nextConfig));
-  };
-
-  const handleDeleteStep = (idx: number) => {
-    if (methodConfig.steps.length <= 1) return;
-    const nextSteps = methodConfig.steps.filter((_, i) => i !== idx);
-    const nextConfig = { ...methodConfig, steps: nextSteps };
-    setMethodConfig(nextConfig);
-    setActiveStepIdx(Math.max(0, Math.min(activeStepIdx, nextSteps.length - 1)));
-    setMethodToml(methodConfigToToml(nextConfig));
-  };
-
-  const handleRenameStep = (idx: number, newName: string) => {
-    const nextSteps = [...methodConfig.steps];
-    if (nextSteps[idx]) {
-      nextSteps[idx] = { ...nextSteps[idx], name: newName };
-      const nextConfig = { ...methodConfig, steps: nextSteps };
-      setMethodConfig(nextConfig);
-      setMethodToml(methodConfigToToml(nextConfig));
-    }
-  };
-
-  const handleReorderSteps = (startIdx: number, endIdx: number) => {
-    const nextSteps = [...methodConfig.steps];
-    const [moved] = nextSteps.splice(startIdx, 1);
-    nextSteps.splice(endIdx, 0, moved);
-    const nextConfig = { ...methodConfig, steps: nextSteps };
-    setMethodConfig(nextConfig);
-    setActiveStepIdx(endIdx);
-    setMethodToml(methodConfigToToml(nextConfig));
-  };
-
-  const startingValues = useMemo<Record<string, number | string>>(() => {
-    const pbVal = parameterConfig.globals?.pb?.value ?? 0.05;
-    const kexVal = parameterConfig.globals?.kex_ab?.value ?? 500.0;
-    const taucVal = parameterConfig.globals?.tauc_a?.value ?? 4.0;
-    return {
-      pb: pbVal,
-      kex_ab: kexVal,
-      tauc_a: taucVal,
-      PB: pbVal,
-      KEX_AB: kexVal,
-      TAUC_A: taucVal,
-    };
-  }, [parameterConfig.globals]);
-
-  const knownParamNames = useMemo(() => {
-    const baseNames = ['PB', 'PC', 'KEX_AB', 'KEX_AC', 'KEX_BC', 'CS_A', 'DW_AB', 'DW_AC', 'R1_A', 'R2_A', 'R1_B', 'R2_B', 'R1_C', 'R2_C', 'TAUC_A'];
-    const metaNames = availableParamMetas.map(p => p.name);
-    return Array.from(new Set([...baseNames, ...metaNames]));
-  }, [availableParamMetas]);
-
-  const validationErrors = useMemo(() => {
-    return validateMethodConfig(methodConfig, knownParamNames, residueItems.filter(r => r.hasData).length);
-  }, [methodConfig, knownParamNames, residueItems]);
-
-  const paramValidationIssues = useMemo<ParameterIssue[]>(() => {
-    return validateParameterConfig(parameterConfig, {
-      availableResidues: combinedProfiles.map(p => p.residue),
-      methodConfig,
-      selectedModule: cestModuleName,
-    });
-  }, [parameterConfig, combinedProfiles, methodConfig, cestModuleName]);
-
-  const handleSelectSourceRun = (source: SourceRunSummary) => {
-    setSelectedSourceRun(source);
-    setShowSourcePickerModal(false);
-    setShowInheritModal(true);
-  };
-
-  const handleApplyInheritedParameters = (
-    updatedParamConfig: ParameterConfig,
-    updatedMethodConfig?: MethodConfig,
-    updatedPicks?: Record<string, any>
-  ) => {
-    setParameterConfig(updatedParamConfig);
-    setRawParamToml(paramConfigToToml(updatedParamConfig));
-    if (updatedMethodConfig) {
-      setMethodConfig(updatedMethodConfig);
-      setMethodToml(methodConfigToToml(updatedMethodConfig));
-    }
-    if (updatedPicks) {
-      setPicks(updatedPicks);
-    }
-    setSuccessMsg(`Inherited parameters applied from "${selectedSourceRun?.name || 'source run'}"`);
-    setTimeout(() => setSuccessMsg(''), 4000);
-  };
-
-  const handleApplyTemplate = (template: MethodTemplate) => {
-    const cloned: MethodConfig = JSON.parse(JSON.stringify(template.config));
-    setMethodConfig(cloned);
-    setActiveStepIdx(0);
-    setMethodToml(methodConfigToToml(cloned));
-    setIsRawEditMode(false);
-    setShowTemplateModal(false);
-    setSuccessMsg(`Applied template: ${template.name}`);
-    setTimeout(() => setSuccessMsg(''), 3000);
-  };
-
-  const handleImportToml = () => {
-    try {
-      const parsed = methodTomlToConfig(importTomlText);
-      setMethodConfig(parsed.config);
-      setUnparsedTomlLines(parsed.unparsed);
-      setMethodToml(importTomlText);
-      setIsRawEditMode(false);
-      setShowImportModal(false);
-      setImportTomlText('');
-      setSuccessMsg('Imported method.toml successfully');
-      setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (err: any) {
-      setError(`Failed to parse method TOML: ${err?.message || err}`);
-    }
-  };
+  const handleBulkSetExcluded = parameterEditor.addExcluded;
 
   // Styles
   const tabCls = (key: TabKey) =>
@@ -1036,6 +775,9 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800">
             Combined Exchange (CEST + CPMG)
           </span>
+          <StaleStartingValuesBadge count={staleParamCount} noun="pick" onClick={() => setActiveTab('parameters')} />
+          <ConfigChangedBadge show={isConfigChangedSinceRun} />
+          <LineageBadge lineage={lineageInfo} projectUuid={projectUuid} sourceExists={sourceRunStillExists} />
         </div>
 
         {/* Global Action Buttons */}
@@ -1695,507 +1437,46 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
 
       {/* Tab 4: Parameters */}
       {activeTab === 'parameters' && (
-        <div className="space-y-6 animate-in fade-in">
-          {/* Parameters Header & Quick Actions */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-blue-500" />
-                <span>ChemEx Parameters Configuration</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Configure global kinetic settings, per-residue shifts & rates with full provenance and stale detection.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowSourcePickerModal(true)}
-                className="px-3 py-1.5 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 hover:from-indigo-500/20 hover:to-purple-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg border border-indigo-200/70 dark:border-indigo-800/70 transition-all flex items-center gap-1.5 shadow-xs"
-                title="Seed starting parameters (kex_ab, pb, cs_a, dw_ab) from an earlier completed run"
-              >
-                <GitFork className="w-3.5 h-3.5" />
-                <span>Inherit from run</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowResyncModal(true)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shadow-xs ${
-                  staleParamCount > 0
-                    ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600 animate-pulse'
-                    : 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 text-blue-600 dark:text-blue-400 border-blue-200/60 dark:border-blue-800/60'
-                }`}
-                title="Non-destructively re-sync parameters from current picks"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Re-sync from Picks</span>
-                {staleParamCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.2 rounded-full bg-white text-amber-800 text-[10px] font-extrabold">
-                    {staleParamCount}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowParamImportModal(true)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-all flex items-center gap-1.5 shadow-xs"
-                title="Import parameters from raw TOML"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Import TOML</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isRawParamEditMode) {
-                    setRawParamToml(paramConfigToToml(parameterConfig));
-                  }
-                  setIsRawParamEditMode(!isRawParamEditMode);
-                }}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shadow-xs ${
-                  isRawParamEditMode
-                    ? 'bg-amber-500 text-white border-amber-600'
-                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <Code className="w-3.5 h-3.5" />
-                <span>{isRawParamEditMode ? 'Return to Form' : 'Edit Raw TOML'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Parameter Validation Issues Banner */}
-          {paramValidationIssues.length > 0 && (
-            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/80 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span>Parameter Validation Warnings ({paramValidationIssues.length})</span>
-              </div>
-              <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300 pl-6 list-disc">
-                {paramValidationIssues.map((issue, i) => (
-                  <li key={i}>
-                    {issue.residue && <strong>[{issue.residue}] </strong>}
-                    {issue.paramKey && <strong>({issue.paramKey}) </strong>}
-                    {issue.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Unparsed Comments / Custom Lines Banner */}
-          {unparsedParamTomlLines.length > 0 && !isRawParamEditMode && (
-            <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-start justify-between gap-3 text-xs text-blue-800 dark:text-blue-300">
-              <div className="flex items-start gap-2.5">
-                <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold">Notice:</span> This parameter file contains{' '}
-                  <strong>{unparsedParamTomlLines.length} comment/custom lines</strong> from a previous TOML file. Structured edits will generate clean TOML. You can switch to raw mode to preserve custom lines verbatim.
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setRawParamToml(paramConfigToToml(parameterConfig));
-                  setIsRawParamEditMode(true);
-                }}
-                className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-md font-bold text-[11px] hover:bg-blue-50 dark:hover:bg-blue-900/40 whitespace-nowrap"
-              >
-                View in Raw Mode
-              </button>
-            </div>
-          )}
-
-          {/* Stale Picks Notice Banner */}
-          {staleParamCount > 0 && !isRawParamEditMode && (
-            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-300">
-              <div className="flex items-center gap-2.5">
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>
-                  <strong>Picks moved:</strong> {staleParamCount} residue{staleParamCount === 1 ? '' : 's'} have updated peak positions in the Pick CEST tab.
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowResyncModal(true)}
-                className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-xs flex items-center gap-1"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Review Diff & Re-sync</span>
-              </button>
-            </div>
-          )}
-
-          {/* Raw TOML Mode vs Structured Form */}
-          {isRawParamEditMode ? (
-            <div className="space-y-3">
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
-                <span className="font-medium">
-                  ✏️ <strong>Raw TOML Mode Active</strong>: You are editing parameters.toml directly.
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRawParamToml(paramConfigToToml(parameterConfig));
-                      setIsRawParamEditMode(false);
-                    }}
-                    className="px-3 py-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 font-bold rounded-lg text-[11px]"
-                  >
-                    Discard Raw Edits
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const parsed = paramTomlToConfig(rawParamToml);
-                      setParameterConfig(parsed.config);
-                      setUnparsedParamTomlLines(parsed.unparsed);
-                      setIsRawParamEditMode(false);
-                    }}
-                    className="px-3 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 font-bold rounded-lg hover:bg-amber-50 text-[11px]"
-                  >
-                    Parse & Return to Structured Form
-                  </button>
-                </div>
-              </div>
-              <textarea
-                value={rawParamToml}
-                onChange={(e) => setRawParamToml(e.target.value)}
-                rows={18}
-                className={`${inputCls} font-mono text-xs`}
-                placeholder="Enter raw ChemEx parameters.toml content..."
-              />
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Global Parameters Card */}
-              <GlobalParametersCard
-                config={parameterConfig}
-                onChange={setParameterConfig}
-              />
-
-              {/* Residue Parameters Table */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                    Per-Residue Chemical Shifts & Relaxation Rates
-                  </h4>
-                </div>
-                <ResidueParametersTable
-                  config={parameterConfig}
-                  onChange={setParameterConfig}
-                  picks={picks as any}
-                  profiles={combinedProfiles}
-                  methodConfig={methodConfig}
-                  activeStepIdx={activeStepIdx}
-                  onNavigateToMethods={() => setActiveTab('methods')}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Collapsible Generated parameters.toml Preview */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-2xs">
-            <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/60 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowParamGeneratedPreview(!showParamGeneratedPreview)}
-                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              >
-                {showParamGeneratedPreview ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                <FileCode className="w-4 h-4 text-blue-500" />
-                <span>Generated parameters.toml Preview</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono">
-                  {Object.keys(parameterConfig.residues || {}).length} residue{Object.keys(parameterConfig.residues || {}).length === 1 ? '' : 's'}
-                </span>
-              </button>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const toml = effectiveParameterToml;
-                    navigator.clipboard.writeText(toml);
-                    setSuccessMsg('Copied parameters.toml to clipboard');
-                    setTimeout(() => setSuccessMsg(''), 2500);
-                  }}
-                  className="p-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700 shadow-2xs"
-                  title="Copy TOML to clipboard"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const toml = effectiveParameterToml;
-                    const blob = new Blob([toml], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `parameters_${analysis.analysis_uuid}.toml`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="p-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700 shadow-2xs"
-                  title="Download parameters.toml"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </button>
-              </div>
-            </div>
-
-            {showParamGeneratedPreview && (
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-900 overflow-x-auto">
-                <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">
-                  {effectiveParameterToml}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
+        <ParametersTab
+          editor={parameterEditor}
+          capabilities={exchangePlugin.parameters}
+          projectUuid={projectUuid}
+          analysisUuid={analysis.analysis_uuid}
+          targetAnalysis={{
+            analysis_uuid: analysis.analysis_uuid,
+            name: analysis.name,
+            analysis_type: analysis.analysis_type,
+            model,
+            nucleus: nucleusInfo.nucleus,
+            static_field: combinedProfiles[0]?.experiments?.[0]?.b0 || 600.0,
+            temperature: 298.15,
+          }}
+          picks={picks as any}
+          profiles={tableProfiles}
+          residueLabels={Object.fromEntries(tableProfiles.map(p => [p.residue, residueMapping[p.residue] || p.full_residue || p.residue]))}
+          methodConfig={methodConfig}
+          activeStepIdx={methodEditor.activeStepIdx}
+          selectedModule={cestModuleName}
+          catalogGlobals={catalogGlobals}
+          onNavigateToMethods={() => setActiveTab('methods')}
+          onApplyInherited={(params, method, newPicks) => {
+            parameterEditor.replaceConfig(params);
+            if (method) methodEditor.setMethodConfig(method);
+            if (newPicks) setPicks(newPicks as any);
+          }}
+          notify={notify}
+        />
       )}
 
-      {/* Tab 5: Methods */}
       {activeTab === 'methods' && (
-        <div className="space-y-6 animate-in fade-in">
-          {/* Methods Header & Quick Actions */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Workflow className="w-5 h-5 text-blue-500" />
-                <span>ChemEx Method Configuration</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Define multi-step fitting protocols, parameter treatments, constraints, and residue selections.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowTemplateModal(true)}
-                className="px-3 py-1.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-200/60 dark:border-blue-800/60 transition-all flex items-center gap-1.5 shadow-sm"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                <span>Templates</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowImportModal(true)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-all flex items-center gap-1.5 shadow-sm"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Import TOML</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isRawEditMode) {
-                    setMethodToml(methodConfigToToml(methodConfig));
-                  }
-                  setIsRawEditMode(!isRawEditMode);
-                }}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shadow-sm ${
-                  isRawEditMode
-                    ? 'bg-amber-500 text-white border-amber-600'
-                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <Code className="w-3.5 h-3.5" />
-                <span>{isRawEditMode ? 'Return to Form' : 'Edit Raw TOML'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Method Validation Issues Banner */}
-          {validationErrors.length > 0 && (
-            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/80 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span>Method Validation Issues ({validationErrors.length})</span>
-              </div>
-              <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300 pl-6 list-disc">
-                {validationErrors.map((err, i) => (
-                  <li key={i}>
-                    <strong>[{err.stepName}]</strong> {err.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Unparsed Comments Notice */}
-          {unparsedTomlLines.length > 0 && !isRawEditMode && (
-            <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-start justify-between gap-3 text-xs text-blue-800 dark:text-blue-300">
-              <div className="flex items-start gap-2.5">
-                <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold">Notice:</span> This configuration contains{' '}
-                  <strong>{unparsedTomlLines.length} comment/custom lines</strong> from a previous TOML file. Structured edits will generate clean TOML. You can switch to raw mode to preserve custom lines verbatim.
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRawEditMode(true)}
-                className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-md font-bold text-[11px] hover:bg-blue-50 dark:hover:bg-blue-900/40 whitespace-nowrap"
-              >
-                View in Raw Mode
-              </button>
-            </div>
-          )}
-
-          {/* Raw TOML Mode vs Structured Form */}
-          {isRawEditMode ? (
-            <div className="space-y-3">
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
-                <span className="font-medium">
-                  ✏️ <strong>Raw TOML Mode Active</strong>: You are editing the method.toml directly.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const parsed = methodTomlToConfig(methodToml);
-                    setMethodConfig(parsed.config);
-                    setUnparsedTomlLines(parsed.unparsed);
-                    setIsRawEditMode(false);
-                  }}
-                  className="px-3 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 font-bold rounded-lg hover:bg-amber-50 text-[11px]"
-                >
-                  Parse & Return to Structured Form
-                </button>
-              </div>
-              <textarea
-                value={methodToml}
-                onChange={e => setMethodToml(e.target.value)}
-                rows={16}
-                className={`${inputCls} font-mono text-xs`}
-                placeholder="Enter raw ChemEx method.toml content..."
-              />
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Step Tabs Row */}
-              <StepTabs
-                steps={methodConfig.steps}
-                activeStepIdx={activeStepIdx}
-                onSelectStep={setActiveStepIdx}
-                onAddStep={handleAddStep}
-                onDuplicateStep={handleDuplicateStep}
-                onDeleteStep={handleDeleteStep}
-                onRenameStep={handleRenameStep}
-                onReorderSteps={handleReorderSteps}
-              />
-
-              {activeStep && (
-                <div className="space-y-6">
-                  {/* Active Step Parameter Table */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                        Parameters for Step: <span className="font-mono text-blue-600 dark:text-blue-400">{activeStep.name}</span>
-                      </h4>
-                    </div>
-                    <ParameterTable
-                      step={activeStep}
-                      onChange={handleStepChange}
-                      availableParams={availableParamMetas}
-                      startingValues={startingValues}
-                      onNavigateToParameters={() => setActiveTab('parameters')}
-                    />
-                  </div>
-
-                  {/* Active Step Residue Selector */}
-                  <ResidueSelector
-                    residues={residueItems}
-                    mode={activeStep.residueMode || 'include'}
-                    selectedIds={activeStep.residues || []}
-                    onModeChange={newMode => handleStepChange({ ...activeStep, residueMode: newMode })}
-                    onSelectionChange={newRes => handleStepChange({ ...activeStep, residues: newRes })}
-                  />
-
-                  {/* Active Step Statistics Section */}
-                  <StepStatisticsSection
-                    step={activeStep}
-                    onChange={handleStepChange}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Collapsible Generated method.toml Strip */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-            <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/60 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowGeneratedPreview(!showGeneratedPreview)}
-                className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              >
-                {showGeneratedPreview ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                <FileCode className="w-4 h-4 text-blue-500" />
-                <span>Generated method.toml Preview</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono">
-                  {methodConfig.steps.length} step{methodConfig.steps.length > 1 ? 's' : ''}
-                </span>
-              </button>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const toml = effectiveMethodToml;
-                    navigator.clipboard.writeText(toml);
-                    setSuccessMsg('Copied method.toml to clipboard');
-                    setTimeout(() => setSuccessMsg(''), 2500);
-                  }}
-                  className="p-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700 shadow-sm"
-                  title="Copy TOML to clipboard"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const toml = effectiveMethodToml;
-                    const blob = new Blob([toml], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `method_${analysis.analysis_uuid}.toml`;
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="p-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700 shadow-sm"
-                  title="Download method.toml"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </button>
-              </div>
-            </div>
-
-            {showGeneratedPreview && (
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-900 overflow-x-auto">
-                <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">
-                  {effectiveMethodToml}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
+        <MethodsTab
+          editor={methodEditor}
+          analysisUuid={analysis.analysis_uuid}
+          residueItems={residueItems}
+          startingValues={parameterEditor.startingValues}
+          onNavigateToParameters={() => setActiveTab('parameters')}
+          notify={notify}
+        />
       )}
 
       {/* Tab 6: Logs */}
@@ -3388,229 +2669,6 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
             </div>
           </div>
         </div>
-      )}
-      {/* ── Method Templates Modal ── */}
-      {showTemplateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-700 max-h-[85vh] overflow-hidden">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                  <Sparkles size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Method Templates</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Choose a pre-configured fitting protocol preset</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowTemplateModal(false)}
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4">
-              {METHOD_TEMPLATES.map(tmpl => {
-                const stepCount = tmpl.config.steps.length;
-                const fitParams: string[] = Array.from(
-                  new Set(
-                    tmpl.config.steps.flatMap(s =>
-                      (s.parameters || []).filter(p => p.mode === 'fit').map(p => p.name)
-                    )
-                  )
-                );
-                return (
-                  <div
-                    key={tmpl.id}
-                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-850 hover:border-blue-400 dark:hover:border-blue-500/70 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {tmpl.name}
-                        </h4>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-bold">
-                          {stepCount} Step{stepCount > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">
-                        {tmpl.description}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-1 pt-1">
-                        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">Fitted:</span>
-                        {fitParams.map(p => (
-                          <span
-                            key={p}
-                            className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[10px] font-bold"
-                          >
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleApplyTemplate(tmpl)}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm whitespace-nowrap transition-colors flex-shrink-0"
-                    >
-                      Use Template
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowTemplateModal(false)}
-                className={btnSecondary}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Import method.toml Modal ── */}
-      {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-700 max-h-[85vh] overflow-hidden">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                  <Upload size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Import method.toml</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Upload a .toml file or paste method configuration text.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto">
-              <div>
-                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-2">
-                  Upload file or paste TOML:
-                </label>
-                <input
-                  type="file"
-                  accept=".toml,.txt"
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = ev => {
-                        const text = ev.target?.result as string;
-                        if (text) setImportTomlText(text);
-                      };
-                      reader.readAsText(file);
-                    }
-                  }}
-                  className="mb-3 block w-full text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/30 dark:file:text-blue-300"
-                />
-                <textarea
-                  value={importTomlText}
-                  onChange={e => setImportTomlText(e.target.value)}
-                  rows={10}
-                  placeholder={`[STEP1]\nFIT = ["PB", "KEX_AB", "DW_AB", "CS_A"]\nCONSTRAINTS = ["[PB] < 0.5"]`}
-                  className={`${inputCls} font-mono text-xs`}
-                />
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowImportModal(false)}
-                className={btnSecondary}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!importTomlText.trim()}
-                onClick={handleImportToml}
-                className={btnPrimary}
-              >
-                Parse & Apply Configuration
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Re-sync Parameters Modal */}
-      <ResyncModal
-        isOpen={showResyncModal}
-        onClose={() => setShowResyncModal(false)}
-        config={parameterConfig}
-        picks={picks}
-        profiles={combinedProfiles}
-        residueLabels={Object.fromEntries(combinedProfiles.map(p => [p.residue, p.full_residue || p.residue]))}
-        onApply={(updated) => {
-          setParameterConfig(updated);
-          setRawParamToml(paramConfigToToml(updated));
-          setSuccessMsg('Re-synced parameters from picks successfully');
-          setTimeout(() => setSuccessMsg(''), 3000);
-        }}
-      />
-
-      {/* Import Parameters TOML Modal */}
-      <ParametersImportModal
-        isOpen={showParamImportModal}
-        onClose={() => setShowParamImportModal(false)}
-        onImport={(imported, unparsed) => {
-          setParameterConfig(imported);
-          setUnparsedParamTomlLines(unparsed);
-          setRawParamToml(paramConfigToToml(imported));
-          setIsRawParamEditMode(false);
-          setSuccessMsg('Imported parameters.toml successfully');
-          setTimeout(() => setSuccessMsg(''), 3000);
-        }}
-      />
-
-      {/* Source Run Picker Modal */}
-      <SourceRunPickerModal
-        isOpen={showSourcePickerModal}
-        onClose={() => setShowSourcePickerModal(false)}
-        projectUuid={projectUuid}
-        targetAnalysis={{
-          analysis_uuid: analysis.analysis_uuid,
-          name: analysis.name,
-          analysis_type: analysis.analysis_type,
-          model,
-          nucleus: '15N',
-          static_field: combinedProfiles[0]?.experiments?.[0]?.b0 || 600.0,
-          temperature: 298.15,
-        }}
-        onSelectRun={handleSelectSourceRun}
-      />
-
-      {/* Inherit Parameters Diff & Apply Modal */}
-      {selectedSourceRun && (
-        <InheritParametersModal
-          isOpen={showInheritModal}
-          onClose={() => setShowInheritModal(false)}
-          projectUuid={projectUuid}
-          sourceRun={selectedSourceRun}
-          currentParamConfig={parameterConfig}
-          currentMethodConfig={methodConfig}
-          currentPicks={picks}
-          profiles={combinedProfiles}
-          residueLabels={analysisResults?.residue_mapping}
-          onApply={handleApplyInheritedParameters}
-        />
       )}
     </div>
   );
