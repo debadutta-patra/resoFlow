@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import List, Optional
 
 class Token(BaseModel):
@@ -408,25 +408,51 @@ class McmcSettingsSchema(BaseModel):
     update_parameters: bool = False
 
 class StatisticsSchema(BaseModel):
-    mc: Optional[int] = None
-    bs: Optional[int] = None
-    bsn: Optional[int] = None
+    # int (compact) or {replicates, seed} (expanded v2 request)
+    mc: Optional[int | dict] = None
+    bs: Optional[int | dict] = None
+    bsn: Optional[int | dict] = None
     mcmc: Optional[int | McmcSettingsSchema] = None
 
 class ParamSettingSchema(BaseModel):
     name: str
-    mode: str = "default"  # default, fit, fix, constrain, grid
+    mode: str = "default"  # default, fit, fix, constrain (legacy: grid)
     value: Optional[float] = None
     bounds: Optional[str] = None
     expression: Optional[str] = None
     grid: Optional[dict] = None
 
+class SearchAxisSchema(BaseModel):
+    id: Optional[str] = None
+    param: str
+    qualifier: Optional[str] = None
+    fn: str = "lin"  # lin | log | values
+    low: float = 0.0
+    high: float = 1.0
+    count: int = 0
+    values: Optional[List[float]] = None
+
+class StepSearchSchema(BaseModel):
+    mode: str = "none"  # none | grid | de
+    axes: List[SearchAxisSchema] = []
+    seed: Optional[int] = None
+
+class RoleRuleSchema(BaseModel):
+    id: Optional[str] = None
+    action: str  # FIT | FIX | CONSTRAIN
+    entries: List[str] = []
+
 class MethodStepSchema(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: Optional[str] = None
     name: str = "STEP1"
     parameters: List[ParamSettingSchema] = []
-    residue_mode: str = "include"
+    residue_mode: str = Field("include", validation_alias=AliasChoices("residue_mode", "residueMode"))
     residues: List[int | str] = []
+    roles_from: Optional[str] = Field(None, validation_alias=AliasChoices("roles_from", "rolesFrom"))
+    role_rules: List[RoleRuleSchema] = Field([], validation_alias=AliasChoices("role_rules", "roleRules"))
+    search: Optional[StepSearchSchema] = None
     statistics: Optional[StatisticsSchema] = None
 
 class MethodConfigSchema(BaseModel):

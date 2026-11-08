@@ -1,808 +1,775 @@
+/**
+ * ChemEx method.toml codec — the frontend half of the ChemEx method contract
+ * (mirror: backend/app/services/fitting/method_emitter.py).
+ *
+ * `configToToml` always emits canonical ChemEx v2 (`FORMAT_VERSION = 2`):
+ *   https://gbouvignies.github.io/ChemEx/docs/user_guide/fitting/method_files
+ *
+ * `tomlToConfig` reads v2 and legacy v1 files. v1 semantics are migrated
+ * explicitly: implicit role carry-over becomes `ROLES_FROM = "<previous>"`,
+ * implicit selection carry-over is repeated, `GRID` moves to `SEARCH.GRID`,
+ * bare tuples become `values(...)`. v1-only constructs that v2 cannot express
+ * (inequality bounds, FITMETHOD, THIN/WALKERS/WORKERS…) are reported in
+ * `unparsed` so the UI can flag them.
+ */
+
 import type {
   MethodConfig,
-  Step,
+  McmcConfig,
   ParamSetting,
   ParseResult,
+  ResamplingConfig,
+  RoleAction,
+  RoleRule,
+  SearchAxis,
+  SearchFunction,
+  StatisticsConfig,
+  Step,
 } from './methodConfig';
-import { createDefaultStep } from './methodConfig';
+import { createDefaultStep, newMethodId, normalizeStep } from './methodConfig';
+
+// ── Emission ────────────────────────────────────────────────────────────
+
+const q = (s: string): string => JSON.stringify(s);
+
+const num = (x: number): string => {
+  if (!Number.isFinite(x)) return '0';
+  return String(x);
+};
+
+/** "PARAM" or "PARAM, NUC->G24N-H" */
+export function axisSelector(axis: Pick<SearchAxis, 'param' | 'qualifier'>): string {
+  const base = axis.param.trim().toUpperCase().replace(/^\[|\]$/g, '');
+  const qual = (axis.qualifier || '').trim().replace(/^,\s*/, '');
+  return qual ? `${base}, ${qual}` : base;
+}
+
+export function formatAxis(axis: SearchAxis, mode: 'grid' | 'de'): string {
+  const sel = `[${axisSelector(axis)}]`;
+  if (mode === 'grid' && axis.fn === 'values') {
+    return `${sel} = values(${(axis.values ?? []).map(num).join(', ')})`;
+  }
+  const fn = axis.fn === 'log' ? 'log' : 'lin';
+  if (mode === 'de') return `${sel} = ${fn}(${num(axis.low)}, ${num(axis.high)})`;
+  return `${sel} = ${fn}(${num(axis.low)}, ${num(axis.high)}, ${Math.floor(axis.count)})`;
+}
+
+/** Plain-name constraint entry for a table parameter. */
+function constraintEntry(p: ParamSetting): string | null {
+  const expr = (p.expression || '').trim();
+  if (!expr) return null;
+  if (/^\s*\[[^\]]+\]\s*=/.test(expr)) return expr; // already a full equation
+  return `[${p.name.toUpperCase()}] = ${expr}`;
+}
+
+/** The ordered ROLES actions a step emits (table first, then explicit rules). */
+export function stepRoleActions(step: Step): Array<{ action: RoleAction; entries: string[] }> {
+  const actions: Array<{ action: RoleAction; entries: string[] }> = [];
+  const params = step.parameters || [];
+  const modeOf = new Map(params.map(p => [p.name.toUpperCase(), p.mode]));
+
+  const constrain = params.filter(p => p.mode === 'constrain').map(constraintEntry).filter((e): e is string => !!e);
+  if (constrain.length) actions.push({ action: 'CONSTRAIN', entries: constrain });
+
+  const fix = params.filter(p => p.mode === 'fix').map(p => p.name.toUpperCase());
+  if (fix.length) actions.push({ action: 'FIX', entries: fix });
+
+  const fit = params.filter(p => p.mode === 'fit' || p.mode === 'grid').map(p => p.name.toUpperCase());
+  // Search targets must be final FIT coordinates: auto-fit any axis whose
+  // parameter is left at its baseline role in the table.
+  const ruleFit = new Set(
+    (step.roleRules ?? []).filter(r => r.action === 'FIT').flatMap(r => r.entries.map(e => e.trim().toUpperCase()))
+  );
+  const search = step.search;
+  if (search && search.mode !== 'none') {
+    for (const axis of search.axes) {
+      const base = axis.param.toUpperCase();
+      const mode = modeOf.get(base) ?? 'default';
+      const sel = axisSelector(axis);
+      if (mode === 'default' && !fit.includes(sel) && !ruleFit.has(sel.toUpperCase())) fit.push(sel);
+    }
+  }
+  if (fit.length) actions.push({ action: 'FIT', entries: fit });
+
+  for (const rule of step.roleRules ?? []) {
+    const entries = rule.entries.map(e => e.trim()).filter(Boolean);
+    if (entries.length) actions.push({ action: rule.action, entries });
+  }
+  return actions;
+}
+
+function formatResidue(r: string): string {
+  const s = String(r).trim();
+  return /^\d+$/.test(s) ? s : q(s);
+}
+
+function emitResampling(lines: string[], stepName: string, key: string, conf?: ResamplingConfig) {
+  if (!conf?.enabled || !(conf.replicates > 0)) return;
+  lines.push('', `[${stepName}.STATISTICS.${key}]`, `REPLICATES = ${Math.floor(conf.replicates)}`);
+  if (conf.seed !== undefined && conf.seed !== null && Number.isFinite(conf.seed)) lines.push(`SEED = ${Math.floor(conf.seed)}`);
+}
+
+function emitMcmc(lines: string[], stepName: string, m?: McmcConfig) {
+  if (!m?.enabled || !(m.steps > 0)) return;
+  lines.push('', `[${stepName}.STATISTICS.MCMC]`, `STEPS = ${Math.floor(m.steps)}`);
+  if (typeof m.burn === 'number' && Number.isFinite(m.burn)) lines.push(`BURN = ${Math.floor(m.burn)}`);
+  if (m.seed !== undefined && m.seed !== null && Number.isFinite(m.seed)) lines.push(`SEED = ${Math.floor(m.seed)}`);
+}
+
+export const stepTomlName = (step: Step, idx: number): string => (step.name || `STEP${idx + 1}`).trim().toUpperCase();
 
 /**
- * Serializes a structured MethodConfig into a deterministic ChemEx method.toml string.
+ * Serializes a structured MethodConfig into canonical ChemEx v2 method.toml.
  */
 export function configToToml(config: MethodConfig): string {
   if (config.rawOverride !== undefined && config.rawOverride.trim() !== '') {
     return config.rawOverride;
   }
 
-  const sections: string[] = [];
+  const lines: string[] = ['FORMAT_VERSION = 2'];
 
-  for (const step of config.steps) {
-    const lines: string[] = [];
-    const stepName = (step.name || 'STEP1').trim().toUpperCase();
-    lines.push(`[${stepName}]`);
+  config.steps.forEach((rawStep, idx) => {
+    const step = normalizeStep(rawStep);
+    const name = stepTomlName(step, idx);
+    lines.push('', `[${name}]`);
 
-    // 1. FIT
-    const fitParams = step.parameters.filter(p => p.mode === 'fit');
-    if (fitParams.length > 0) {
-      const names = fitParams.map(p => `"${p.name.toUpperCase()}"`).join(', ');
-      lines.push(`FIT = [${names}]`);
+    // Selection (step-local; omitted = all profiles)
+    const residues = (step.residues || []).map(r => String(r).trim()).filter(Boolean);
+    if (residues.length) {
+      const key = step.residueMode === 'exclude' ? 'EXCLUDE' : 'INCLUDE';
+      const isAll = residues.length === 1 && ['ALL', '*'].includes(residues[0].toUpperCase());
+      lines.push(`${key} = ${isAll ? '"ALL"' : `[${residues.map(formatResidue).join(', ')}]`}`);
     }
 
-    // 2. FIX
-    const fixParams = step.parameters.filter(p => p.mode === 'fix');
-    if (fixParams.length > 0) {
-      const names = fixParams.map(p => `"${p.name.toUpperCase()}"`).join(', ');
-      lines.push(`FIX = [${names}]`);
+    if (step.rolesFrom && step.rolesFrom.trim()) {
+      lines.push(`ROLES_FROM = ${q(step.rolesFrom.trim().toUpperCase())}`);
     }
 
-    // 3. CONSTRAINTS
-    const constraintList: string[] = [];
-    // From fit bounds (e.g. bounds: "< 0.5" -> "[PB] < 0.5" or "PB < 0.5")
-    for (const p of fitParams) {
-      if (p.bounds && p.bounds.trim() !== '') {
-        const b = p.bounds.trim();
-        if (b.startsWith('[') || b.toUpperCase().startsWith(p.name.toUpperCase())) {
-          constraintList.push(b);
-        } else {
-          constraintList.push(`[${p.name.toUpperCase()}] ${b}`);
-        }
-      }
-    }
-    // From constrain mode expressions
-    const constrainParams = step.parameters.filter(p => p.mode === 'constrain');
-    for (const p of constrainParams) {
-      if (p.expression && p.expression.trim() !== '') {
-        const expr = p.expression.trim();
-        if (expr.includes('=')) {
-          constraintList.push(expr);
-        } else {
-          constraintList.push(`[${p.name.toUpperCase()}] = ${expr}`);
-        }
-      }
-    }
-
-    if (constraintList.length === 1) {
-      lines.push(`CONSTRAINTS = ["${constraintList[0].replace(/"/g, '')}"]`);
-    } else if (constraintList.length > 1) {
-      const formatted = constraintList
-        .map(c => `  "${c.replace(/"/g, '')}"`)
-        .join(',\n');
-      lines.push(`CONSTRAINTS = [\n${formatted}\n]`);
-    }
-
-    // 4. GRID
-    const gridParams = step.parameters.filter(p => p.mode === 'grid' && p.grid);
-    if (gridParams.length > 0) {
-      const gridItems = gridParams.map(p => {
-        const g = p.grid!;
-        const fn = g.scale === 'log' ? 'log' : 'lin';
-        const pName = p.name.toUpperCase().startsWith('[') ? p.name.toUpperCase() : `[${p.name.toUpperCase()}]`;
-        return `"${pName} = ${fn}(${g.min}, ${g.max}, ${g.steps})"`;
-      });
-      if (gridItems.length === 1) {
-        lines.push(`GRID = [${gridItems[0]}]`);
-      } else {
-        const formatted = gridItems.map(item => `  ${item}`).join(',\n');
-        lines.push(`GRID = [\n${formatted}\n]`);
-      }
-    }
-
-    // 5. INCLUDE / EXCLUDE
-    if (step.residues && step.residues.length > 0) {
-      const formattedRes = step.residues.map(r => (typeof r === 'number' || /^\d+$/.test(String(r)) ? String(r) : `"${r}"`)).join(', ');
-      if (step.residueMode === 'include') {
-        lines.push(`INCLUDE = [${formattedRes}]`);
-      } else if (step.residueMode === 'exclude') {
-        lines.push(`EXCLUDE = [${formattedRes}]`);
-      }
-    }
-
-    // 6. STATISTICS (ChemEx v1)
-    let mcmcSubtable = '';
-    if (step.statistics) {
-      const stats = step.statistics;
-      const inlineParts: string[] = [];
-
-      if (stats.mc?.enabled && stats.mc.replicates > 0) {
-        inlineParts.push(`"MC" = ${stats.mc.replicates}`);
-      }
-      if (stats.bs?.enabled && stats.bs.replicates > 0) {
-        inlineParts.push(`"BS" = ${stats.bs.replicates}`);
-      }
-      if (stats.bsn?.enabled && stats.bsn.replicates > 0) {
-        inlineParts.push(`"BSN" = ${stats.bsn.replicates}`);
-      }
-
-      if (stats.mcmc?.enabled && stats.mcmc.steps > 0) {
-        const m = stats.mcmc;
-        const isSimple = (
-          (m.burn === 'auto' || m.burn === undefined) &&
-          (m.thin === 1 || m.thin === undefined) &&
-          m.walkers === undefined &&
-          m.seed === undefined &&
-          m.workers === undefined &&
-          !m.update_parameters
-        );
-
-        if (isSimple) {
-          inlineParts.push(`"MCMC" = ${m.steps}`);
-        } else {
-          // Expanded form subtable
-          const subLines = [`[${stepName}.STATISTICS.MCMC]`];
-          subLines.push(`STEPS = ${m.steps}`);
-          if (m.burn === 'auto' || typeof m.burn === 'string') {
-            subLines.push(`BURN = "${String(m.burn || 'AUTO').toUpperCase()}"`);
-          } else {
-            subLines.push(`BURN = ${m.burn}`);
-          }
-          subLines.push(`THIN = ${m.thin || 1}`);
-          if (m.walkers !== undefined && m.walkers !== null) {
-            subLines.push(`WALKERS = ${m.walkers}`);
-          }
-          if (m.seed !== undefined && m.seed !== null) {
-            subLines.push(`SEED = ${m.seed}`);
-          }
-          if (m.workers !== undefined && m.workers !== null) {
-            subLines.push(`WORKERS = ${m.workers}`);
-          }
-          if (m.update_parameters) {
-            subLines.push('UPDATE_PARAMETERS = true');
-          }
-          mcmcSubtable = subLines.join('\n');
-        }
-      }
-
-      if (inlineParts.length > 0) {
-        lines.push(`STATISTICS = { ${inlineParts.join(', ')} }`);
-      }
-    }
-
-    sections.push(lines.join('\n'));
-    if (mcmcSubtable) {
-      sections.push(mcmcSubtable);
-    }
-  }
-
-  return sections.join('\n\n') + '\n';
-}
-
-/**
- * Serializes a structured MethodConfig into canonical ChemEx v2 method.toml (FORMAT_VERSION = 2).
- */
-export function configToTomlV2(config: MethodConfig): string {
-  if (config.rawOverride !== undefined && config.rawOverride.trim() !== '') {
-    const raw = config.rawOverride.trim();
-    return raw.startsWith('FORMAT_VERSION') ? raw + '\n' : `FORMAT_VERSION = 2\n\n${raw}\n`;
-  }
-
-  const lines: string[] = ['FORMAT_VERSION = 2', ''];
-  let prevStepName: string | null = null;
-
-  for (let idx = 0; idx < config.steps.length; idx++) {
-    const step = config.steps[idx];
-    const stepName = (step.name || `STEP${idx + 1}`).trim().toUpperCase();
-    lines.push(`[${stepName}]`);
-
-    // 1. Selection
-    if (step.residues && step.residues.length > 0) {
-      const formatted = step.residues.map(r => `"${r}"`).join(', ');
-      const val = step.residues.length === 1 && String(step.residues[0]).toUpperCase() === 'ALL'
-        ? '"ALL"'
-        : `[${formatted}]`;
-      lines.push(`${step.residueMode === 'exclude' ? 'EXCLUDE' : 'INCLUDE'} = ${val}`);
-    }
-
-    // 2. Roles from
-    if (prevStepName !== null) {
-      lines.push(`ROLES_FROM = "${prevStepName}"`);
-    }
-
-    // 3. ROLES (CONSTRAIN, FIX, FIT)
-    const roles: string[] = [];
-
-    // CONSTRAIN
-    const constrainParams = step.parameters.filter(p => p.mode === 'constrain' && p.expression?.trim());
-    if (constrainParams.length > 0) {
-      const cItems = constrainParams.map(p => {
-        const expr = p.expression!.trim();
-        const clean = expr.replace(/"/g, '');
-        return clean.includes('=') ? `"${clean}"` : `"[${p.name.toUpperCase()}] = ${clean}"`;
-      });
-      roles.push(`  { CONSTRAIN = [${cItems.join(', ')}] },`);
-    }
-
-    // FIX
-    const fixParams = step.parameters.filter(p => p.mode === 'fix');
-    if (fixParams.length > 0) {
-      const names = fixParams.map(p => `"${p.name.toUpperCase()}"`).join(', ');
-      roles.push(`  { FIX = [${names}] },`);
-    }
-
-    // FIT
-    const fitParams = step.parameters.filter(p => p.mode === 'fit');
-    if (fitParams.length > 0) {
-      const names = fitParams.map(p => `"${p.name.toUpperCase()}"`).join(', ');
-      roles.push(`  { FIT = [${names}] },`);
-    }
-
-    if (roles.length > 0) {
+    const actions = stepRoleActions(step);
+    if (actions.length) {
       lines.push('ROLES = [');
-      lines.push(...roles);
-      lines.push(']');
-    }
-
-    // 4. GRID
-    const gridParams = step.parameters.filter(p => p.mode === 'grid' && p.grid);
-    if (gridParams.length > 0) {
-      lines.push('');
-      lines.push(`[${stepName}.SEARCH.GRID]`);
-      lines.push('AXES = [');
-      for (const p of gridParams) {
-        const g = p.grid!;
-        const scale = g.scale === 'log' ? 'log' : 'lin';
-        const pName = p.name.toUpperCase().startsWith('[') ? p.name.toUpperCase() : `[${p.name.toUpperCase()}]`;
-        lines.push(`  "${pName} = ${scale}(${g.min}, ${g.max}, ${g.steps})",`);
+      for (const a of actions) {
+        lines.push(`  { ${a.action} = [${a.entries.map(q).join(', ')}] },`);
       }
       lines.push(']');
     }
 
-    // 5. STATISTICS
-    if (step.statistics) {
-      const stats = step.statistics;
-      if (stats.mc?.enabled && stats.mc.replicates > 0) {
-        lines.push('');
-        lines.push(`[${stepName}.STATISTICS.MC]`);
-        lines.push(`REPLICATES = ${stats.mc.replicates}`);
-        lines.push('SEED = 0');
-      }
-      if (stats.bs?.enabled && stats.bs.replicates > 0) {
-        lines.push('');
-        lines.push(`[${stepName}.STATISTICS.BS]`);
-        lines.push(`REPLICATES = ${stats.bs.replicates}`);
-        lines.push('SEED = 0');
-      }
-      if (stats.bsn?.enabled && stats.bsn.replicates > 0) {
-        lines.push('');
-        lines.push(`[${stepName}.STATISTICS.BSN]`);
-        lines.push(`REPLICATES = ${stats.bsn.replicates}`);
-        lines.push('SEED = 0');
-      }
-      if (stats.mcmc?.enabled && stats.mcmc.steps > 0) {
-        lines.push('');
-        lines.push(`[${stepName}.STATISTICS.MCMC]`);
-        lines.push(`STEPS = ${stats.mcmc.steps}`);
-        const burnVal = stats.mcmc.burn === 'auto' || typeof stats.mcmc.burn === 'string'
-          ? `"${String(stats.mcmc.burn || 'AUTO').toUpperCase()}"`
-          : String(stats.mcmc.burn);
-        lines.push(`BURN = ${burnVal}`);
-        lines.push(`SEED = ${stats.mcmc.seed ?? 0}`);
-        if (stats.mcmc.thin && stats.mcmc.thin > 1) {
-          lines.push(`# V1_ONLY_THIN = ${stats.mcmc.thin}`);
+    const search = step.search;
+    if (search && search.mode !== 'none' && search.axes.length > 0) {
+      if (search.mode === 'grid') {
+        lines.push('', `[${name}.SEARCH.GRID]`, 'AXES = [');
+        for (const axis of search.axes) lines.push(`  ${q(formatAxis(axis, 'grid'))},`);
+        lines.push(']');
+      } else {
+        lines.push('', `[${name}.SEARCH.DE]`);
+        if (search.seed !== undefined && search.seed !== null && Number.isFinite(search.seed)) {
+          lines.push(`SEED = ${Math.floor(search.seed)}`);
         }
-        if (stats.mcmc.walkers) {
-          lines.push(`# V1_ONLY_WALKERS = ${stats.mcmc.walkers}`);
-        }
+        lines.push('COORDINATES = [');
+        for (const axis of search.axes) lines.push(`  ${q(formatAxis(axis, 'de'))},`);
+        lines.push(']');
       }
     }
 
-    lines.push('');
-    prevStepName = stepName;
-  }
+    const stats = step.statistics;
+    if (stats) {
+      emitResampling(lines, name, 'MC', stats.mc);
+      emitResampling(lines, name, 'BS', stats.bs);
+      emitResampling(lines, name, 'BSN', stats.bsn);
+      emitMcmc(lines, name, stats.mcmc);
+    }
+  });
 
-  return lines.join('\n').trim() + '\n';
+  return lines.join('\n') + '\n';
 }
 
-/**
- * Best-effort parser for ChemEx method.toml.
- * Parses known sections, keys (FIT, FIX, CONSTRAINTS, GRID, INCLUDE, EXCLUDE, STATISTICS).
- * Lines or blocks that cannot be represented in the structured model are captured in `unparsed`.
- */
-export function tomlToConfig(toml: string): ParseResult {
-  const unparsed: string[] = [];
+/** @deprecated alias kept for callers that asked for v2 explicitly. */
+export const configToTomlV2 = configToToml;
 
-  if (!toml || toml.trim() === '') {
-    return {
-      config: { steps: [createDefaultStep()] },
-      unparsed: [],
-    };
+// ── Minimal TOML reader (subset used by method files) ───────────────────
+
+type TomlValue = string | number | boolean | TomlValue[] | TomlTable;
+interface TomlTable {
+  [key: string]: TomlValue;
+}
+
+export class TomlSyntaxError extends Error {}
+
+class TomlReader {
+  private i = 0;
+  readonly root: TomlTable = {};
+  readonly comments: string[] = [];
+  /** Ordered list of top-level table names as first declared. */
+  readonly topOrder: string[] = [];
+  private current: TomlTable = this.root;
+  private readonly src: string;
+
+  constructor(src: string) {
+    this.src = src;
   }
 
-  // Pre-process: split into lines, normalize whitespace
-  const rawLines = toml.split(/\r?\n/);
-  
-  // Track sections
-  interface RawSection {
-    name: string;
-    lines: string[];
-    isSubTable?: boolean;
-    parentSection?: string;
-  }
-
-  const sections: RawSection[] = [];
-  let currentSection: RawSection = { name: 'STEP1', lines: [] };
-  let hasExplicitSection = false;
-
-  for (const line of rawLines) {
-    const trimmed = line.trim();
-
-    // Check for comment
-    if (trimmed.startsWith('#')) {
-      unparsed.push(line);
-      continue;
-    }
-
-    // Check for section header [SECTION] or [SECTION.SUB] or [SECTION.STATISTICS.MCMC]
-    const sectionMatch = trimmed.match(/^\[([A-Za-z0-9_.-]+)\]$/);
-    if (sectionMatch) {
-      const secName = sectionMatch[1];
-      if (secName.includes('.')) {
-        const parts = secName.split('.');
-        const parent = parts[0];
-        const sub = parts.slice(1).join('.');
-        currentSection = {
-          name: sub,
-          lines: [],
-          isSubTable: true,
-          parentSection: parent,
-        };
-        sections.push(currentSection);
+  parse(): this {
+    const s = this.src;
+    while (this.i < s.length) {
+      this.skipWs(true);
+      if (this.i >= s.length) break;
+      const c = s[this.i];
+      if (c === '[') {
+        if (s[this.i + 1] === '[') throw this.err('Arrays of tables ([[...]]) are not supported in method files');
+        this.i++;
+        const path = this.readKeyPath(']');
+        this.expect(']');
+        this.current = this.ensureTable(this.root, path, true);
+        if (path.length && !this.topOrder.includes(path[0])) this.topOrder.push(path[0]);
       } else {
-        currentSection = { name: secName, lines: [] };
-        sections.push(currentSection);
+        const path = this.readKeyPath('=');
+        this.expect('=');
+        this.skipWs(false);
+        const value = this.readValue();
+        const parent = this.ensureTable(this.current, path.slice(0, -1), false);
+        const last = path[path.length - 1];
+        if (last in parent) throw this.err(`Duplicate key ${path.join('.')}`);
+        parent[last] = value;
+        if (this.current === this.root && isTable(value) && !this.topOrder.includes(last)) this.topOrder.push(last);
       }
-      hasExplicitSection = true;
-      continue;
+      this.endOfLine();
     }
+    return this;
+  }
 
-    if (trimmed !== '') {
-      currentSection.lines.push(line);
+  private err(msg: string): TomlSyntaxError {
+    const line = this.src.slice(0, this.i).split('\n').length;
+    return new TomlSyntaxError(`${msg} (line ${line})`);
+  }
+
+  private ensureTable(base: TomlTable, path: string[], isHeader: boolean): TomlTable {
+    let t = base;
+    path.forEach((k, idx) => {
+      const existing = t[k];
+      if (existing === undefined) {
+        const nt: TomlTable = {};
+        t[k] = nt;
+        t = nt;
+      } else if (isTable(existing)) {
+        t = existing;
+      } else {
+        throw this.err(`Key ${path.slice(0, idx + 1).join('.')} is not a table`);
+      }
+    });
+    void isHeader;
+    return t;
+  }
+
+  /** Skip spaces/tabs, comments, and (optionally) newlines. Full-line comments are collected. */
+  private skipWs(newlines: boolean) {
+    const s = this.src;
+    while (this.i < s.length) {
+      const c = s[this.i];
+      if (c === ' ' || c === '\t' || c === '\r') this.i++;
+      else if (c === '\n' && newlines) this.i++;
+      else if (c === '#') {
+        const lineStart = s.lastIndexOf('\n', this.i - 1) + 1;
+        const end = s.indexOf('\n', this.i);
+        const stop = end === -1 ? s.length : end;
+        if (s.slice(lineStart, this.i).trim() === '') this.comments.push(s.slice(lineStart, stop));
+        this.i = stop;
+      } else break;
     }
   }
 
-  // If no explicit section was declared but there are lines
-  if (!hasExplicitSection && currentSection.lines.length > 0) {
-    sections.push(currentSection);
+  private endOfLine() {
+    this.skipWs(false);
+    if (this.i < this.src.length && this.src[this.i] !== '\n') throw this.err(`Unexpected '${this.src[this.i]}'`);
   }
 
-  // Merge sub-tables into parent sections or build steps
-  const stepMap = new Map<string, Step>();
-  const stepOrder: string[] = [];
+  private expect(ch: string) {
+    this.skipWs(false);
+    if (this.src[this.i] !== ch) throw this.err(`Expected '${ch}'`);
+    this.i++;
+  }
 
-  for (const sec of sections) {
-    const parentName = (sec.isSubTable ? sec.parentSection! : sec.name).toUpperCase();
-    if (parentName === 'FORMAT_VERSION') continue;
-
-    if (!stepMap.has(parentName)) {
-      stepOrder.push(parentName);
-      stepMap.set(parentName, {
-        id: `step_${parentName}_${Math.random().toString(36).slice(2, 7)}`,
-        name: parentName,
-        parameters: [],
-        residueMode: 'include',
-        residues: [],
-      });
-    }
-
-    const step = stepMap.get(parentName)!;
-
-    if (sec.isSubTable && (sec.name.toUpperCase() === 'SEARCH.GRID' || sec.name.toUpperCase() === 'GRID')) {
-      const combined = combineMultilineStatements(sec.lines);
-      for (const line of combined) {
-        const mAxes = line.match(/^AXES\s*=\s*(\[[\s\S]*\])$/i);
-        if (mAxes) {
-          parseGridValue(step, mAxes[1], unparsed);
-        } else {
-          parseGridEntry(step, line.trim(), unparsed);
-        }
+  private readKeyPath(terminator: string): string[] {
+    const parts: string[] = [];
+    for (;;) {
+      this.skipWs(false);
+      const c = this.src[this.i];
+      if (c === '"' || c === "'") parts.push(this.readString());
+      else {
+        const m = /^[A-Za-z0-9_-]+/.exec(this.src.slice(this.i));
+        if (!m) throw this.err('Invalid key');
+        parts.push(m[0]);
+        this.i += m[0].length;
       }
-      continue;
-    }
-
-    if (sec.isSubTable && (sec.name.toUpperCase() === 'STATISTICS.MC' || sec.name.toUpperCase() === 'MC')) {
-      if (!step.statistics) step.statistics = {};
-      for (const line of sec.lines) {
-        const kvMatch = line.trim().match(/^REPLICATES\s*=\s*(\d+)$/i);
-        if (kvMatch) {
-          step.statistics.mc = { enabled: true, replicates: parseInt(kvMatch[1], 10) };
-        }
-      }
-      continue;
-    }
-
-    if (sec.isSubTable && (sec.name.toUpperCase() === 'STATISTICS.BS' || sec.name.toUpperCase() === 'BS')) {
-      if (!step.statistics) step.statistics = {};
-      for (const line of sec.lines) {
-        const kvMatch = line.trim().match(/^REPLICATES\s*=\s*(\d+)$/i);
-        if (kvMatch) {
-          step.statistics.bs = { enabled: true, replicates: parseInt(kvMatch[1], 10) };
-        }
-      }
-      continue;
-    }
-
-    if (sec.isSubTable && (sec.name.toUpperCase() === 'STATISTICS.BSN' || sec.name.toUpperCase() === 'BSN')) {
-      if (!step.statistics) step.statistics = {};
-      for (const line of sec.lines) {
-        const kvMatch = line.trim().match(/^REPLICATES\s*=\s*(\d+)$/i);
-        if (kvMatch) {
-          step.statistics.bsn = { enabled: true, replicates: parseInt(kvMatch[1], 10) };
-        }
-      }
-      continue;
-    }
-
-    if (sec.isSubTable && (sec.name.toUpperCase() === 'STATISTICS.MCMC' || sec.name.toUpperCase() === 'MCMC')) {
-      if (!step.statistics) step.statistics = {};
-      const mcmcSettings: any = { enabled: true, steps: 5000, burn: 'auto', thin: 1 };
-      for (const line of sec.lines) {
-        const kvMatch = line.trim().match(/^([A-Za-z0-9_]+)\s*=\s*([\s\S]+)$/);
-        if (kvMatch) {
-          const k = kvMatch[1].toUpperCase();
-          const v = kvMatch[2].trim().replace(/^["']|["']$/g, '');
-          if (k === 'STEPS') mcmcSettings.steps = parseInt(v, 10);
-          else if (k === 'BURN') mcmcSettings.burn = v.toLowerCase() === 'auto' ? 'auto' : parseInt(v, 10);
-          else if (k === 'THIN') mcmcSettings.thin = parseInt(v, 10);
-          else if (k === 'WALKERS') mcmcSettings.walkers = parseInt(v, 10);
-          else if (k === 'SEED') mcmcSettings.seed = parseInt(v, 10);
-          else if (k === 'WORKERS') mcmcSettings.workers = parseInt(v, 10);
-          else if (k === 'UPDATE_PARAMETERS') mcmcSettings.update_parameters = v.toLowerCase() === 'true';
-        }
-      }
-      step.statistics.mcmc = mcmcSettings;
-      continue;
-    }
-
-    // Parse main section body (merging multi-line statements)
-    const combinedStatements = combineMultilineStatements(sec.lines);
-
-    for (const stmt of combinedStatements) {
-      const kvMatch = stmt.match(/^([A-Za-z0-9_]+)\s*=\s*([\s\S]+)$/);
-      if (!kvMatch) {
-        unparsed.push(stmt);
+      this.skipWs(false);
+      if (this.src[this.i] === '.') {
+        this.i++;
         continue;
       }
-
-      const key = kvMatch[1].toUpperCase();
-      const valStr = kvMatch[2].trim();
-
-      if (key === 'FIT') {
-        const items = parseStringOrIdentArray(valStr);
-        for (const item of items) {
-          upsertParam(step, item.toUpperCase(), { mode: 'fit' });
-        }
-      } else if (key === 'FIX') {
-        const items = parseStringOrIdentArray(valStr);
-        for (const item of items) {
-          upsertParam(step, item.toUpperCase(), { mode: 'fix' });
-        }
-      } else if (key === 'CONSTRAINTS') {
-        const constraints = parseStringOrArrayOfStrings(valStr);
-        for (const rawC of constraints) {
-          parseConstraintIntoStep(step, rawC);
-        }
-      } else if (key === 'ROLES') {
-        const roleMatches = valStr.matchAll(/\{\s*(FIT|FIX|CONSTRAIN)\s*=\s*([\s\S]*?)\s*\}/gi);
-        for (const rm of roleMatches) {
-          const action = rm[1].toUpperCase();
-          const listStr = rm[2].trim();
-          if (action === 'FIT') {
-            const items = parseStringOrIdentArray(listStr);
-            for (const item of items) upsertParam(step, item.toUpperCase(), { mode: 'fit' });
-          } else if (action === 'FIX') {
-            const items = parseStringOrIdentArray(listStr);
-            for (const item of items) upsertParam(step, item.toUpperCase(), { mode: 'fix' });
-          } else if (action === 'CONSTRAIN') {
-            const constraints = parseStringOrArrayOfStrings(listStr);
-            for (const rawC of constraints) parseConstraintIntoStep(step, rawC);
-          }
-        }
-      } else if (key === 'GRID') {
-        parseGridValue(step, valStr, unparsed);
-      } else if (key === 'INCLUDE') {
-        const items = parseStringOrIdentArray(valStr);
-        step.residueMode = 'include';
-        step.residues = items;
-      } else if (key === 'EXCLUDE') {
-        const items = parseStringOrIdentArray(valStr);
-        step.residueMode = 'exclude';
-        step.residues = items;
-      } else if (key === 'STATISTICS') {
-        parseInlineStatisticsTable(step, valStr, unparsed);
-      } else if (key === 'FORMAT_VERSION' || key === 'ROLES_FROM') {
-        // ChemEx v2 format markers - handled
-        continue;
-      } else {
-        // Unknown key
-        unparsed.push(stmt);
-      }
+      if (this.src[this.i] === terminator) return parts;
+      throw this.err(`Expected '${terminator}'`);
     }
   }
 
-  const steps: Step[] = stepOrder.map(name => stepMap.get(name)!);
-
-  return {
-    config: {
-      steps: steps.length > 0 ? steps : [createDefaultStep()],
-    },
-    unparsed,
-  };
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-function splitTopLevelCommas(str: string): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let inBracket = 0;
-  let inBrace = 0;
-  let inParen = 0;
-  let inQuote: string | null = null;
-
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-
-    if (inQuote) {
-      if (char === inQuote && str[i - 1] !== '\\') {
-        inQuote = null;
+  private readString(): string {
+    const s = this.src;
+    const quote = s[this.i];
+    if (s.startsWith(quote.repeat(3), this.i)) throw this.err('Multi-line strings are not supported in method files');
+    this.i++;
+    let out = '';
+    while (this.i < s.length) {
+      const c = s[this.i];
+      if (c === '\n') break;
+      if (c === quote) {
+        this.i++;
+        return out;
       }
-      current += char;
-      continue;
+      if (c === '\\' && quote === '"') {
+        const n = s[this.i + 1];
+        const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\', b: '\b', f: '\f' };
+        if (n in map) {
+          out += map[n];
+          this.i += 2;
+          continue;
+        }
+        if (n === 'u' || n === 'U') {
+          const len = n === 'u' ? 4 : 8;
+          out += String.fromCodePoint(parseInt(s.slice(this.i + 2, this.i + 2 + len), 16));
+          this.i += 2 + len;
+          continue;
+        }
+        throw this.err('Invalid escape');
+      }
+      out += c;
+      this.i++;
     }
-
-    if (char === '"' || char === "'") {
-      inQuote = char;
-      current += char;
-      continue;
-    }
-
-    if (char === '[') inBracket++;
-    else if (char === ']') inBracket--;
-    else if (char === '{') inBrace++;
-    else if (char === '}') inBrace--;
-    else if (char === '(') inParen++;
-    else if (char === ')') inParen--;
-
-    if (char === ',' && inBracket === 0 && inBrace === 0 && inParen === 0) {
-      parts.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
+    throw this.err('Unterminated string');
   }
-  if (current) parts.push(current);
-  return parts;
-}
 
-function parseInlineStatisticsTable(step: Step, valStr: string, unparsed: string[]) {
-  if (!step.statistics) step.statistics = {};
-  const inner = valStr.trim().replace(/^\{\s*|\s*\}$/g, '');
-  const entries = splitTopLevelCommas(inner);
-  for (const entry of entries) {
-    const trimmed = entry.trim();
-    if (!trimmed) continue;
-    const kv = trimmed.match(/^["']?([A-Za-z0-9_]+)["']?\s*=\s*([\s\S]+)$/);
-    if (kv) {
-      const k = kv[1].toUpperCase();
-      const v = kv[2].trim();
-      if (k === 'MC' || k === 'BS' || k === 'BSN') {
-        const count = parseInt(v, 10);
-        if (!isNaN(count)) {
-          const keyLower = k.toLowerCase() as 'mc' | 'bs' | 'bsn';
-          step.statistics[keyLower] = {
-            enabled: true,
-            replicates: count,
-          };
+  private readValue(): TomlValue {
+    const s = this.src;
+    const c = s[this.i];
+    if (c === '"' || c === "'") return this.readString();
+    if (c === '[') {
+      this.i++;
+      const arr: TomlValue[] = [];
+      for (;;) {
+        this.skipWs(true);
+        if (s[this.i] === ']') {
+          this.i++;
+          return arr;
         }
-      } else if (k === 'MCMC') {
-        if (v.startsWith('{')) {
-          const mcmcInner = v.replace(/^\{\s*|\s*\}$/g, '');
-          const mcmcPairs = splitTopLevelCommas(mcmcInner);
-          const mObj: any = { enabled: true, steps: 5000, burn: 'auto', thin: 1 };
-          for (const pair of mcmcPairs) {
-            const pMatch = pair.match(/^["']?([A-Za-z0-9_]+)["']?\s*=\s*([\s\S]+)$/);
-            if (pMatch) {
-              const mk = pMatch[1].toUpperCase();
-              const mv = pMatch[2].trim().replace(/^["']|["']$/g, '');
-              if (mk === 'STEPS') mObj.steps = parseInt(mv, 10);
-              else if (mk === 'BURN') mObj.burn = mv.toLowerCase() === 'auto' ? 'auto' : parseInt(mv, 10);
-              else if (mk === 'THIN') mObj.thin = parseInt(mv, 10);
-              else if (mk === 'WALKERS') mObj.walkers = parseInt(mv, 10);
-              else if (mk === 'SEED') mObj.seed = parseInt(mv, 10);
-              else if (mk === 'WORKERS') mObj.workers = parseInt(mv, 10);
-              else if (mk === 'UPDATE_PARAMETERS') mObj.update_parameters = mv.toLowerCase() === 'true';
-            }
-          }
-          step.statistics.mcmc = mObj;
-        } else {
-          const stepsCount = parseInt(v, 10);
-          if (!isNaN(stepsCount)) {
-            step.statistics.mcmc = {
-              enabled: true,
-              steps: stepsCount,
-              burn: 'auto',
-              thin: 1,
-            };
-          }
+        arr.push(this.readValue());
+        this.skipWs(true);
+        if (s[this.i] === ',') {
+          this.i++;
+          continue;
         }
+        if (s[this.i] === ']') {
+          this.i++;
+          return arr;
+        }
+        throw this.err("Expected ',' or ']' in array");
       }
-    } else {
-      unparsed.push(trimmed);
     }
+    if (c === '{') {
+      this.i++;
+      const t: TomlTable = {};
+      this.skipWs(false);
+      if (s[this.i] === '}') {
+        this.i++;
+        return t;
+      }
+      for (;;) {
+        const path = this.readKeyPath('=');
+        this.expect('=');
+        this.skipWs(false);
+        const v = this.readValue();
+        const parent = this.ensureTable(t, path.slice(0, -1), false);
+        const last = path[path.length - 1];
+        if (last in parent) throw this.err(`Duplicate key ${path.join('.')}`);
+        parent[last] = v;
+        this.skipWs(true); // tolerate newlines (TOML 1.1 style) inside inline tables
+        if (s[this.i] === ',') {
+          this.i++;
+          this.skipWs(true);
+          if (s[this.i] === '}') {
+            this.i++;
+            return t;
+          }
+          continue;
+        }
+        if (s[this.i] === '}') {
+          this.i++;
+          return t;
+        }
+        throw this.err("Expected ',' or '}' in inline table");
+      }
+    }
+    const m = /^(true|false|[+-]?(?:inf|nan)|[+-]?[0-9_]+(?:\.[0-9_]+)?(?:[eE][+-]?[0-9_]+)?|0x[0-9a-fA-F_]+)/.exec(s.slice(this.i));
+    if (!m) throw this.err('Invalid value');
+    this.i += m[0].length;
+    const tok = m[0];
+    if (tok === 'true') return true;
+    if (tok === 'false') return false;
+    if (/inf$/.test(tok)) return tok.startsWith('-') ? -Infinity : Infinity;
+    if (/nan$/.test(tok)) return NaN;
+    if (tok.startsWith('0x')) return parseInt(tok.slice(2).replace(/_/g, ''), 16);
+    return Number(tok.replace(/_/g, ''));
   }
 }
+
+function isTable(v: unknown): v is TomlTable {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Parse TOML text into a plain object (subset sufficient for ChemEx method/parameter files). */
+export function parseTomlDocument(text: string): { data: TomlTable; comments: string[]; topOrder: string[] } {
+  const r = new TomlReader(text).parse();
+  return { data: r.root, comments: r.comments, topOrder: r.topOrder };
+}
+
+// ── Interpretation ──────────────────────────────────────────────────────
+
+/** Case-insensitive table lookup (ChemEx lower-cases method keys). */
+function get(t: TomlTable | undefined, key: string): TomlValue | undefined {
+  if (!t) return undefined;
+  const k = Object.keys(t).find(x => x.toUpperCase() === key.toUpperCase());
+  return k === undefined ? undefined : t[k];
+}
+
+function strList(v: TomlValue | undefined): string[] {
+  if (v === undefined) return [];
+  if (Array.isArray(v)) return v.map(x => String(x));
+  return [String(v)];
+}
+
+const SIMPLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const PLAIN_CONSTRAINT = /^\s*\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]\s*=\s*([\s\S]+)$/;
+const BOUND_CONSTRAINT = /^\s*\[?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]?\s*(<=?|>=?)\s*[-+.\deE]+\s*$/;
 
 function upsertParam(step: Step, name: string, update: Partial<ParamSetting>) {
-  const existing = step.parameters.find(p => p.name.toUpperCase() === name.toUpperCase());
-  if (existing) {
-    Object.assign(existing, update);
-  } else {
-    step.parameters.push({
-      name: name.toUpperCase(),
-      mode: update.mode || 'fit',
-      ...update,
-    });
-  }
+  const uName = name.toUpperCase();
+  const existing = step.parameters.find(p => p.name.toUpperCase() === uName);
+  if (existing) Object.assign(existing, update);
+  else step.parameters.push({ name: uName, mode: update.mode || 'fit', ...update });
 }
 
-function parseConstraintIntoStep(step: Step, constraintStr: string) {
-  const c = constraintStr.trim().replace(/^["']|["']$/g, '');
-
-  // 1. Bound format: "[PB] < 0.5" or "PB < 0.5" or "[PB] > 0" or "PB > 0" or "<= / >="
-  const boundMatch = c.match(/^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*([<>]=?\s*[\d.eE+-]+)$/i);
-  if (boundMatch) {
-    const paramName = (boundMatch[1] || boundMatch[2]).toUpperCase();
-    const boundPart = boundMatch[3].trim();
-    upsertParam(step, paramName, {
-      mode: 'fit',
-      bounds: boundPart,
-    });
-    return;
+/** Parse "[SEL] = fn(a, b[, n])" or legacy "[SEL] = (a, b, c)" / "[SEL] = [a, b, n]". */
+export function parseAxisString(text: string): SearchAxis | null {
+  const m = /^\s*\[([^\]]+)\]\s*=\s*([A-Za-z_]*)\s*[([]\s*([^)\]]*)[)\]]\s*$/.exec(text) ||
+    /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([A-Za-z_]*)\s*[([]\s*([^)\]]*)[)\]]\s*$/.exec(text);
+  if (!m) return null;
+  const selector = m[1].trim();
+  const [param, ...quals] = selector.split(',').map(s => s.trim());
+  const fnRaw = m[2].toLowerCase();
+  const args = m[3].split(',').map(s => s.trim()).filter(Boolean).map(Number);
+  if (args.some(a => !Number.isFinite(a))) return null;
+  const base = { id: newMethodId('axis'), param: param.toUpperCase(), qualifier: quals.length ? quals.join(', ') : undefined };
+  if (fnRaw === 'values' || fnRaw === '') {
+    // legacy bare tuple "(a, b, c)" → values(...); legacy "[min, max, n]" handled by caller
+    return { ...base, fn: 'values', low: Math.min(...args), high: Math.max(...args), count: args.length, values: args };
   }
-
-  // 2. Expression constraint: "[R2_B] = 0.5 * [R2_A]" or "R2_B = 0.5 * [R2_A]"
-  const exprMatch = c.match(/^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*=\s*(.+)$/i);
-  if (exprMatch) {
-    const paramName = (exprMatch[1] || exprMatch[2]).toUpperCase();
-    const expression = exprMatch[3].trim();
-    upsertParam(step, paramName, {
-      mode: 'constrain',
-      expression,
-    });
-    return;
-  }
-
-  // 3. Fallback: try to extract bracketed parameter name
-  const fallbackMatch = c.match(/\[([A-Za-z0-9_]+)\]/i);
-  if (fallbackMatch) {
-    const paramName = fallbackMatch[1].toUpperCase();
-    upsertParam(step, paramName, {
-      mode: 'constrain',
-      expression: c,
-    });
-  }
+  if (fnRaw !== 'lin' && fnRaw !== 'log') return null;
+  return { ...base, fn: fnRaw as SearchFunction, low: args[0], high: args[1], count: args.length >= 3 ? Math.floor(args[2]) : 0 };
 }
 
-function parseGridEntry(step: Step, entryStr: string, unparsed: string[]) {
-  const clean = entryStr.trim().replace(/^["']|["']$/g, '').trim();
-  if (!clean) return;
-
-  // 1. ChemEx standard: "[KEX_AB] = log(100.0, 600.0, 10)" or "KEX_AB = lin(0.0, 10.0, 5)"
-  const funcMatch = clean.match(/^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*=\s*(log|lin)\s*\(\s*([\d.eE+-]+)\s*,\s*([\d.eE+-]+)\s*,\s*(\d+)\s*\)$/i);
-  if (funcMatch) {
-    const paramName = (funcMatch[1] || funcMatch[2]).toUpperCase();
-    const scale = funcMatch[3].toLowerCase() === 'log' ? 'log' : 'lin';
-    const minVal = parseFloat(funcMatch[4]);
-    const maxVal = parseFloat(funcMatch[5]);
-    const stepsVal = parseInt(funcMatch[6], 10);
-    upsertParam(step, paramName, {
-      mode: 'grid',
-      grid: {
-        min: minVal,
-        max: maxVal,
-        steps: stepsVal,
-        scale,
-      },
-    });
+function parseRoles(step: Step, roles: TomlValue, unparsed: string[]) {
+  if (!Array.isArray(roles)) {
+    unparsed.push(`ROLES must be an array of single-key actions in step ${step.name}`);
     return;
   }
-
-  // 2. Bracketed array: "[KEX_AB] = [100.0, 600.0, 10]" or "KEX_AB = [100.0, 600.0, 10]"
-  const arrMatch = clean.match(/^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*=\s*\[\s*([\d.eE+-]+)\s*,\s*([\d.eE+-]+)\s*,\s*(\d+)\s*\]$/i);
-  if (arrMatch) {
-    const paramName = (arrMatch[1] || arrMatch[2]).toUpperCase();
-    const minVal = parseFloat(arrMatch[3]);
-    const maxVal = parseFloat(arrMatch[4]);
-    const stepsVal = parseInt(arrMatch[5], 10);
-    upsertParam(step, paramName, {
-      mode: 'grid',
-      grid: {
-        min: minVal,
-        max: maxVal,
-        steps: stepsVal,
-        scale: 'lin',
-      },
-    });
-    return;
-  }
-
-  unparsed.push(entryStr);
-}
-
-function parseGridValue(step: Step, valStr: string, unparsed: string[]) {
-  const trimmed = valStr.trim();
-  if (trimmed.startsWith('[')) {
-    const items = parseStringOrArrayOfStrings(trimmed);
-    for (const item of items) {
-      parseGridEntry(step, item, unparsed);
+  const assigned = new Set<string>();
+  let inTable = true;
+  const rules: RoleRule[] = [];
+  for (const actionTable of roles) {
+    if (!isTable(actionTable) || Object.keys(actionTable).length !== 1) {
+      unparsed.push(`Invalid ROLES action in step ${step.name}: ${JSON.stringify(actionTable)}`);
+      continue;
     }
-  } else if (trimmed.startsWith('{')) {
-    // Legacy inline table { PB = [0.01, 0.2, 20], ... }
-    const inner = trimmed.replace(/^\{\s*|\s*\}$/g, '');
-    const entries = inner.split(/,(?![^[]*\])/);
-    for (const entry of entries) {
-      const entryTrimmed = entry.trim();
-      if (!entryTrimmed) continue;
-      parseGridEntry(step, entryTrimmed, unparsed);
+    const key = Object.keys(actionTable)[0].toUpperCase();
+    if (key !== 'FIT' && key !== 'FIX' && key !== 'CONSTRAIN') {
+      unparsed.push(`Unknown ROLES action ${key} in step ${step.name}`);
+      continue;
     }
-  } else {
-    parseGridEntry(step, trimmed, unparsed);
-  }
-}
+    const entries = strList(actionTable[Object.keys(actionTable)[0]]).map(e => e.trim()).filter(Boolean);
+    const action = key as RoleAction;
 
-function combineMultilineStatements(lines: string[]): string[] {
-  const statements: string[] = [];
-  let current = '';
-  let inBracket = 0;
-  let inBrace = 0;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    for (let i = 0; i < trimmed.length; i++) {
-      const char = trimmed[i];
-      if (char === '[') inBracket++;
-      else if (char === ']') inBracket--;
-      else if (char === '{') inBrace++;
-      else if (char === '}') inBrace--;
+    // Plain-name actions on not-yet-assigned parameters map onto the table;
+    // anything selector-qualified or overriding switches to ordered rules.
+    let names: string[] | null = null;
+    if (inTable) {
+      if (action === 'CONSTRAIN') {
+        const targets = entries.map(e => PLAIN_CONSTRAINT.exec(e)?.[1]?.toUpperCase() ?? null);
+        if (targets.every(t => t !== null)) names = targets as string[];
+      } else if (entries.every(e => SIMPLE_NAME.test(e))) {
+        names = entries.map(e => e.toUpperCase());
+      } else {
+        // Mixed FIT/FIX action: plain names on fresh parameters go to the table,
+        // the qualified remainder becomes the first ordered rule (same effect).
+        const plain = entries.filter(e => SIMPLE_NAME.test(e)).map(e => e.toUpperCase());
+        const qualified = entries.filter(e => !SIMPLE_NAME.test(e));
+        if (plain.length && plain.every(n => !assigned.has(n)) && new Set(plain).size === plain.length) {
+          plain.forEach(n => {
+            assigned.add(n);
+            upsertParam(step, n, { mode: action === 'FIT' ? 'fit' : 'fix' });
+          });
+          inTable = false;
+          rules.push({ id: newMethodId('rule'), action, entries: qualified });
+          continue;
+        }
+      }
+      if (names && (names.some(n => assigned.has(n)) || new Set(names).size !== names.length)) names = null;
     }
-
-    if (current) {
-      current += ' ' + trimmed;
+    if (inTable && names) {
+      names.forEach((n, idx) => {
+        assigned.add(n);
+        if (action === 'CONSTRAIN') {
+          upsertParam(step, n, { mode: 'constrain', expression: PLAIN_CONSTRAINT.exec(entries[idx])![2].trim() });
+        } else {
+          upsertParam(step, n, { mode: action === 'FIT' ? 'fit' : 'fix' });
+        }
+      });
     } else {
-      current = trimmed;
-    }
-
-    if (inBracket <= 0 && inBrace <= 0) {
-      statements.push(current);
-      current = '';
-      inBracket = 0;
-      inBrace = 0;
+      inTable = false;
+      rules.push({ id: newMethodId('rule'), action, entries });
     }
   }
-
-  if (current) {
-    statements.push(current);
-  }
-
-  return statements;
+  step.roleRules = rules;
 }
 
-function parseStringOrIdentArray(str: string): string[] {
-  // Handles ["PB", "KEX_AB"] or [PB, KEX_AB] or 'PB', etc.
-  const cleaned = str.trim().replace(/^\[\s*|\s*\]$/g, '');
-  if (!cleaned) return [];
-  return splitTopLevelCommas(cleaned)
-    .map(s => s.trim().replace(/^["']|["']$/g, '').trim())
-    .filter(s => s.length > 0);
+function parseResampling(v: TomlValue | undefined): ResamplingConfig | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v === 'number') return { enabled: true, replicates: Math.floor(v) };
+  if (isTable(v)) {
+    const reps = get(v, 'REPLICATES');
+    const seed = get(v, 'SEED');
+    return {
+      enabled: true,
+      replicates: typeof reps === 'number' ? Math.floor(reps) : 100,
+      seed: typeof seed === 'number' ? seed : undefined,
+    };
+  }
+  return undefined;
 }
 
-function parseStringOrArrayOfStrings(str: string): string[] {
-  const trimmed = str.trim();
-  if (trimmed.startsWith('[')) {
-    return parseStringOrIdentArray(trimmed);
+function parseMcmc(v: TomlValue | undefined, unparsed: string[], stepName: string): McmcConfig | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v === 'number') return { enabled: true, steps: Math.floor(v), burn: 'auto' };
+  if (!isTable(v)) return undefined;
+  const steps = get(v, 'STEPS');
+  const burn = get(v, 'BURN');
+  const seed = get(v, 'SEED');
+  const m: McmcConfig = {
+    enabled: true,
+    steps: typeof steps === 'number' ? Math.floor(steps) : 5000,
+    burn: typeof burn === 'number' ? Math.floor(burn) : 'auto',
+    seed: typeof seed === 'number' ? seed : undefined,
+  };
+  for (const legacy of ['THIN', 'WALKERS', 'WORKERS', 'UPDATE_PARAMETERS']) {
+    const lv = get(v, legacy);
+    if (lv !== undefined) {
+      unparsed.push(`[${stepName}.STATISTICS.MCMC] ${legacy} = ${String(lv)}  (v1-only; ignored by ChemEx v2)`);
+      if (legacy === 'THIN' && typeof lv === 'number') m.thin = lv;
+      if (legacy === 'WALKERS' && typeof lv === 'number') m.walkers = lv;
+      if (legacy === 'WORKERS' && typeof lv === 'number') m.workers = lv;
+      if (legacy === 'UPDATE_PARAMETERS') m.update_parameters = lv === true;
+    }
   }
-  // Single string
-  const clean = trimmed.replace(/^["']|["']$/g, '').trim();
-  return clean ? [clean] : [];
+  return m;
+}
+
+function parseStatistics(v: TomlValue | undefined, unparsed: string[], stepName: string): StatisticsConfig | undefined {
+  if (!isTable(v)) return undefined;
+  const stats: StatisticsConfig = {};
+  const mc = parseResampling(get(v, 'MC'));
+  const bs = parseResampling(get(v, 'BS'));
+  const bsn = parseResampling(get(v, 'BSN'));
+  const mcmc = parseMcmc(get(v, 'MCMC'), unparsed, stepName);
+  if (mc) stats.mc = mc;
+  if (bs) stats.bs = bs;
+  if (bsn) stats.bsn = bsn;
+  if (mcmc) stats.mcmc = mcmc;
+  return Object.keys(stats).length ? stats : undefined;
+}
+
+function parseAxes(list: TomlValue | undefined, unparsed: string[], ctx: string): SearchAxis[] {
+  const axes: SearchAxis[] = [];
+  for (const entry of strList(list)) {
+    // legacy "[PB] = [0.01, 0.2, 20]" (min, max, count) → lin
+    const legacyArr = /^\s*\[?([A-Za-z_][A-Za-z0-9_]*)\]?\s*=\s*\[\s*([-+.\deE]+)\s*,\s*([-+.\deE]+)\s*,\s*(\d+)\s*\]\s*$/.exec(entry);
+    if (legacyArr) {
+      axes.push({
+        id: newMethodId('axis'),
+        param: legacyArr[1].toUpperCase(),
+        fn: 'lin',
+        low: Number(legacyArr[2]),
+        high: Number(legacyArr[3]),
+        count: parseInt(legacyArr[4], 10),
+      });
+      continue;
+    }
+    const axis = parseAxisString(entry);
+    if (axis) axes.push(axis);
+    else unparsed.push(`${ctx}: ${entry}`);
+  }
+  return axes;
+}
+
+const KNOWN_V2_STEP_KEYS = new Set(['INCLUDE', 'EXCLUDE', 'ROLES', 'ROLES_FROM', 'SEARCH', 'STATISTICS']);
+const KNOWN_V1_STEP_KEYS = new Set(['INCLUDE', 'EXCLUDE', 'FIT', 'FIX', 'CONSTRAINTS', 'GRID', 'STATISTICS', 'FITMETHOD']);
+
+function parseSelection(step: Step, sec: TomlTable) {
+  const inc = get(sec, 'INCLUDE');
+  const exc = get(sec, 'EXCLUDE');
+  if (inc !== undefined) {
+    step.residueMode = 'include';
+    step.residues = strList(inc).map(s => (s === '*' ? 'ALL' : s));
+  } else if (exc !== undefined) {
+    step.residueMode = 'exclude';
+    step.residues = strList(exc);
+  }
+}
+
+/**
+ * The emitter auto-adds search selectors (whose parameter is at baseline) to
+ * the table's FIT action. If the first ordered rule is a FIT made only of such
+ * selectors, it sits in the adjacent position, so drop it to keep
+ * parse → emit a fixed point.
+ */
+function absorbAutoFitRule(step: Step) {
+  const first = step.roleRules?.[0];
+  if (!first || first.action !== 'FIT' || !step.search || step.search.mode === 'none') return;
+  const modeOf = new Map(step.parameters.map(p => [p.name.toUpperCase(), p.mode]));
+  const auto = new Set(
+    step.search.axes.filter(a => (modeOf.get(a.param.toUpperCase()) ?? 'default') === 'default').map(a => axisSelector(a).toUpperCase())
+  );
+  if (first.entries.length && first.entries.every(e => auto.has(e.trim().toUpperCase()))) step.roleRules = step.roleRules!.slice(1);
+}
+
+function parseV2Step(name: string, sec: TomlTable, unparsed: string[]): Step {
+  const step: Step = { id: newMethodId('step'), name, parameters: [], residueMode: 'include', residues: [], roleRules: [] };
+  parseSelection(step, sec);
+  const rf = get(sec, 'ROLES_FROM');
+  if (typeof rf === 'string') step.rolesFrom = rf;
+  const roles = get(sec, 'ROLES');
+  if (roles !== undefined) parseRoles(step, roles, unparsed);
+
+  const search = get(sec, 'SEARCH');
+  if (isTable(search)) {
+    const grid = get(search, 'GRID');
+    const de = get(search, 'DE');
+    if (isTable(grid)) {
+      step.search = { mode: 'grid', axes: parseAxes(get(grid, 'AXES'), unparsed, `[${name}.SEARCH.GRID]`) };
+    } else if (isTable(de)) {
+      const seed = get(de, 'SEED');
+      step.search = {
+        mode: 'de',
+        axes: parseAxes(get(de, 'COORDINATES'), unparsed, `[${name}.SEARCH.DE]`),
+        seed: typeof seed === 'number' ? seed : undefined,
+      };
+    }
+  }
+  absorbAutoFitRule(step);
+  const stats = parseStatistics(get(sec, 'STATISTICS'), unparsed, name);
+  if (stats) step.statistics = stats;
+
+  for (const k of Object.keys(sec)) {
+    if (!KNOWN_V2_STEP_KEYS.has(k.toUpperCase())) unparsed.push(`[${name}] ${k} = ${JSON.stringify(sec[k])}  (not a v2 step field)`);
+  }
+  return step;
+}
+
+function parseV1Step(name: string, sec: TomlTable, unparsed: string[]): Step {
+  const step: Step = { id: newMethodId('step'), name, parameters: [], residueMode: 'include', residues: [], roleRules: [] };
+  parseSelection(step, sec);
+
+  // v1 applies buckets CONSTRAINTS → FIX → FIT; FIT wins on overlap.
+  for (const c of strList(get(sec, 'CONSTRAINTS'))) {
+    const bound = BOUND_CONSTRAINT.exec(c);
+    if (bound) {
+      unparsed.push(`[${name}] CONSTRAINTS "${c}"  (inequality bounds are not supported by ChemEx v2 methods)`);
+      const exists = step.parameters.some(p => p.name.toUpperCase() === bound[1].toUpperCase());
+      upsertParam(step, bound[1], {
+        ...(exists ? {} : { mode: 'default' as const }),
+        bounds: c.replace(/^\s*\[?\s*[A-Za-z_][A-Za-z0-9_]*\s*\]?\s*/, ''),
+      });
+      continue;
+    }
+    const m = PLAIN_CONSTRAINT.exec(c);
+    if (m) upsertParam(step, m[1], { mode: 'constrain', expression: m[2].trim() });
+    else (step.roleRules ??= []).push({ id: newMethodId('rule'), action: 'CONSTRAIN', entries: [c] });
+  }
+  const applyBucket = (key: 'FIX' | 'FIT') => {
+    for (const sel of strList(get(sec, key))) {
+      if (SIMPLE_NAME.test(sel.trim())) upsertParam(step, sel.trim(), { mode: key === 'FIT' ? 'fit' : 'fix' });
+      else (step.roleRules ??= []).push({ id: newMethodId('rule'), action: key, entries: [sel] });
+    }
+  };
+  applyBucket('FIX');
+  applyBucket('FIT');
+
+  const grid = get(sec, 'GRID');
+  if (grid !== undefined) {
+    let entries: TomlValue = grid;
+    if (isTable(grid)) {
+      // legacy inline table { PB = [min, max, n] }
+      entries = Object.entries(grid).map(([k, v]) =>
+        Array.isArray(v) ? `[${k}] = [${v.join(', ')}]` : `[${k}] = ${String(v)}`
+      );
+    }
+    step.search = { mode: 'grid', axes: parseAxes(entries, unparsed, `[${name}] GRID`) };
+  }
+  const fm = get(sec, 'FITMETHOD');
+  if (fm !== undefined) unparsed.push(`[${name}] FITMETHOD = ${JSON.stringify(fm)}  (v2 has no FITMETHOD; TRF is implicit)`);
+
+  const stats = parseStatistics(get(sec, 'STATISTICS'), unparsed, name);
+  if (stats) step.statistics = stats;
+
+  for (const k of Object.keys(sec)) {
+    if (!KNOWN_V1_STEP_KEYS.has(k.toUpperCase())) unparsed.push(`[${name}] ${k} = ${JSON.stringify(sec[k])}  (unknown method field)`);
+  }
+  return step;
+}
+
+/**
+ * Parse a ChemEx method.toml (v2, or legacy v1 migrated to v2 semantics).
+ * Throws TomlSyntaxError on malformed TOML.
+ */
+export function tomlToConfig(toml: string): ParseResult {
+  if (!toml || toml.trim() === '') {
+    return { config: { steps: [createDefaultStep()] }, unparsed: [] };
+  }
+  const { data, comments, topOrder } = parseTomlDocument(toml);
+  const unparsed: string[] = [...comments];
+
+  const fv = get(data, 'FORMAT_VERSION');
+  const isV2 = fv !== undefined;
+  if (isV2 && fv !== 2) unparsed.push(`FORMAT_VERSION = ${String(fv)}  (only version 2 is supported)`);
+
+  const steps: Step[] = [];
+  for (const name of topOrder) {
+    const sec = data[name];
+    if (!isTable(sec)) continue;
+    const stepName = name.toUpperCase();
+    steps.push(isV2 ? parseV2Step(stepName, sec, unparsed) : parseV1Step(stepName, sec, unparsed));
+  }
+  for (const k of Object.keys(data)) {
+    if (!isTable(data[k]) && k.toUpperCase() !== 'FORMAT_VERSION') unparsed.push(`${k} = ${JSON.stringify(data[k])}  (top-level key outside any step)`);
+  }
+
+  // v1 carried roles and profile selection implicitly between steps; make that explicit.
+  if (!isV2) {
+    for (let i = 1; i < steps.length; i++) {
+      steps[i].rolesFrom = steps[i - 1].name;
+      if (steps[i].residues.length === 0 && steps[i - 1].residues.length > 0) {
+        steps[i].residueMode = steps[i - 1].residueMode;
+        steps[i].residues = [...steps[i - 1].residues];
+      }
+    }
+  }
+
+  return {
+    config: { steps: steps.length > 0 ? steps : [createDefaultStep()] },
+    unparsed,
+  };
 }

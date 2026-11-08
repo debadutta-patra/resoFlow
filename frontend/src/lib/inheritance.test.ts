@@ -158,13 +158,14 @@ describe('Parameter Inheritance and Seed-and-Fix Logic', () => {
 
     const toml = methodConfigToToml(updatedMethod);
 
-    // FIX must contain KEX_AB and PB
-    expect(toml).toContain('FIX = [');
-    expect(toml).toContain('"PB"');
-    expect(toml).toContain('"KEX_AB"');
+    // v2 ROLES: FIX must contain KEX_AB and PB
+    const fixLine = toml.split('\n').find((l) => l.trim().startsWith('{ FIX = '));
+    expect(fixLine).toBeDefined();
+    expect(fixLine).toContain('"PB"');
+    expect(fixLine).toContain('"KEX_AB"');
 
     // FIT must contain CS_A and DW_AB, but NOT KEX_AB or PB
-    const fitLine = toml.split('\n').find((l) => l.startsWith('FIT = '));
+    const fitLine = toml.split('\n').find((l) => l.trim().startsWith('{ FIT = '));
     expect(fitLine).toBeDefined();
     expect(fitLine).toContain('"CS_A"');
     expect(fitLine).toContain('"DW_AB"');

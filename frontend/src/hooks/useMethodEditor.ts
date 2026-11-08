@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
 import type { ChemexEndpointFamily } from '../lib/experimentPlugin';
 import type { MethodConfig, Step } from '../lib/methodConfig';
-import { createDefaultMethodConfig, createDefaultStep } from '../lib/methodConfig';
+import { createDefaultMethodConfig, createDefaultStep, normalizeMethodConfig } from '../lib/methodConfig';
 import { configToToml, tomlToConfig } from '../lib/methodToml';
 import { validateMethodConfig } from '../lib/methodValidation';
 import type { MethodTemplate } from '../lib/methodTemplates';
@@ -140,8 +140,14 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     },
     onRenameStep: (idx: number, name: string) => {
       if (!methodConfig.steps[idx]) return;
-      const steps = [...methodConfig.steps];
-      steps[idx] = { ...steps[idx], name };
+      const oldName = (methodConfig.steps[idx].name || '').trim().toUpperCase();
+      const newName = name.trim().toUpperCase();
+      // Keep ROLES_FROM references pointing at the renamed step.
+      const steps = methodConfig.steps.map((s, i) => {
+        if (i === idx) return { ...s, name };
+        if (oldName && s.rolesFrom && s.rolesFrom.trim().toUpperCase() === oldName) return { ...s, rolesFrom: newName };
+        return s;
+      });
       updateSteps(steps);
     },
     onReorderSteps: (from: number, to: number) => {
@@ -160,8 +166,14 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const toggleRawMode = () => (isRawEditMode ? setIsRawEditMode(false) : enterRawMode());
   /** Parse the raw text back into the structured form. */
   const applyRawToml = () => {
-    const parsed = tomlToConfig(methodToml);
-    setMethodConfigState(parsed.config);
+    let parsed: ReturnType<typeof tomlToConfig>;
+    try {
+      parsed = tomlToConfig(methodToml);
+    } catch (err: unknown) {
+      notify?.(`Cannot parse method.toml: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    setMethodConfigState(normalizeMethodConfig(parsed.config));
     setUnparsedTomlLines(parsed.unparsed);
     setActiveStepIdx(0);
     setIsRawEditMode(false);
@@ -173,7 +185,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
 
   // ── Templates & import ──
   const applyTemplate = (template: MethodTemplate) => {
-    setMethodConfig(JSON.parse(JSON.stringify(template.config)));
+    setMethodConfig(normalizeMethodConfig(JSON.parse(JSON.stringify(template.config))));
     setActiveStepIdx(0);
     setUnparsedTomlLines([]);
     setIsRawEditMode(false);
@@ -185,8 +197,10 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     if (!text.trim()) return 'Nothing to import';
     try {
       const parsed = tomlToConfig(text);
-      setMethodConfigState(parsed.config);
-      setMethodToml(text);
+      const cfg = normalizeMethodConfig(parsed.config);
+      setMethodConfigState(cfg);
+      // Show the canonical v2 rendering (legacy v1 input is migrated).
+      setMethodToml(configToToml(cfg));
       setUnparsedTomlLines(parsed.unparsed);
       setActiveStepIdx(0);
       setIsRawEditMode(false);
@@ -218,23 +232,29 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const restore = useCallback((saved: SavedMethodState): boolean => {
     const cfg = saved.method_config;
     if (cfg && Array.isArray(cfg.steps) && cfg.steps.length > 0) {
-      const { rawOverride, ...structured } = cfg;
-      setMethodConfigState(structured as MethodConfig);
+      const { rawOverride, ...rest } = cfg;
+      const structured = normalizeMethodConfig(rest as MethodConfig);
+      setMethodConfigState(structured);
       if (rawOverride && rawOverride.trim()) {
         setMethodToml(rawOverride);
         setIsRawEditMode(true);
       } else {
-        setMethodToml(configToToml(structured as MethodConfig));
+        setMethodToml(configToToml(structured));
         setIsRawEditMode(false);
       }
       setActiveStepIdx(0);
       return true;
     }
     if (saved.method_toml) {
-      const parsed = tomlToConfig(saved.method_toml);
-      setMethodConfigState(parsed.config);
+      try {
+        const parsed = tomlToConfig(saved.method_toml);
+        setMethodConfigState(normalizeMethodConfig(parsed.config));
+        setUnparsedTomlLines(parsed.unparsed);
+      } catch {
+        // Unparseable saved TOML: keep it verbatim in raw mode rather than losing it.
+        setIsRawEditMode(true);
+      }
       setMethodToml(saved.method_toml);
-      setUnparsedTomlLines(parsed.unparsed);
       setActiveStepIdx(0);
       return true;
     }
@@ -242,6 +262,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   }, []);
 
   return {
+    family,
     methodConfig,
     setMethodConfig,
     methodToml,

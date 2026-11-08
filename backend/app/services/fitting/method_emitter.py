@@ -1,13 +1,25 @@
 """
-ChemEx v1 Method TOML Emitter, Parser, and Validator.
-Supports standard v1 method sections (FIT, FIX, CONSTRAINTS, GRID, INCLUDE, EXCLUDE)
-and full STATISTICS configuration (MC, BS, BSN, MCMC).
+ChemEx method TOML emitter, parser and validator — the backend half of the
+ChemEx method contract (mirror: frontend/src/lib/methodToml.ts).
+
+Canonical output is ChemEx v2 (``FORMAT_VERSION = 2``):
+https://gbouvignies.github.io/ChemEx/docs/user_guide/fitting/method_files
+
+A step's effective roles are, in order: baseline roles (or ``ROLES_FROM``),
+the per-parameter table (plain-name CONSTRAIN → FIX → FIT), then the ordered
+selector-level ``role_rules``. An optional ``search`` (GRID or DE) and
+``statistics`` follow. Legacy v1 files are parsed and migrated explicitly
+(implicit carry-over → ``ROLES_FROM`` + repeated selection). The v1 emitter
+is kept only for callers that explicitly request ``format_version=1``.
 """
 
 from __future__ import annotations
 
+import json
+import math
 import re
 import sys
+import uuid
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 if sys.version_info >= (3, 11):
@@ -16,6 +28,7 @@ else:
     import tomli as tomllib
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -101,22 +114,68 @@ class McmcSettingsModel(BaseModel):
         return self
 
 
+class ResamplingSettingsModel(BaseModel):
+    """Expanded MC/BS/BSN request (v2: REPLICATES + optional SEED)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    replicates: int
+    seed: Optional[int] = None
+
+    @field_validator("replicates")
+    @classmethod
+    def validate_replicates(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("Replicate count must be a positive integer (>= 1)")
+        return v
+
+
+Resampling = Union[int, ResamplingSettingsModel]
+
+
+def _replicates(v: Optional[Resampling]) -> Optional[int]:
+    if v is None:
+        return None
+    return v.replicates if isinstance(v, ResamplingSettingsModel) else int(v)
+
+
+def _resampling_seed(v: Optional[Resampling]) -> Optional[int]:
+    return v.seed if isinstance(v, ResamplingSettingsModel) else None
+
+
 class StatisticsModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    mc: Optional[int] = Field(default=None, description="Number of Monte Carlo replicates")
-    bs: Optional[int] = Field(default=None, description="Number of Bootstrap replicates")
-    bsn: Optional[int] = Field(default=None, description="Number of Nucleus-Specific Bootstrap replicates")
+    mc: Optional[Resampling] = Field(default=None, description="Monte Carlo replicates (or expanded request)")
+    bs: Optional[Resampling] = Field(default=None, description="Bootstrap replicates (or expanded request)")
+    bsn: Optional[Resampling] = Field(default=None, description="Nucleus-specific bootstrap replicates (or expanded request)")
     mcmc: Optional[Union[int, McmcSettingsModel]] = Field(
         default=None,
         description="MCMC chain length or detailed McmcSettingsModel",
     )
 
-    @field_validator("mc", "bs", "bsn")
+    @field_validator("mc", "bs", "bsn", mode="before")
     @classmethod
-    def validate_replicates(cls, v: Optional[int], info) -> Optional[int]:
-        if v is not None and v < 1:
-            raise ValueError(f"Replicate count for {info.field_name.upper()} must be a positive integer (>= 1)")
+    def parse_resampling(cls, v: Any, info) -> Optional[Resampling]:
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            lower = {str(k).lower(): val for k, val in v.items()}
+            if "enabled" in lower and not lower.get("enabled"):
+                return None
+            reps = lower.get("replicates")
+            if reps is None:
+                raise ValueError(f"Expanded {info.field_name.upper()} request requires REPLICATES")
+            if int(reps) < 1:
+                raise ValueError(f"Replicate count for {info.field_name.upper()} must be a positive integer (>= 1)")
+            seed = lower.get("seed")
+            if seed is None:
+                return int(reps)
+            return ResamplingSettingsModel(replicates=int(reps), seed=int(seed))
+        if isinstance(v, int) and not isinstance(v, bool):
+            if v < 1:
+                raise ValueError(f"Replicate count for {info.field_name.upper()} must be a positive integer (>= 1)")
+            return v
         return v
 
     @field_validator("mcmc", mode="before")
@@ -124,12 +183,14 @@ class StatisticsModel(BaseModel):
     def parse_mcmc(cls, v: Any) -> Optional[Union[int, McmcSettingsModel]]:
         if v is None:
             return None
-        if isinstance(v, int):
+        if isinstance(v, int) and not isinstance(v, bool):
             if v < 1:
                 raise ValueError("MCMC steps must be a positive integer (>= 1)")
             return v
         if isinstance(v, dict):
             lower_dict = {k.lower(): val for k, val in v.items()}
+            if "enabled" in lower_dict and not lower_dict.pop("enabled"):
+                return None
             return McmcSettingsModel(**lower_dict)
         return v
 
@@ -138,26 +199,96 @@ class StatisticsModel(BaseModel):
 
 
 class ParamSettingModel(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     name: str
     mode: Literal["default", "fit", "fix", "constrain", "grid"] = "default"
     value: Optional[float] = None
-    bounds: Optional[str] = None
+    bounds: Optional[str] = None  # legacy v1 inequality; never emitted in v2
     expression: Optional[str] = None
-    grid: Optional[Dict[str, Any]] = None
+    grid: Optional[Dict[str, Any]] = None  # legacy per-parameter grid; migrated to search
+
+
+class SearchAxisModel(BaseModel):
+    """One GRID axis or DE coordinate."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: Optional[str] = None
+    param: str
+    qualifier: Optional[str] = None
+    fn: Literal["lin", "log", "values"] = "lin"
+    low: float = 0.0
+    high: float = 1.0
+    count: int = 0
+    values: Optional[List[float]] = None
+
+
+class StepSearchModel(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    mode: Literal["none", "grid", "de"] = "none"
+    axes: List[SearchAxisModel] = Field(default_factory=list)
+    seed: Optional[int] = None
+
+
+class RoleRuleModel(BaseModel):
+    """One ordered ROLES action (selectors for FIT/FIX, equations for CONSTRAIN)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: Optional[str] = None
+    action: Literal["FIT", "FIX", "CONSTRAIN"]
+    entries: List[str] = Field(default_factory=list)
 
 
 class MethodStepModel(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
     id: Optional[str] = None
     name: str = "STEP1"
     parameters: List[ParamSettingModel] = Field(default_factory=list)
-    residue_mode: Literal["include", "exclude"] = "include"
+    residue_mode: Literal["include", "exclude"] = Field(
+        default="include", validation_alias=AliasChoices("residue_mode", "residueMode")
+    )
     residues: List[Union[int, str]] = Field(default_factory=list)
+    roles_from: Optional[str] = Field(default=None, validation_alias=AliasChoices("roles_from", "rolesFrom"))
+    role_rules: List[RoleRuleModel] = Field(
+        default_factory=list, validation_alias=AliasChoices("role_rules", "roleRules")
+    )
+    search: Optional[StepSearchModel] = None
     statistics: Optional[StatisticsModel] = None
 
 
 class MethodConfigModel(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
     steps: List[MethodStepModel] = Field(default_factory=list)
-    raw_override: Optional[str] = None
+    raw_override: Optional[str] = Field(default=None, validation_alias=AliasChoices("raw_override", "rawOverride"))
+
+
+def normalize_step(step: MethodStepModel) -> MethodStepModel:
+    """Migrate legacy per-parameter 'grid' modes into FIT + a GRID search axis (idempotent)."""
+    legacy = [p for p in step.parameters if p.mode == "grid"]
+    if not legacy:
+        return step
+    axes = list(step.search.axes) if step.search else []
+    for p in legacy:
+        g = p.grid or {}
+        if any(a.param.upper() == p.name.upper() and not a.qualifier for a in axes):
+            continue
+        axes.append(
+            SearchAxisModel(
+                param=p.name.upper(),
+                fn="log" if str(g.get("scale", "lin")).lower() == "log" else "lin",
+                low=float(g.get("min", 0.01)),
+                high=float(g.get("max", 0.2)),
+                count=int(g.get("steps", 10)),
+            )
+        )
+    params = [ParamSettingModel(name=p.name, mode="fit") if p.mode == "grid" else p for p in step.parameters]
+    seed = step.search.seed if step.search else None
+    return step.model_copy(update={"parameters": params, "search": StepSearchModel(mode="grid", axes=axes, seed=seed)})
 
 
 def _format_mcmc_subtable(mcmc: McmcSettingsModel, step_name: str) -> str:
@@ -182,7 +313,7 @@ def _format_mcmc_subtable(mcmc: McmcSettingsModel, step_name: str) -> str:
 
 def emit_method_toml_v1(config: MethodConfigModel) -> str:
     """
-    Serializes a MethodConfigModel into a deterministic ChemEx v1 method.toml string.
+    Legacy: serializes a MethodConfigModel into a deterministic ChemEx v1 method.toml string.
 
     Hard guarantee: When statistics are disabled on all steps, the emitted output
     contains NO statistics keys, subtables, or empty tables.
@@ -238,8 +369,14 @@ def emit_method_toml_v1(config: MethodConfigModel) -> str:
 
         # 4. GRID
         grid_params = [p for p in step.parameters if p.mode == "grid" and p.grid]
-        if grid_params:
-            grid_items: list[str] = []
+        grid_items: list[str] = []
+        if step.search and step.search.mode == "grid":
+            for a in step.search.axes:
+                if a.fn == "values":
+                    grid_items.append(_q(f"[{axis_selector(a)}] = ({', '.join(_num(v) for v in (a.values or []))})"))
+                else:
+                    grid_items.append(_q(format_axis(a, "grid")))
+        if grid_params or grid_items:
             for p in grid_params:
                 g = p.grid
                 scale = str(g.get("scale", "lin")).lower()
@@ -280,11 +417,11 @@ def emit_method_toml_v1(config: MethodConfigModel) -> str:
         if stats and not stats.is_empty():
             inline_parts: List[str] = []
             if stats.mc is not None:
-                inline_parts.append(f'"MC" = {stats.mc}')
+                inline_parts.append(f'"MC" = {_replicates(stats.mc)}')
             if stats.bs is not None:
-                inline_parts.append(f'"BS" = {stats.bs}')
+                inline_parts.append(f'"BS" = {_replicates(stats.bs)}')
             if stats.bsn is not None:
-                inline_parts.append(f'"BSN" = {stats.bsn}')
+                inline_parts.append(f'"BSN" = {_replicates(stats.bsn)}')
 
             if stats.mcmc is not None:
                 if isinstance(stats.mcmc, int):
@@ -317,143 +454,151 @@ def emit_method_toml_v1(config: MethodConfigModel) -> str:
     return "\n\n".join(sections) + "\n"
 
 
+# ── v2 emission ─────────────────────────────────────────────────────────
+
+def _q(s: str) -> str:
+    """TOML basic string (JSON escapes are valid TOML basic-string escapes)."""
+    return json.dumps(s, ensure_ascii=False)
+
+
+def _num(x: float) -> str:
+    """Format a number like JS ``String(x)`` for the common cases (100 → "100", 0.005 → "0.005")."""
+    if not math.isfinite(x):
+        return "0"
+    if float(x).is_integer() and abs(x) < 1e21:
+        return str(int(x))
+    return re.sub(r"e([+-])0*(\d)", r"e\1\2", repr(float(x)))
+
+
+def axis_selector(axis: SearchAxisModel) -> str:
+    base = axis.param.strip().upper().strip("[]")
+    qual = re.sub(r"^,\s*", "", (axis.qualifier or "").strip())
+    return f"{base}, {qual}" if qual else base
+
+
+def format_axis(axis: SearchAxisModel, mode: str) -> str:
+    sel = f"[{axis_selector(axis)}]"
+    if mode == "grid" and axis.fn == "values":
+        return f"{sel} = values({', '.join(_num(v) for v in (axis.values or []))})"
+    fn = "log" if axis.fn == "log" else "lin"
+    if mode == "de":
+        return f"{sel} = {fn}({_num(axis.low)}, {_num(axis.high)})"
+    return f"{sel} = {fn}({_num(axis.low)}, {_num(axis.high)}, {int(axis.count)})"
+
+
+_FULL_EQUATION = re.compile(r"^\s*\[[^\]]+\]\s*=")
+
+
+def _constraint_entry(p: ParamSettingModel) -> Optional[str]:
+    expr = (p.expression or "").strip()
+    if not expr:
+        return None
+    if _FULL_EQUATION.match(expr):
+        return expr
+    return f"[{p.name.upper()}] = {expr}"
+
+
+def step_role_actions(step: MethodStepModel) -> List[Tuple[str, List[str]]]:
+    """Ordered ROLES actions for a step: table (CONSTRAIN → FIX → FIT), then explicit rules."""
+    step = normalize_step(step)
+    actions: List[Tuple[str, List[str]]] = []
+    mode_of = {p.name.upper(): p.mode for p in step.parameters}
+
+    constrain = [e for e in (_constraint_entry(p) for p in step.parameters if p.mode == "constrain") if e]
+    if constrain:
+        actions.append(("CONSTRAIN", constrain))
+    fix = [p.name.upper() for p in step.parameters if p.mode == "fix"]
+    if fix:
+        actions.append(("FIX", fix))
+    fit = [p.name.upper() for p in step.parameters if p.mode in ("fit", "grid")]
+    # Search targets must be final FIT coordinates: auto-fit baseline ones.
+    rule_fit = {e.strip().upper() for r in step.role_rules if r.action == "FIT" for e in r.entries}
+    if step.search and step.search.mode != "none":
+        for axis in step.search.axes:
+            sel = axis_selector(axis)
+            if (
+                mode_of.get(axis.param.upper(), "default") == "default"
+                and sel not in fit
+                and sel.upper() not in rule_fit
+            ):
+                fit.append(sel)
+    if fit:
+        actions.append(("FIT", fit))
+    for rule in step.role_rules:
+        entries = [e.strip() for e in rule.entries if e.strip()]
+        if entries:
+            actions.append((rule.action, entries))
+    return actions
+
+
+def _format_residue(r: Union[int, str]) -> str:
+    s = str(r).strip()
+    return s if s.isdigit() else _q(s)
+
+
 def emit_method_toml_v2(config: MethodConfigModel) -> str:
     """Serializes a MethodConfigModel into canonical ChemEx v2 method.toml (FORMAT_VERSION = 2)."""
     if config.raw_override and config.raw_override.strip():
-        raw = config.raw_override.strip()
-        if not raw.startswith("FORMAT_VERSION"):
-            raw = f"FORMAT_VERSION = 2\n\n{raw}"
-        return raw + "\n"
+        return config.raw_override
 
-    lines: list[str] = ["FORMAT_VERSION = 2", ""]
-    prev_step_name: str | None = None
+    lines: List[str] = ["FORMAT_VERSION = 2"]
 
-    for idx, step in enumerate(config.steps):
-        step_name = (step.name or f"STEP{idx + 1}").strip().upper()
-        lines.append(f"[{step_name}]")
+    for idx, raw_step in enumerate(config.steps):
+        step = normalize_step(raw_step)
+        name = (step.name or f"STEP{idx + 1}").strip().upper()
+        lines += ["", f"[{name}]"]
 
-        # 1. Selection (INCLUDE / EXCLUDE)
-        if step.residues:
-            formatted: list[str] = []
-            for r in step.residues:
-                r_str = str(r).strip()
-                if r_str.isdigit():
-                    formatted.append(f'"{r_str}"')
-                elif r_str.upper() in ("*", "ALL"):
-                    formatted.append('"ALL"')
-                else:
-                    formatted.append(f'"{r_str}"')
-            if len(formatted) == 1 and formatted[0] == '"ALL"':
-                val = '"ALL"'
-            else:
-                val = f"[{', '.join(formatted)}]"
+        residues = [str(r).strip() for r in step.residues if str(r).strip()]
+        if residues:
+            key = "EXCLUDE" if step.residue_mode == "exclude" else "INCLUDE"
+            is_all = len(residues) == 1 and residues[0].upper() in ("ALL", "*")
+            value = '"ALL"' if is_all else "[" + ", ".join(_format_residue(r) for r in residues) + "]"
+            lines.append(f"{key} = {value}")
 
-            if step.residue_mode == "exclude":
-                lines.append(f"EXCLUDE = {val}")
-            else:
-                lines.append(f"INCLUDE = {val}")
+        if step.roles_from and step.roles_from.strip():
+            lines.append(f"ROLES_FROM = {_q(step.roles_from.strip().upper())}")
 
-        # 2. Role inheritance from previous step
-        if prev_step_name is not None:
-            lines.append(f'ROLES_FROM = "{prev_step_name}"')
-
-        # 3. ROLES (CONSTRAIN, FIX, FIT in that order)
-        roles: list[str] = []
-
-        # CONSTRAIN
-        constrain_params = [p for p in step.parameters if p.mode == "constrain"]
-        c_items: list[str] = []
-        for p in constrain_params:
-            if p.expression and p.expression.strip():
-                expr = p.expression.strip()
-                if "=" in expr:
-                    clean = expr.replace('"', "")
-                    c_items.append(f'"{clean}"')
-                else:
-                    pname = p.name.upper()
-                    target = pname if pname.startswith("[") else f"[{pname}]"
-                    clean_expr = expr.replace('"', "")
-                    c_items.append(f'"{target} = {clean_expr}"')
-        if c_items:
-            roles.append(f"  {{ CONSTRAIN = [{', '.join(c_items)}] }},")
-
-        # FIX
-        fix_params = [p for p in step.parameters if p.mode == "fix"]
-        if fix_params:
-            names = ", ".join(f'"{p.name.upper()}"' for p in fix_params)
-            roles.append(f"  {{ FIX = [{names}] }},")
-
-        # FIT
-        fit_params = [p for p in step.parameters if p.mode == "fit"]
-        if fit_params:
-            names = ", ".join(f'"{p.name.upper()}"' for p in fit_params)
-            roles.append(f"  {{ FIT = [{names}] }},")
-
-        if roles:
+        actions = step_role_actions(step)
+        if actions:
             lines.append("ROLES = [")
-            lines.extend(roles)
+            for action, entries in actions:
+                lines.append(f"  {{ {action} = [{', '.join(_q(e) for e in entries)}] }},")
             lines.append("]")
 
-        # 4. GRID
-        grid_params = [p for p in step.parameters if p.mode == "grid" and p.grid]
-        if grid_params:
-            lines.append("")
-            lines.append(f"[{step_name}.SEARCH.GRID]")
-            axes: list[str] = []
-            for p in grid_params:
-                g = p.grid
-                scale = "log" if str(g.get("scale", "lin")).lower() == "log" else "lin"
-                pname = p.name.upper()
-                p_fmt = pname if pname.startswith("[") else f"[{pname}]"
-                min_v = g.get("min", 0.0)
-                max_v = g.get("max", 1.0)
-                steps_v = g.get("steps", 10)
-                axes.append(f'  "{p_fmt} = {scale}({min_v}, {max_v}, {steps_v})",')
-            lines.append("AXES = [")
-            lines.extend(axes)
-            lines.append("]")
+        search = step.search
+        if search and search.mode != "none" and search.axes:
+            if search.mode == "grid":
+                lines += ["", f"[{name}.SEARCH.GRID]", "AXES = ["]
+                lines += [f"  {_q(format_axis(a, 'grid'))}," for a in search.axes]
+                lines.append("]")
+            else:
+                lines += ["", f"[{name}.SEARCH.DE]"]
+                if search.seed is not None:
+                    lines.append(f"SEED = {int(search.seed)}")
+                lines.append("COORDINATES = [")
+                lines += [f"  {_q(format_axis(a, 'de'))}," for a in search.axes]
+                lines.append("]")
 
-        # 5. STATISTICS
         stats = step.statistics
         if stats and not stats.is_empty():
-            if stats.mc is not None:
-                lines.append("")
-                lines.append(f"[{step_name}.STATISTICS.MC]")
-                lines.append(f"REPLICATES = {stats.mc}")
-                lines.append("SEED = 0")
-            if stats.bs is not None:
-                lines.append("")
-                lines.append(f"[{step_name}.STATISTICS.BS]")
-                lines.append(f"REPLICATES = {stats.bs}")
-                lines.append("SEED = 0")
-            if stats.bsn is not None:
-                lines.append("")
-                lines.append(f"[{step_name}.STATISTICS.BSN]")
-                lines.append(f"REPLICATES = {stats.bsn}")
-                lines.append("SEED = 0")
+            for key, val in (("MC", stats.mc), ("BS", stats.bs), ("BSN", stats.bsn)):
+                reps = _replicates(val)
+                if reps:
+                    lines += ["", f"[{name}.STATISTICS.{key}]", f"REPLICATES = {reps}"]
+                    seed = _resampling_seed(val)
+                    if seed is not None:
+                        lines.append(f"SEED = {seed}")
             if stats.mcmc is not None:
-                lines.append("")
-                lines.append(f"[{step_name}.STATISTICS.MCMC]")
-                if isinstance(stats.mcmc, int):
-                    lines.append(f"STEPS = {stats.mcmc}")
-                    lines.append('BURN = "AUTO"')
-                    lines.append("SEED = 0")
-                elif isinstance(stats.mcmc, McmcSettingsModel):
-                    m = stats.mcmc
-                    lines.append(f"STEPS = {m.steps}")
-                    burn_val = f'"{m.burn.upper()}"' if isinstance(m.burn, str) else str(m.burn)
-                    lines.append(f"BURN = {burn_val}")
-                    seed_val = m.seed if m.seed is not None else 0
-                    lines.append(f"SEED = {seed_val}")
-                    if m.thin != 1:
-                        lines.append(f"# V1_ONLY_THIN = {m.thin}")
-                    if m.walkers is not None:
-                        lines.append(f"# V1_ONLY_WALKERS = {m.walkers}")
+                m = stats.mcmc
+                steps_n = m if isinstance(m, int) else m.steps
+                lines += ["", f"[{name}.STATISTICS.MCMC]", f"STEPS = {steps_n}"]
+                if isinstance(m, McmcSettingsModel):
+                    if isinstance(m.burn, int):
+                        lines.append(f"BURN = {m.burn}")
+                    if m.seed is not None:
+                        lines.append(f"SEED = {m.seed}")
 
-        lines.append("")
-        prev_step_name = step_name
-
-    return "\n".join(lines).strip() + "\n"
+    return "\n".join(lines) + "\n"
 
 
 def emit_method_toml(config: MethodConfigModel, format_version: int = 2) -> str:
@@ -467,247 +612,307 @@ def emit_method_toml(config: MethodConfigModel, format_version: int = 2) -> str:
     return emit_method_toml_v2(config)
 
 
+# ── Parsing ─────────────────────────────────────────────────────────────
+
+_SIMPLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_PLAIN_CONSTRAINT = re.compile(r"^\s*\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]\s*=\s*(.+)$", re.S)
+_BOUND_CONSTRAINT = re.compile(r"^\s*\[?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\]?\s*(<=?|>=?)\s*[-+.\deE]+\s*$")
+_AXIS = re.compile(r"^\s*\[?([^\]=]+?)\]?\s*=\s*([A-Za-z_]*)\s*[(\[]\s*([^)\]]*)[)\]]\s*$")
+
+
+def _get(table: Any, key: str) -> Any:
+    if not isinstance(table, dict):
+        return None
+    for k, v in table.items():
+        if str(k).upper() == key.upper():
+            return v
+    return None
+
+
+def _str_list(v: Any) -> List[str]:
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x) for x in v]
+    return [str(v)]
+
+
+def _new_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
+
+def parse_axis_string(text: str, legacy_array_is_range: bool = False) -> Optional[SearchAxisModel]:
+    """Parse "[SEL] = fn(...)", legacy bare tuple "(a, b, c)", or legacy "[min, max, n]" (v1 GRID)."""
+    m = _AXIS.match(text.strip().strip('"').strip("'"))
+    if not m:
+        return None
+    selector, fn, args_s = m.group(1).strip(), m.group(2).lower(), m.group(3)
+    try:
+        args = [float(a) for a in args_s.split(",") if a.strip()]
+    except ValueError:
+        return None
+    if not args or not all(math.isfinite(a) for a in args):
+        return None
+    parts = [p.strip() for p in selector.split(",")]
+    base = dict(id=_new_id("axis"), param=parts[0].upper(), qualifier=", ".join(parts[1:]) or None)
+    is_bracket_array = "[" in text.split("=", 1)[1] if "=" in text else False
+    if fn == "" and legacy_array_is_range and is_bracket_array and len(args) == 3:
+        return SearchAxisModel(**base, fn="lin", low=args[0], high=args[1], count=int(args[2]))
+    if fn in ("values", ""):
+        return SearchAxisModel(**base, fn="values", low=min(args), high=max(args), count=len(args), values=args)
+    if fn not in ("lin", "log"):
+        return None
+    return SearchAxisModel(**base, fn=fn, low=args[0], high=args[1], count=int(args[2]) if len(args) >= 3 else 0)
+
+
+def _parse_axes(entries: Any, legacy: bool) -> List[SearchAxisModel]:
+    if isinstance(entries, dict):  # legacy inline table { PB = [min, max, n] }
+        entries = [f"[{k}] = [{', '.join(str(x) for x in v)}]" if isinstance(v, list) else f"[{k}] = {v}" for k, v in entries.items()]
+    axes = []
+    for e in _str_list(entries):
+        a = parse_axis_string(e, legacy_array_is_range=legacy)
+        if a:
+            axes.append(a)
+    return axes
+
+
+def _upsert(params: List[ParamSettingModel], name: str, **update: Any) -> None:
+    uname = name.upper()
+    for p in params:
+        if p.name.upper() == uname:
+            for k, v in update.items():
+                setattr(p, k, v)
+            return
+    params.append(ParamSettingModel(name=uname, **{"mode": "fit", **update}))
+
+
+def _parse_roles(roles: Any) -> Tuple[List[ParamSettingModel], List[RoleRuleModel]]:
+    """Plain-name actions on not-yet-assigned params → table; the rest → ordered rules."""
+    params: List[ParamSettingModel] = []
+    rules: List[RoleRuleModel] = []
+    assigned: set[str] = set()
+    in_table = True
+    for action_table in roles if isinstance(roles, list) else []:
+        if not isinstance(action_table, dict) or len(action_table) != 1:
+            continue
+        raw_key, raw_val = next(iter(action_table.items()))
+        action = str(raw_key).upper()
+        if action not in ("FIT", "FIX", "CONSTRAIN"):
+            continue
+        entries = [e.strip() for e in _str_list(raw_val) if e.strip()]
+        names: Optional[List[str]] = None
+        if in_table:
+            if action == "CONSTRAIN":
+                ms = [_PLAIN_CONSTRAINT.match(e) for e in entries]
+                if all(ms):
+                    names = [m.group(1).upper() for m in ms]  # type: ignore[union-attr]
+            elif all(_SIMPLE_NAME.match(e) for e in entries):
+                names = [e.upper() for e in entries]
+            else:
+                # Mixed FIT/FIX action: plain names on fresh params → table, qualified rest → first rule.
+                plain = [e.upper() for e in entries if _SIMPLE_NAME.match(e)]
+                qualified = [e for e in entries if not _SIMPLE_NAME.match(e)]
+                if plain and not any(n in assigned for n in plain) and len(set(plain)) == len(plain):
+                    for n in plain:
+                        assigned.add(n)
+                        _upsert(params, n, mode="fit" if action == "FIT" else "fix")
+                    in_table = False
+                    rules.append(RoleRuleModel(id=_new_id("rule"), action=action, entries=qualified))  # type: ignore[arg-type]
+                    continue
+            if names and (any(n in assigned for n in names) or len(set(names)) != len(names)):
+                names = None
+        if in_table and names:
+            for n, e in zip(names, entries):
+                assigned.add(n)
+                if action == "CONSTRAIN":
+                    _upsert(params, n, mode="constrain", expression=_PLAIN_CONSTRAINT.match(e).group(2).strip())  # type: ignore[union-attr]
+                else:
+                    _upsert(params, n, mode="fit" if action == "FIT" else "fix")
+        else:
+            in_table = False
+            rules.append(RoleRuleModel(id=_new_id("rule"), action=action, entries=entries))  # type: ignore[arg-type]
+    return params, rules
+
+
+def _parse_statistics(stat_data: Any) -> Optional[StatisticsModel]:
+    if not isinstance(stat_data, dict):
+        return None
+    norm: Dict[str, Any] = {}
+    for sk, sv in stat_data.items():
+        k = str(sk).lower()
+        if k in ("mc", "bs", "bsn"):
+            norm[k] = sv
+        elif k == "mcmc":
+            if isinstance(sv, int) and not isinstance(sv, bool):
+                norm["mcmc"] = sv
+            elif isinstance(sv, dict):
+                mcmc = {str(mk).lower(): mv for mk, mv in sv.items()}
+                if isinstance(mcmc.get("burn"), str):
+                    mcmc["burn"] = "auto" if mcmc["burn"].strip().lower() == "auto" else mcmc["burn"]
+                try:
+                    norm["mcmc"] = McmcSettingsModel(**mcmc)
+                except Exception:
+                    pass
+    try:
+        stats = StatisticsModel(**norm)
+    except Exception:
+        return None
+    return None if stats.is_empty() else stats
+
+
+def _parse_selection(section: dict) -> Tuple[Literal["include", "exclude"], List[Union[int, str]]]:
+    inc, exc = _get(section, "INCLUDE"), _get(section, "EXCLUDE")
+    raw, mode = (inc, "include") if inc is not None else (exc, "exclude") if exc is not None else (None, "include")
+    if raw is None:
+        return "include", []
+    residues: List[Union[int, str]] = []
+    for r in raw if isinstance(raw, list) else [raw]:
+        s = str(r).strip()
+        residues.append(int(s) if s.isdigit() else ("ALL" if s == "*" else s))
+    return mode, residues  # type: ignore[return-value]
+
+
+def _parse_v2_step(name: str, section: dict) -> MethodStepModel:
+    residue_mode, residues = _parse_selection(section)
+    params, rules = _parse_roles(_get(section, "ROLES") or [])
+    search = None
+    search_data = _get(section, "SEARCH")
+    if isinstance(search_data, dict):
+        grid, de = _get(search_data, "GRID"), _get(search_data, "DE")
+        if isinstance(grid, dict):
+            search = StepSearchModel(mode="grid", axes=_parse_axes(_get(grid, "AXES"), legacy=False))
+        elif isinstance(de, dict):
+            seed = _get(de, "SEED")
+            search = StepSearchModel(
+                mode="de",
+                axes=_parse_axes(_get(de, "COORDINATES"), legacy=False),
+                seed=seed if isinstance(seed, int) else None,
+            )
+    # Keep parse → emit a fixed point: a leading FIT rule made only of search selectors
+    # on baseline parameters is exactly what the emitter auto-adds to the table FIT.
+    if search and search.mode != "none" and rules and rules[0].action == "FIT":
+        mode_of = {p.name.upper(): p.mode for p in params}
+        auto = {axis_selector(a).upper() for a in search.axes if mode_of.get(a.param.upper(), "default") == "default"}
+        if rules[0].entries and all(e.strip().upper() in auto for e in rules[0].entries):
+            rules = rules[1:]
+    rf = _get(section, "ROLES_FROM")
+    return MethodStepModel(
+        name=name,
+        parameters=params,
+        residue_mode=residue_mode,
+        residues=residues,
+        roles_from=rf if isinstance(rf, str) else None,
+        role_rules=rules,
+        search=search,
+        statistics=_parse_statistics(_get(section, "STATISTICS")),
+    )
+
+
+def _parse_v1_step(name: str, section: dict) -> MethodStepModel:
+    residue_mode, residues = _parse_selection(section)
+    params: List[ParamSettingModel] = []
+    rules: List[RoleRuleModel] = []
+    # v1 bucket order CONSTRAINTS → FIX → FIT (later wins).
+    for c in _str_list(_get(section, "CONSTRAINTS")):
+        b = _BOUND_CONSTRAINT.match(c)
+        if b:
+            exists = any(p.name.upper() == b.group(1).upper() for p in params)
+            bound = re.sub(r"^\s*\[?\s*[A-Za-z_][A-Za-z0-9_]*\s*\]?\s*", "", c)
+            _upsert(params, b.group(1), bounds=bound, **({} if exists else {"mode": "default"}))
+            continue
+        m = _PLAIN_CONSTRAINT.match(c)
+        if m:
+            _upsert(params, m.group(1), mode="constrain", expression=m.group(2).strip())
+        else:
+            rules.append(RoleRuleModel(id=_new_id("rule"), action="CONSTRAIN", entries=[c]))
+    for key in ("FIX", "FIT"):
+        for sel in _str_list(_get(section, key)):
+            if _SIMPLE_NAME.match(sel.strip()):
+                _upsert(params, sel.strip(), mode="fit" if key == "FIT" else "fix")
+            else:
+                rules.append(RoleRuleModel(id=_new_id("rule"), action=key, entries=[sel]))  # type: ignore[arg-type]
+    grid = _get(section, "GRID")
+    search = StepSearchModel(mode="grid", axes=_parse_axes(grid, legacy=True)) if grid is not None else None
+    return MethodStepModel(
+        name=name,
+        parameters=params,
+        residue_mode=residue_mode,
+        residues=residues,
+        role_rules=rules,
+        search=search,
+        statistics=_parse_statistics(_get(section, "STATISTICS")),
+    )
+
+
 def parse_method_toml(toml_str: str) -> MethodConfigModel:
     """
-    Parses a ChemEx method.toml string (supporting both v1 and v2 formats) into a MethodConfigModel.
-    Handles section names, parameters (FIT, FIX, CONSTRAINTS, ROLES, GRID, SEARCH.GRID, INCLUDE, EXCLUDE),
-    and STATISTICS in inline, subtable, or v2 table forms.
+    Parse a ChemEx method.toml (v2, or legacy v1 migrated to v2 semantics) into a MethodConfigModel.
+    Malformed TOML is preserved verbatim as ``raw_override``.
     """
     if not toml_str or not toml_str.strip():
         return MethodConfigModel(steps=[MethodStepModel(name="STEP1")])
-
     try:
-        parsed_dict = tomllib.loads(toml_str)
+        data = tomllib.loads(toml_str)
     except Exception:
         return MethodConfigModel(steps=[MethodStepModel(name="STEP1")], raw_override=toml_str)
 
+    is_v2 = any(str(k).upper() == "FORMAT_VERSION" for k in data)
     steps: List[MethodStepModel] = []
-
-    for section_name, section_data in parsed_dict.items():
-        if not isinstance(section_data, dict) or section_name.upper() == "FORMAT_VERSION":
+    for section_name, section in data.items():
+        if not isinstance(section, dict):
             continue
+        name = str(section_name).upper()
+        steps.append(_parse_v2_step(name, section) if is_v2 else _parse_v1_step(name, section))
 
-        step_name = section_name.upper()
+    if not is_v2:
+        # v1 carried roles and selection implicitly between steps; make it explicit.
+        for i in range(1, len(steps)):
+            steps[i].roles_from = steps[i - 1].name
+            if not steps[i].residues and steps[i - 1].residues:
+                steps[i].residue_mode = steps[i - 1].residue_mode
+                steps[i].residues = list(steps[i - 1].residues)
 
-        params: List[ParamSettingModel] = []
-        residue_mode: Literal["include", "exclude"] = "include"
-        residues: List[Union[int, str]] = []
-        statistics: Optional[StatisticsModel] = None
+    return MethodConfigModel(steps=steps or [MethodStepModel(name="STEP1")])
 
-        # 1. v1 FIT
-        fit_list = section_data.get("FIT", section_data.get("fit", []))
-        if isinstance(fit_list, list):
-            for item in fit_list:
-                params.append(ParamSettingModel(name=str(item).upper(), mode="fit"))
 
-        # 2. v1 FIX
-        fix_list = section_data.get("FIX", section_data.get("fix", []))
-        if isinstance(fix_list, list):
-            for item in fix_list:
-                params.append(ParamSettingModel(name=str(item).upper(), mode="fix"))
+# ── Validation ──────────────────────────────────────────────────────────
 
-        # 3. v1 CONSTRAINTS
-        constraints = section_data.get("CONSTRAINTS", section_data.get("constraints", []))
-        if isinstance(constraints, str):
-            constraints = [constraints]
-        if isinstance(constraints, list):
-            for c in constraints:
-                c_str = str(c).strip()
-                bound_match = re.match(r'^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*([<>]=?\s*[\d.eE+-]+)$', c_str, re.I)
-                if bound_match:
-                    pname = (bound_match.group(1) or bound_match.group(2)).upper()
-                    bound_part = bound_match.group(3).strip()
-                    existing = next((p for p in params if p.name == pname), None)
-                    if existing:
-                        existing.bounds = bound_part
-                    else:
-                        params.append(ParamSettingModel(name=pname, mode="fit", bounds=bound_part))
-                    continue
+_STEP_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+_QUALIFIER = re.compile(r"^(NUC|T|B0|\[P\]|\[L\]|D2O)\s*->\s*\S.*$", re.I)
+_MAX_SEED = (1 << 64) - 1
 
-                expr_match = re.match(r'^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*=\s*(.+)$', c_str, re.I)
-                if expr_match:
-                    pname = (expr_match.group(1) or expr_match.group(2)).upper()
-                    expression = expr_match.group(3).strip()
-                    existing = next((p for p in params if p.name == pname), None)
-                    if existing:
-                        existing.mode = "constrain"
-                        existing.expression = expression
-                    else:
-                        params.append(ParamSettingModel(name=pname, mode="constrain", expression=expression))
-                    continue
 
-        # 3b. v2 ROLES: [ { CONSTRAIN = [...] }, { FIX = [...] }, { FIT = [...] } ]
-        roles_data = section_data.get("ROLES", section_data.get("roles", []))
-        if isinstance(roles_data, list):
-            for action_dict in roles_data:
-                if not isinstance(action_dict, dict):
-                    continue
-                # FIT
-                r_fit = action_dict.get("FIT", action_dict.get("fit", []))
-                if isinstance(r_fit, list):
-                    for item in r_fit:
-                        params.append(ParamSettingModel(name=str(item).upper(), mode="fit"))
-                # FIX
-                r_fix = action_dict.get("FIX", action_dict.get("fix", []))
-                if isinstance(r_fix, list):
-                    for item in r_fix:
-                        params.append(ParamSettingModel(name=str(item).upper(), mode="fix"))
-                # CONSTRAIN
-                r_constrain = action_dict.get("CONSTRAIN", action_dict.get("constrain", []))
-                if isinstance(r_constrain, str):
-                    r_constrain = [r_constrain]
-                if isinstance(r_constrain, list):
-                    for c in r_constrain:
-                        c_str = str(c).strip()
-                        expr_match = re.match(r'^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*=\s*(.+)$', c_str, re.I)
-                        if expr_match:
-                            pname = (expr_match.group(1) or expr_match.group(2)).upper()
-                            expression = expr_match.group(3).strip()
-                            existing = next((p for p in params if p.name == pname), None)
-                            if existing:
-                                existing.mode = "constrain"
-                                existing.expression = expression
-                            else:
-                                params.append(ParamSettingModel(name=pname, mode="constrain", expression=expression))
+def _selector_error(selector: str) -> Optional[str]:
+    parts = [p.strip() for p in selector.split(",")]
+    if not parts[0]:
+        return "Selector is empty."
+    if not _SIMPLE_NAME.match(parts[0]):
+        return f"Invalid parameter name {parts[0]!r}."
+    seen: set[str] = set()
+    for frag in parts[1:]:
+        if not _QUALIFIER.match(frag):
+            return f"Invalid qualifier {frag!r}."
+        k = frag.split("->")[0].strip().upper()
+        if k in seen:
+            return f"Duplicate qualifier {k}."
+        seen.add(k)
+    return None
 
-        # 4. GRID (v1 list or v2 SEARCH.GRID.AXES)
-        grid_data = section_data.get("GRID", section_data.get("grid"))
-        # Check v2 SEARCH.GRID.AXES
-        if grid_data is None:
-            search_data = section_data.get("SEARCH", section_data.get("search"))
-            if isinstance(search_data, dict):
-                grid_sub = search_data.get("GRID", search_data.get("grid"))
-                if isinstance(grid_sub, dict):
-                    grid_data = grid_sub.get("AXES", grid_sub.get("axes"))
 
-        if grid_data is not None:
-            if isinstance(grid_data, str):
-                grid_data = [grid_data]
-            if isinstance(grid_data, list):
-                for g_item in grid_data:
-                    g_str = str(g_item).strip().strip('"').strip("'")
-                    func_match = re.match(
-                        r'^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*=\s*(log|lin)\s*\(\s*([\d.eE+-]+)\s*,\s*([\d.eE+-]+)\s*,\s*(\d+)\s*\)$',
-                        g_str,
-                        re.I,
-                    )
-                    if func_match:
-                        pname = (func_match.group(1) or func_match.group(2)).upper()
-                        scale = "log" if func_match.group(3).lower() == "log" else "lin"
-                        min_v = float(func_match.group(4))
-                        max_v = float(func_match.group(5))
-                        steps_v = int(func_match.group(6))
-                        params.append(
-                            ParamSettingModel(
-                                name=pname,
-                                mode="grid",
-                                grid={"min": min_v, "max": max_v, "steps": steps_v, "scale": scale},
-                            )
-                        )
-                        continue
-
-                    arr_match = re.match(
-                        r'^(?:\[([A-Za-z0-9_]+)\]|([A-Za-z0-9_]+))\s*=\s*\[\s*([\d.eE+-]+)\s*,\s*([\d.eE+-]+)\s*,\s*(\d+)\s*\]$',
-                        g_str,
-                        re.I,
-                    )
-                    if arr_match:
-                        pname = (arr_match.group(1) or arr_match.group(2)).upper()
-                        min_v = float(arr_match.group(3))
-                        max_v = float(arr_match.group(4))
-                        steps_v = int(arr_match.group(5))
-                        params.append(
-                            ParamSettingModel(
-                                name=pname,
-                                mode="grid",
-                                grid={"min": min_v, "max": max_v, "steps": steps_v, "scale": "lin"},
-                            )
-                        )
-                        continue
-            elif isinstance(grid_data, dict):
-                for pname, gval in grid_data.items():
-                    if isinstance(gval, list) and len(gval) >= 3:
-                        params.append(
-                            ParamSettingModel(
-                                name=str(pname).upper(),
-                                mode="grid",
-                                grid={"min": float(gval[0]), "max": float(gval[1]), "steps": int(gval[2]), "scale": "lin"},
-                            )
-                        )
-
-        # 5. INCLUDE / EXCLUDE
-        include_data = section_data.get("INCLUDE", section_data.get("include"))
-        exclude_data = section_data.get("EXCLUDE", section_data.get("exclude"))
-        raw_res = None
-        if include_data is not None:
-            residue_mode = "include"
-            raw_res = include_data
-        elif exclude_data is not None:
-            residue_mode = "exclude"
-            raw_res = exclude_data
-
-        if raw_res is not None:
-            res_list = raw_res if isinstance(raw_res, list) else [raw_res]
-            residues = []
-            for r in res_list:
-                r_str = str(r).strip()
-                if r_str.isdigit():
-                    residues.append(int(r_str))
-                else:
-                    residues.append(r_str)
-
-        # 6. STATISTICS (v1 inline/subtable or v2 subtable)
-        stat_data = section_data.get("STATISTICS", section_data.get("statistics"))
-        if isinstance(stat_data, dict):
-            stat_norm: Dict[str, Any] = {}
-            for sk, sv in stat_data.items():
-                sk_lower = sk.lower()
-                if sk_lower in ["mc", "bs", "bsn"]:
-                    # In v2, sv is a dict like {'replicates': 100, 'seed': 0}
-                    if isinstance(sv, dict):
-                        reps = sv.get("REPLICATES", sv.get("replicates"))
-                        if reps is not None:
-                            try:
-                                stat_norm[sk_lower] = int(reps)
-                            except (ValueError, TypeError):
-                                pass
-                    else:
-                        try:
-                            stat_norm[sk_lower] = int(sv)
-                        except (ValueError, TypeError):
-                            pass
-                elif sk_lower == "mcmc":
-                    if isinstance(sv, (int, str)) and str(sv).isdigit():
-                        stat_norm["mcmc"] = int(sv)
-                    elif isinstance(sv, dict):
-                        mcmc_norm = {}
-                        for mk, mv in sv.items():
-                            k_l = mk.lower()
-                            if k_l == "burn" and isinstance(mv, str) and mv.upper() == "AUTO":
-                                mcmc_norm["burn"] = "AUTO"
-                            else:
-                                mcmc_norm[k_l] = mv
-                        try:
-                            stat_norm["mcmc"] = McmcSettingsModel(**mcmc_norm)
-                        except Exception:
-                            pass
-            if stat_norm:
-                statistics = StatisticsModel(**stat_norm)
-
-        steps.append(
-            MethodStepModel(
-                name=step_name,
-                parameters=params,
-                residue_mode=residue_mode,
-                residues=residues,
-                statistics=statistics,
-            )
-        )
-
-    if not steps:
-        steps.append(MethodStepModel(name="STEP1"))
-
-    return MethodConfigModel(steps=steps)
+def _constraint_error(eq: str) -> Optional[str]:
+    if eq.count("=") != 1:
+        return "Constraint must contain exactly one '='."
+    lhs, rhs = eq.split("=")
+    if not re.match(r"^\s*\[[^\]]+\]\s*$", lhs):
+        return "Constraint left side must be one bracketed selector."
+    if not rhs.strip():
+        return "Constraint right side is empty."
+    if rhs.count("[") != rhs.count("]"):
+        return "Unmatched brackets in constraint."
+    stripped = re.sub(r"\[[^\]]*\]", "0", rhs)
+    if re.search(r"[^0-9eE.+\-*/()\s]", stripped):
+        return "Constraint right side may only use numbers, [parameters], ( ), + - * /."
+    return None
 
 
 def validate_method_config(
@@ -715,20 +920,21 @@ def validate_method_config(
     available_params: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Performs server-side validation on a MethodConfigModel.
-    Returns a list of actionable issue dicts compatible with resoFlow UI:
-    [
-      {
-        "id": str,
-        "stepIndex": int,
-        "stepName": str,
-        "field": str,
-        "severity": "error" | "warning",
-        "message": str
-      }
-    ]
+    Server-side validation against ChemEx v2 method rules. Returns UI-compatible issue dicts:
+    {id, stepIndex, stepName, field, severity: "error" | "warning", message}.
     """
     issues: List[Dict[str, Any]] = []
+    known = {p.upper() for p in (available_params or [])}
+
+    def add(idx: int, label: str, field: str, severity: str, message: str, suffix: str) -> None:
+        issues.append({
+            "id": f"step-{idx}-{suffix}",
+            "stepIndex": idx,
+            "stepName": label,
+            "field": field,
+            "severity": severity,
+            "message": message,
+        })
 
     if not config.steps:
         issues.append({
@@ -741,141 +947,87 @@ def validate_method_config(
         })
         return issues
 
-    for idx, step in enumerate(config.steps):
-        step_label = step.name or f"STEP{idx + 1}"
+    earlier: set[str] = set()
+    for idx, raw in enumerate(config.steps):
+        step = normalize_step(raw)
+        label = (step.name or f"STEP{idx + 1}").strip().upper()
 
-        # 1. Parameter conflict validation
-        fit_params = [p for p in step.parameters if p.mode == "fit"]
-        grid_params = [p for p in step.parameters if p.mode == "grid"]
+        if not _STEP_NAME.match(label):
+            add(idx, label, "name", "error", f"Step name '{label}' may only contain letters, digits, '_' and '-'.", "name")
+        if label in earlier:
+            add(idx, label, "name", "error", f"Duplicate step name '{label}'.", "duplicate")
+        if step.roles_from and step.roles_from.strip().upper() not in earlier:
+            add(idx, label, "roles_from", "error", f"ROLES_FROM '{step.roles_from}' must name an earlier step.", "roles-from")
 
-        # 2. Statistics validation
-        if step.statistics and not step.statistics.is_empty():
-            stats = step.statistics
+        mode_of = {p.name.upper(): p.mode for p in step.parameters}
+        for p in step.parameters:
+            if known and p.mode != "default" and p.name.upper() not in known:
+                add(idx, label, f"parameters.{p.name}", "warning", f"Unknown parameter '{p.name.upper()}'.", f"unknown-{p.name}")
+            if p.mode == "constrain":
+                eq = _constraint_entry(p)
+                msg = _constraint_error(eq) if eq else "Constraint expression is empty."
+                if msg:
+                    add(idx, label, f"parameters.{p.name}", "error", f"{p.name.upper()}: {msg}", f"constraint-{p.name}")
+            if p.bounds and p.bounds.strip():
+                add(idx, label, f"parameters.{p.name}", "warning",
+                    f"Bound '{p.bounds.strip()}' on {p.name.upper()} is a v1 inequality and is not supported by ChemEx v2 methods; it is ignored.",
+                    f"bound-{p.name}")
 
-            # Check grid + statistics conflict
-            if grid_params:
-                issues.append({
-                    "id": f"step-{idx}-grid-statistics-conflict",
-                    "stepIndex": idx,
-                    "stepName": step_label,
-                    "field": "statistics",
-                    "severity": "warning",
-                    "message": f"Step '{step_label}' has both GRID search and STATISTICS enabled. ChemEx will disable statistics for steps performing grid search.",
-                })
+        for ri, rule in enumerate(step.role_rules):
+            for e in [x.strip() for x in rule.entries if x.strip()]:
+                msg = _constraint_error(e) if rule.action == "CONSTRAIN" else _selector_error(e)
+                if msg:
+                    add(idx, label, f"role_rules.{ri}", "error", f"Role rule #{ri + 1} ({rule.action}) {e!r}: {msg}", f"rule-{ri}")
 
-            # Check replicate counts
-            for stype, count in [("MC", stats.mc), ("BS", stats.bs), ("BSN", stats.bsn)]:
-                if count is not None:
-                    if count < 1:
-                        issues.append({
-                            "id": f"step-{idx}-{stype.lower()}-count",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": f"statistics.{stype.lower()}",
-                            "severity": "error",
-                            "message": f"{stype} replicate count must be a positive integer (>= 1). Got {count}.",
-                        })
-                    elif count > 10000:
-                        issues.append({
-                            "id": f"step-{idx}-{stype.lower()}-high-count",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": f"statistics.{stype.lower()}",
-                            "severity": "warning",
-                            "message": f"{stype} replicate count ({count}) is very high and will require significant compute time ({count} full refits).",
-                        })
+        search = step.search
+        if search and search.mode != "none":
+            kind = "GRID" if search.mode == "grid" else "DE"
+            if not search.axes:
+                add(idx, label, "search", "error", f"{kind} search has no axes.", "search-empty")
+            if search.mode == "de" and (search.seed is None or not 0 <= search.seed <= _MAX_SEED):
+                add(idx, label, "search.seed", "error", "DE search requires an unsigned 64-bit SEED.", "de-seed")
+            for ai, a in enumerate(search.axes):
+                sel = axis_selector(a)
+                if (msg := _selector_error(sel)):
+                    add(idx, label, f"search.axes.{ai}", "error", f"{kind} axis {sel!r}: {msg}", f"axis-{ai}-sel")
+                if mode_of.get(a.param.upper()) in ("fix", "constrain"):
+                    add(idx, label, f"search.axes.{ai}", "error",
+                        f"{kind} target '{a.param}' is {mode_of[a.param.upper()].upper()}; search targets must be FIT.", f"axis-{ai}-role")
+                if a.fn == "values":
+                    vals = a.values or []
+                    if search.mode == "de":
+                        add(idx, label, f"search.axes.{ai}", "error", "DE coordinates must use lin(low, high) or log(low, high).", f"axis-{ai}-fn")
+                    if not vals or len(set(vals)) != len(vals):
+                        add(idx, label, f"search.axes.{ai}", "error", f"GRID values for {sel!r} must be non-empty and unique.", f"axis-{ai}-values")
+                else:
+                    if not (math.isfinite(a.low) and math.isfinite(a.high)) or a.low >= a.high:
+                        add(idx, label, f"search.axes.{ai}", "error", f"{kind} range for {sel!r} must satisfy low < high.", f"axis-{ai}-range")
+                    if a.fn == "log" and a.low <= 0:
+                        add(idx, label, f"search.axes.{ai}", "error", f"Log {kind} range for {sel!r} must be positive.", f"axis-{ai}-log")
+                    if search.mode == "grid" and a.count < 2:
+                        add(idx, label, f"search.axes.{ai}", "error", f"GRID axis {sel!r} needs at least 2 points.", f"axis-{ai}-count")
+            if search.mode == "grid" and search.axes and idx == len(config.steps) - 1:
+                add(idx, label, "search", "warning",
+                    "The last step uses GRID: grid axes are not released and covariance errors are withheld. "
+                    "Add a following step without search to refine and obtain local uncertainties.",
+                    "grid-last")
 
-            # Check MCMC
-            if stats.mcmc is not None:
-                if isinstance(stats.mcmc, int):
-                    if stats.mcmc < 1:
-                        issues.append({
-                            "id": f"step-{idx}-mcmc-steps",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": "statistics.mcmc.steps",
-                            "severity": "error",
-                            "message": f"MCMC steps must be a positive integer (>= 1). Got {stats.mcmc}.",
-                        })
-                elif isinstance(stats.mcmc, McmcSettingsModel):
-                    m = stats.mcmc
-                    if m.steps < 1:
-                        issues.append({
-                            "id": f"step-{idx}-mcmc-steps",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": "statistics.mcmc.steps",
-                            "severity": "error",
-                            "message": f"MCMC steps must be a positive integer (>= 1). Got {m.steps}.",
-                        })
+        stats = step.statistics
+        if stats and not stats.is_empty():
+            for stype, val in (("MC", stats.mc), ("BS", stats.bs), ("BSN", stats.bsn)):
+                count = _replicates(val)
+                if count is not None and count > 10000:
+                    add(idx, label, f"statistics.{stype.lower()}", "warning",
+                        f"{stype} replicate count ({count}) is very high and will require significant compute time ({count} full refits).",
+                        f"{stype.lower()}-high-count")
+            if isinstance(stats.mcmc, McmcSettingsModel):
+                m = stats.mcmc
+                legacy = [k for k, bad in (("THIN", m.thin != 1), ("WALKERS", m.walkers is not None),
+                                            ("WORKERS", m.workers is not None), ("UPDATE_PARAMETERS", m.update_parameters)) if bad]
+                if legacy:
+                    add(idx, label, "statistics.mcmc", "warning",
+                        f"MCMC {', '.join(legacy)} are v1-only controls and are not emitted in v2.", "mcmc-legacy")
 
-                    burn_val = 0 if m.burn == "auto" else m.burn
-                    if burn_val < 0:
-                        issues.append({
-                            "id": f"step-{idx}-mcmc-burn-neg",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": "statistics.mcmc.burn",
-                            "severity": "error",
-                            "message": "MCMC burn must be non-negative (>= 0) or 'auto'.",
-                        })
-                    elif burn_val >= m.steps:
-                        issues.append({
-                            "id": f"step-{idx}-mcmc-burn-ge-steps",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": "statistics.mcmc.burn",
-                            "severity": "error",
-                            "message": f"MCMC burn ({burn_val}) must be smaller than total steps ({m.steps}).",
-                        })
-
-                    if m.thin < 1:
-                        issues.append({
-                            "id": f"step-{idx}-mcmc-thin",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": "statistics.mcmc.thin",
-                            "severity": "error",
-                            "message": f"MCMC thin must be a positive integer (>= 1). Got {m.thin}.",
-                        })
-                    elif burn_val < m.steps and (m.steps - burn_val) // m.thin < 1:
-                        issues.append({
-                            "id": f"step-{idx}-mcmc-retained-zero",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": "statistics.mcmc.thin",
-                            "severity": "error",
-                            "message": f"MCMC settings retain 0 samples with steps={m.steps}, burn={burn_val}, thin={m.thin}. Decrease thin or increase steps.",
-                        })
-
-                    if m.walkers is not None:
-                        if m.walkers < 1:
-                            issues.append({
-                                "id": f"step-{idx}-mcmc-walkers",
-                                "stepIndex": idx,
-                                "stepName": step_label,
-                                "field": "statistics.mcmc.walkers",
-                                "severity": "error",
-                                "message": f"MCMC walkers must be a positive integer (>= 1). Got {m.walkers}.",
-                            })
-                        elif fit_params and m.walkers < 2 * len(fit_params):
-                            issues.append({
-                                "id": f"step-{idx}-mcmc-walkers-bound",
-                                "stepIndex": idx,
-                                "stepName": step_label,
-                                "field": "statistics.mcmc.walkers",
-                                "severity": "error",
-                                "message": f"MCMC walkers ({m.walkers}) must be at least 2x number of fitted parameters (2 * {len(fit_params)} = {2 * len(fit_params)}).",
-                            })
-
-                    if m.workers is not None and m.workers < 1:
-                        issues.append({
-                            "id": f"step-{idx}-mcmc-workers",
-                            "stepIndex": idx,
-                            "stepName": step_label,
-                            "field": "statistics.mcmc.workers",
-                            "severity": "error",
-                            "message": f"MCMC workers must be a positive integer (>= 1). Got {m.workers}.",
-                        })
+        earlier.add(label)
 
     return issues

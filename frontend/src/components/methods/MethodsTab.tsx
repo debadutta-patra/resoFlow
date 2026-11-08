@@ -5,7 +5,7 @@
  * manager owns the state, this component renders the identical layout everywhere.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Sparkles, Upload, Workflow } from 'lucide-react';
 import type { MethodEditor } from '../../hooks/useMethodEditor';
 import { METHOD_TEMPLATES } from '../../lib/methodTemplates';
@@ -13,6 +13,8 @@ import ParameterTable from './ParameterTable';
 import ResidueSelector, { type ResidueItem } from './ResidueSelector';
 import StepTabs from './StepTabs';
 import StepStatisticsSection from './StepStatisticsSection';
+import StepSearchSection from './StepSearchSection';
+import StepRolesSection from './StepRolesSection';
 import {
   ChemexModalShell,
   ChemexTabHeader,
@@ -48,13 +50,19 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const { methodConfig, activeStep } = editor;
+  const searchTargets = useMemo(() => {
+    const out: Record<string, 'grid' | 'de'> = {};
+    const s = activeStep.search;
+    if (s && s.mode !== 'none') for (const a of s.axes) out[a.param.toUpperCase()] = s.mode;
+    return out;
+  }, [activeStep.search]);
 
   return (
     <div className="space-y-6 animate-in fade-in">
       <ChemexTabHeader
         icon={<Workflow className="w-5 h-5 text-blue-500" />}
         title="ChemEx Method Configuration"
-        description="Define multi-step fitting protocols, parameter treatments, constraints, and residue selections."
+        description="ChemEx v2 method (FORMAT_VERSION = 2): ordered steps with parameter roles, role inheritance, optional GRID/DE search, profile selection and statistics."
         actions={
           <>
             <button type="button" onClick={() => setShowTemplates(true)} className={actionBtnAccent}>
@@ -110,8 +118,24 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               availableParams={editor.availableParamsMeta}
               startingValues={startingValues}
               onNavigateToParameters={onNavigateToParameters}
+              searchTargets={searchTargets}
             />
           </div>
+
+          <StepRolesSection
+            step={activeStep}
+            stepIdx={editor.activeStepIdx}
+            steps={methodConfig.steps}
+            onChange={editor.handleStepChange}
+          />
+
+          <StepSearchSection
+            step={activeStep}
+            onChange={editor.handleStepChange}
+            family={editor.family}
+            availableParams={editor.availableParamsMeta}
+            startingValues={startingValues}
+          />
 
           <ResidueSelector
             residues={residueItems}
@@ -135,6 +159,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
 
       {showTemplates && (
         <MethodTemplatesModal
+          family={editor.family}
           onClose={() => setShowTemplates(false)}
           onApply={tmpl => {
             editor.applyTemplate(tmpl);
@@ -159,9 +184,10 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
 // ── Templates modal ─────────────────────────────────────────────────────
 
 export const MethodTemplatesModal: React.FC<{
+  family?: string;
   onClose: () => void;
   onApply: (template: (typeof METHOD_TEMPLATES)[number]) => void;
-}> = ({ onClose, onApply }) => (
+}> = ({ family, onClose, onApply }) => (
   <ChemexModalShell
     icon={<Sparkles size={20} />}
     title="Method Strategy Templates"
@@ -173,8 +199,12 @@ export const MethodTemplatesModal: React.FC<{
       </button>
     }
   >
-    {METHOD_TEMPLATES.map(tmpl => {
+    {[...METHOD_TEMPLATES]
+      // Templates aimed at this experiment (or generic ones) first.
+      .sort((a, b) => Number(!!b.families?.includes(family ?? '') || !b.families) - Number(!!a.families?.includes(family ?? '') || !a.families))
+      .map(tmpl => {
       const stepCount = tmpl.config.steps.length;
+      const searchModes = Array.from(new Set(tmpl.config.steps.map(s => s.search?.mode).filter(m => m && m !== 'none'))) as string[];
       const fitParams = Array.from(
         new Set(tmpl.config.steps.flatMap(s => (s.parameters || []).filter(p => p.mode === 'fit').map(p => p.name)))
       );
@@ -191,6 +221,11 @@ export const MethodTemplatesModal: React.FC<{
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-bold">
                 {stepCount} Step{stepCount > 1 ? 's' : ''}
               </span>
+              {searchModes.map(m => (
+                <span key={m} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-bold uppercase">
+                  {m}
+                </span>
+              ))}
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">{tmpl.description}</p>
             <div className="flex flex-wrap items-center gap-1 pt-1">
@@ -270,7 +305,7 @@ export const MethodImportModal: React.FC<{
           value={text}
           onChange={e => setText(e.target.value)}
           rows={10}
-          placeholder={`[STEP1]\nFIT = ["PB", "KEX_AB", "DW_AB", "CS_A"]\nCONSTRAINTS = ["[PB] < 0.5"]`}
+          placeholder={`FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { CONSTRAIN = ["[R2_B] = [R2_A]"] },\n  { FIT = ["PB", "KEX_AB", "DW_AB", "CS_A"] },\n]\n\n[STEP1.SEARCH.GRID]\nAXES = ["[PB] = log(0.005, 0.2, 10)"]\n\n(v1 files are migrated to v2 on import)`}
           className={`${chemexInputCls} font-mono text-xs`}
         />
         {error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}

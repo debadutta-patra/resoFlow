@@ -29,36 +29,53 @@ def _safe_float(val: str) -> Optional[float]:
 
 
 def _parse_method_grid_specs(method_file: Path, step_name: str) -> dict[str, GridSpecModel]:
-    """Parse GRID = [...] specs for a given step from method.toml."""
+    """Parse grid axis specs for a step from method.toml.
+
+    Supports v2 ``[STEP.SEARCH.GRID] AXES = [...]`` (lin/log/values, optional
+    selector qualifiers) and legacy v1 ``GRID = [...]``.
+    """
     if not method_file.exists():
         return {}
 
     specs: dict[str, GridSpecModel] = {}
     try:
         data = tomllib.loads(method_file.read_text(encoding="utf-8"))
-        step_data = data.get(step_name, {})
-        grid_entries = step_data.get("GRID", [])
+        step_data = next(
+            (v for k, v in data.items() if isinstance(v, dict) and str(k).upper() == step_name.upper()),
+            {},
+        )
+        search = next((v for k, v in step_data.items() if str(k).upper() == "SEARCH"), None)
+        grid_entries: object = step_data.get("GRID", [])
+        if isinstance(search, dict):
+            grid_tbl = next((v for k, v in search.items() if str(k).upper() == "GRID"), None)
+            if isinstance(grid_tbl, dict):
+                grid_entries = next((v for k, v in grid_tbl.items() if str(k).upper() == "AXES"), [])
         if isinstance(grid_entries, list):
             for entry in grid_entries:
                 if not isinstance(entry, str):
                     continue
-                # Format e.g. "[PB] = log(0.001, 0.02, 20)" or "KEX_AB = lin(10, 1000, 20)"
-                m = re.search(
-                    r"\[?([A-Za-z0-9_]+)\]?\s*=\s*(log|lin)\(\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*,\s*([0-9]+)\s*\)",
+                # "[PB] = log(0.001, 0.02, 20)", "[DW_AB, NUC->G24N-H] = lin(-10, 10, 21)",
+                # "[PB] = values(0.01, 0.05)", legacy "[PB] = (0.01, 0.05)"
+                m = re.match(
+                    r"\s*\[?\s*([A-Za-z0-9_]+)[^\]=]*\]?\s*=\s*(log|lin|values)?\s*\(([^)]*)\)\s*$",
                     entry.strip(),
+                    re.I,
                 )
-                if m:
-                    pname = m.group(1).upper()
-                    scale = m.group(2).lower()
-                    min_val = float(m.group(3))
-                    max_val = float(m.group(4))
-                    num_pts = int(m.group(5))
+                if not m:
+                    continue
+                pname = m.group(1).upper()
+                fn = (m.group(2) or "values").lower()
+                try:
+                    args = [float(a) for a in m.group(3).split(",") if a.strip()]
+                except ValueError:
+                    continue
+                if fn in ("lin", "log") and len(args) == 3:
                     specs[pname] = GridSpecModel(
-                        parameter=pname,
-                        scale=scale,
-                        min_val=min_val,
-                        max_val=max_val,
-                        num_points=num_pts,
+                        parameter=pname, scale=fn, min_val=args[0], max_val=args[1], num_points=int(args[2])
+                    )
+                elif fn == "values" and args:
+                    specs[pname] = GridSpecModel(
+                        parameter=pname, scale="values", min_val=min(args), max_val=max(args), num_points=len(args)
                     )
     except Exception:
         pass

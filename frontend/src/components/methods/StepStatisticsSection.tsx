@@ -67,18 +67,14 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
         enabled: isNowEnabled,
         steps: current?.steps && current.steps > 0 ? current.steps : 5000,
         burn: current?.burn !== undefined ? current.burn : 'auto',
-        thin: current?.thin && current.thin > 0 ? current.thin : 1,
-        walkers: current?.walkers,
         seed: current?.seed,
-        workers: current?.workers,
-        update_parameters: current?.update_parameters || false,
       },
     });
   };
 
   const handleUpdateMcmc = (field: keyof McmcConfig, value: any) => {
     if (readOnly) return;
-    const current = stats.mcmc || { enabled: true, steps: 5000, burn: 'auto', thin: 1 };
+    const current = stats.mcmc || { enabled: true, steps: 5000, burn: 'auto' as const };
     updateStats({
       ...stats,
       mcmc: {
@@ -88,7 +84,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
     });
   };
 
-  const generateRandomSeed = () => Math.floor(Math.random() * 1000000) + 1;
+  const generateRandomSeed = () => Math.floor(Math.random() * 2147483646) + 1;
 
   // Calculate live cost estimates
   const mcReps = stats.mc?.enabled ? Number(stats.mc.replicates || 0) : 0;
@@ -140,7 +136,9 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
           <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
             Configure uncertainty estimation methods for step{' '}
             <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{step.name}</span>.
-            Statistics run after the deterministic fit converges and provide robust confidence intervals and posterior distributions.
+            Statistics run once after the deterministic fit is committed and never change its central values. Leave a seed empty to let ChemEx
+            generate and record one. MCMC walkers and initialisation are ChemEx policy; set parallelism globally with{' '}
+            <code className="font-mono">chemex fit --workers</code>.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -190,7 +188,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        placeholder="None"
+                        placeholder="auto"
                         value={stats.mc.seed ?? ''}
                         onChange={e => handleUpdateResampling('mc', 'seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
                         disabled={readOnly}
@@ -256,7 +254,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        placeholder="None"
+                        placeholder="auto"
                         value={stats.bs.seed ?? ''}
                         onChange={e => handleUpdateResampling('bs', 'seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
                         disabled={readOnly}
@@ -322,7 +320,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        placeholder="None"
+                        placeholder="auto"
                         value={stats.bsn.seed ?? ''}
                         onChange={e => handleUpdateResampling('bsn', 'seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
                         disabled={readOnly}
@@ -396,7 +394,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                             : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                         }`}
                       >
-                        Auto (2τ)
+                        Auto (⌈2τ⌉)
                       </button>
                       {stats.mcmc.burn !== 'auto' && (
                         <input
@@ -419,7 +417,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                       className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
                     >
                       <Settings2 className="w-3 h-3" />
-                      <span>{showAdvancedMcmc ? 'Hide Advanced Settings' : 'Show Advanced MCMC Settings (Seed)'}</span>
+                      <span>{showAdvancedMcmc ? 'Hide seed' : 'Set MCMC seed'}</span>
                     </button>
                   </div>
 
@@ -430,7 +428,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                         <div className="flex items-center gap-1">
                           <input
                             type="number"
-                            placeholder="0 (deterministic)"
+                            placeholder="auto (recorded)"
                             value={stats.mcmc.seed ?? ''}
                             onChange={e => handleUpdateMcmc('seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
                             disabled={readOnly}
@@ -449,8 +447,24 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
 
                       {/* Display legacy settings read-only if present from historic runs */}
                       {((stats.mcmc.thin && stats.mcmc.thin > 1) || stats.mcmc.walkers || stats.mcmc.workers || stats.mcmc.update_parameters) && (
-                        <div className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-700/60 text-[10px] space-y-1 text-slate-500">
-                          <div className="font-semibold text-slate-400 uppercase tracking-wider">Legacy v1 Settings (read-only):</div>
+                        <div className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-700/60 text-[10px] space-y-1 text-amber-600 dark:text-amber-400">
+                          <div className="flex items-center justify-between font-semibold uppercase tracking-wider">
+                            <span>Legacy v1 settings (ignored by ChemEx v2)</span>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                className="normal-case underline"
+                                onClick={() =>
+                                  updateStats({
+                                    ...stats,
+                                    mcmc: { ...stats.mcmc!, thin: undefined, walkers: undefined, workers: undefined, update_parameters: undefined },
+                                  })
+                                }
+                              >
+                                clear
+                              </button>
+                            )}
+                          </div>
                           {stats.mcmc.thin && stats.mcmc.thin > 1 && <div>Thinning: {stats.mcmc.thin}</div>}
                           {stats.mcmc.walkers && <div>Walkers: {stats.mcmc.walkers}</div>}
                           {stats.mcmc.workers && <div>Workers: {stats.mcmc.workers}</div>}

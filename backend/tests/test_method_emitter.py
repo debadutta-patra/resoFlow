@@ -1,19 +1,27 @@
 """
-Tests for ChemEx v1 and v2 method emitter, parser, and validator with STATISTICS support.
+Tests for the ChemEx method emitter, parser and validator.
+
+Canonical output is ChemEx v2 (FORMAT_VERSION = 2) and is checked against
+ChemEx's own ``read_method_plan``. The legacy v1 emitter is kept only for
+explicit ``format_version=1`` callers.
 """
 
 from pathlib import Path
 import tempfile
+
 import pytest
 
 from chemex.configuration.methods import read_method_plan
 
 from app.services.fitting.method_emitter import (
+    McmcSettingsModel,
     MethodConfigModel,
     MethodStepModel,
     ParamSettingModel,
+    RoleRuleModel,
+    SearchAxisModel,
     StatisticsModel,
-    McmcSettingsModel,
+    StepSearchModel,
     emit_method_toml,
     emit_method_toml_v1,
     emit_method_toml_v2,
@@ -22,12 +30,18 @@ from app.services.fitting.method_emitter import (
 )
 
 
-def test_no_statistics_byte_identity_regression():
-    """
-    Regression assertion: When statistics are disabled/None, the emitter
-    must emit ZERO statistics keys, subtables, or empty tables in v1 format.
-    The output must match the classic v1 format byte-for-byte.
-    """
+def _chemex_plan(toml: str):
+    with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as tf:
+        tf.write(toml)
+        path = Path(tf.name)
+    try:
+        return read_method_plan([path])
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_v1_emitter_byte_identity_without_statistics():
+    """Legacy v1 output stays byte-identical and contains no statistics keys."""
     config = MethodConfigModel(
         steps=[
             MethodStepModel(
@@ -37,9 +51,7 @@ def test_no_statistics_byte_identity_regression():
                     ParamSettingModel(name="KEX_AB", mode="fit"),
                     ParamSettingModel(name="CS_A", mode="default"),
                 ],
-                residue_mode="include",
                 residues=[15, 31, 33],
-                statistics=None,
             ),
             MethodStepModel(
                 name="STEP2",
@@ -48,16 +60,12 @@ def test_no_statistics_byte_identity_regression():
                     ParamSettingModel(name="KEX_AB", mode="fix"),
                     ParamSettingModel(name="DW_AB", mode="fit"),
                 ],
-                residue_mode="include",
                 residues=["ALL"],
-                statistics=StatisticsModel(),  # empty statistics model
+                statistics=StatisticsModel(),
             ),
         ]
     )
-
-    emitted_v1 = emit_method_toml(config, format_version=1)
-
-    expected = (
+    assert emit_method_toml(config, format_version=1) == (
         '[STEP1]\n'
         'FIT = ["PB", "KEX_AB"]\n'
         'INCLUDE = [15, 31, 33]\n\n'
@@ -67,172 +75,225 @@ def test_no_statistics_byte_identity_regression():
         'INCLUDE = ["ALL"]\n'
     )
 
-    assert emitted_v1 == expected
-    assert "STATISTICS" not in emitted_v1
-    assert "MCMC" not in emitted_v1
-    assert "MC" not in emitted_v1
 
-
-def test_v2_method_emission():
-    """Test default canonical v2 emission and ChemEx 2026.9 parser compatibility."""
+def test_v2_emission_is_accepted_by_chemex():
     config = MethodConfigModel(
         steps=[
             MethodStepModel(
-                name="STEP1",
+                name="GLOBAL_FIT",
                 parameters=[
                     ParamSettingModel(name="PB", mode="fit"),
                     ParamSettingModel(name="KEX_AB", mode="fit"),
+                    ParamSettingModel(name="R2_B", mode="constrain", expression="[R2_A]"),
                 ],
-                residue_mode="include",
                 residues=[15, 31, 33],
-                statistics=None,
             ),
             MethodStepModel(
-                name="STEP2",
+                name="LOCAL_FITS",
+                roles_from="GLOBAL_FIT",
                 parameters=[
                     ParamSettingModel(name="PB", mode="fix"),
                     ParamSettingModel(name="KEX_AB", mode="fix"),
                     ParamSettingModel(name="DW_AB", mode="fit"),
                 ],
-                residue_mode="include",
                 residues=["ALL"],
             ),
         ]
     )
+    toml = emit_method_toml(config)
+    assert toml == (
+        "FORMAT_VERSION = 2\n\n"
+        "[GLOBAL_FIT]\n"
+        "INCLUDE = [15, 31, 33]\n"
+        "ROLES = [\n"
+        '  { CONSTRAIN = ["[R2_B] = [R2_A]"] },\n'
+        '  { FIT = ["PB", "KEX_AB"] },\n'
+        "]\n\n"
+        "[LOCAL_FITS]\n"
+        'INCLUDE = "ALL"\n'
+        'ROLES_FROM = "GLOBAL_FIT"\n'
+        "ROLES = [\n"
+        '  { FIX = ["PB", "KEX_AB"] },\n'
+        '  { FIT = ["DW_AB"] },\n'
+        "]\n"
+    )
+    plan = _chemex_plan(toml)
+    assert [s.name for s in plan.steps] == ["GLOBAL_FIT", "LOCAL_FITS"]
+    assert plan.steps[0].roles_from is None  # no implicit carry-over in v2
+    assert plan.steps[1].roles_from == "GLOBAL_FIT"
 
-    emitted_v2 = emit_method_toml(config)  # default is format_version=2
-    assert "FORMAT_VERSION = 2" in emitted_v2
-    assert '[STEP1]' in emitted_v2
-    assert 'ROLES = [\n  { FIT = ["PB", "KEX_AB"] },\n]' in emitted_v2
-    assert '[STEP2]' in emitted_v2
-    assert 'ROLES_FROM = "STEP1"' in emitted_v2
-    assert '{ FIX = ["PB", "KEX_AB"] }' in emitted_v2
-    assert '{ FIT = ["DW_AB"] }' in emitted_v2
 
-    # Validate that ChemEx 2026.9 read_method_plan can read this without error
-    with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as tf:
-        tf.write(emitted_v2)
-        tf_path = Path(tf.name)
-    try:
-        plan = read_method_plan([tf_path])
-        assert len(plan.steps) == 2
-        assert plan.steps[0].name == "STEP1"
-        assert plan.steps[1].name == "STEP2"
-        assert plan.steps[1].roles_from == "STEP1"
-    finally:
-        tf_path.unlink(missing_ok=True)
-
-
-def test_resampling_statistics_emission():
-    """Test emission of Monte Carlo, Bootstrap, and Nucleus-Specific Bootstrap in v1 and v2."""
+def test_v2_never_emits_v1_only_constructs():
     config = MethodConfigModel(
         steps=[
             MethodStepModel(
                 name="STEP1",
                 parameters=[
-                    ParamSettingModel(name="PB", mode="fit"),
-                    ParamSettingModel(name="KEX_AB", mode="fit"),
+                    ParamSettingModel(name="PB", mode="fit", bounds="< 0.5"),
+                    ParamSettingModel(name="KEX_AB", mode="grid", grid={"min": 100, "max": 1000, "steps": 5, "scale": "log"}),
                 ],
-                residue_mode="include",
-                residues=[15, 31, 33, 34, 37],
-                statistics=StatisticsModel(mc=100, bs=50, bsn=25),
+                statistics=StatisticsModel(
+                    mcmc=McmcSettingsModel(steps=5000, burn="auto", thin=10, walkers=64, workers=2, update_parameters=True)
+                ),
             )
         ]
     )
-
-    # v1
-    emitted_v1 = emit_method_toml_v1(config)
-    assert '[STEP1]' in emitted_v1
-    assert 'STATISTICS = { "MC" = 100, "BS" = 50, "BSN" = 25 }' in emitted_v1
-
-    # v2
-    emitted_v2 = emit_method_toml_v2(config)
-    assert 'FORMAT_VERSION = 2' in emitted_v2
-    assert '[STEP1.STATISTICS.MC]' in emitted_v2
-    assert 'REPLICATES = 100' in emitted_v2
-    assert '[STEP1.STATISTICS.BS]' in emitted_v2
-    assert 'REPLICATES = 50' in emitted_v2
-    assert '[STEP1.STATISTICS.BSN]' in emitted_v2
-    assert 'REPLICATES = 25' in emitted_v2
-
-    # Roundtrip parse from v2 back to model
-    parsed = parse_method_toml(emitted_v2)
-    assert parsed.steps[0].statistics.mc == 100
-    assert parsed.steps[0].statistics.bs == 50
-    assert parsed.steps[0].statistics.bsn == 25
+    toml = emit_method_toml_v2(config)
+    for forbidden in ("CONSTRAINTS", "< 0.5", "\nGRID =", "THIN", "WALKERS", "WORKERS", "UPDATE_PARAMETERS", "BURN", "FITMETHOD", "#"):
+        assert forbidden not in toml, forbidden
+    assert '{ FIT = ["PB", "KEX_AB"] }' in toml
+    assert '"[KEX_AB] = log(100, 1000, 5)",' in toml
+    assert "[STEP1.STATISTICS.MCMC]\nSTEPS = 5000\n" in toml
+    plan = _chemex_plan(toml)
+    assert plan.steps[0].search is not None
 
 
-def test_mcmc_compact_emission():
-    """Test compact MCMC emission in v1 and canonical format in v2."""
-    config = MethodConfigModel(
-        steps=[
-            MethodStepModel(
-                name="STEP1",
-                parameters=[ParamSettingModel(name="PB", mode="fit")],
-                statistics=StatisticsModel(mcmc=5000),
-            )
-        ]
-    )
-
-    emitted_v1 = emit_method_toml(config, format_version=1)
-    assert 'STATISTICS = { "MCMC" = 5000 }' in emitted_v1
-
-    emitted_v2 = emit_method_toml(config, format_version=2)
-    assert '[STEP1.STATISTICS.MCMC]' in emitted_v2
-    assert 'STEPS = 5000' in emitted_v2
-    assert 'BURN = "AUTO"' in emitted_v2
-
-
-def test_mcmc_expanded_emission():
-    """Test expanded MCMC emission in v1 and canonical v2 (with unsupported params commented)."""
+def test_statistics_seeds_and_compact_counts():
     config = MethodConfigModel(
         steps=[
             MethodStepModel(
                 name="STEP1",
                 parameters=[ParamSettingModel(name="PB", mode="fit")],
                 statistics=StatisticsModel(
-                    mcmc=McmcSettingsModel(
-                        steps=5000,
-                        burn=1000,
-                        thin=10,
-                        walkers=64,
-                        seed=1234,
-                        workers=2,
-                        update_parameters=True,
-                    )
+                    mc={"replicates": 100, "seed": 680},
+                    bs=50,
+                    bsn={"enabled": True, "replicates": 25},
+                    mcmc={"enabled": True, "steps": 20000, "burn": 4000, "seed": 7},
                 ),
             )
         ]
     )
+    toml = emit_method_toml_v2(config)
+    assert "[STEP1.STATISTICS.MC]\nREPLICATES = 100\nSEED = 680\n" in toml
+    assert "[STEP1.STATISTICS.BS]\nREPLICATES = 50\n\n" in toml
+    assert "[STEP1.STATISTICS.BSN]\nREPLICATES = 25\n" in toml
+    assert "[STEP1.STATISTICS.MCMC]\nSTEPS = 20000\nBURN = 4000\nSEED = 7\n" in toml
+    plan = _chemex_plan(toml)
+    assert plan.steps[0].statistics is not None
 
-    # v1 emission has all v1 keys
-    emitted_v1 = emit_method_toml_v1(config)
-    assert '[STEP1]' in emitted_v1
-    assert '[STEP1.STATISTICS.MCMC]' in emitted_v1
-    assert 'STEPS = 5000' in emitted_v1
-    assert 'BURN = 1000' in emitted_v1
-    assert 'THIN = 10' in emitted_v1
-    assert 'WALKERS = 64' in emitted_v1
-    assert 'SEED = 1234' in emitted_v1
-    assert 'WORKERS = 2' in emitted_v1
-    assert 'UPDATE_PARAMETERS = true' in emitted_v1
-
-    # v2 emission has canonical v2 keys with v1-only keys commented out
-    emitted_v2 = emit_method_toml_v2(config)
-    assert '[STEP1.STATISTICS.MCMC]' in emitted_v2
-    assert 'STEPS = 5000' in emitted_v2
-    assert 'BURN = 1000' in emitted_v2
-    assert 'SEED = 1234' in emitted_v2
-    assert '# V1_ONLY_THIN = 10' in emitted_v2
-    assert '# V1_ONLY_WALKERS = 64' in emitted_v2
+    parsed = parse_method_toml(toml)
+    stats = parsed.steps[0].statistics
+    assert stats.mc.replicates == 100 and stats.mc.seed == 680
+    assert stats.bs == 50
+    assert stats.mcmc.steps == 20000 and stats.mcmc.burn == 4000 and stats.mcmc.seed == 7
 
 
-def test_roundtrip_shipped_example_method_stat_toml():
-    """
-    Test round-trip parsing and re-emission against verbatim ChemEx fixture:
-    examples/Experiments/CPMG_15N_IP/Methods/method_stat.toml
-    """
-    raw_fixture = """[STEP1]
+def test_frontend_camelcase_payload_and_ts_parity():
+    """The same config the TS emitter serialises must produce byte-identical TOML."""
+    payload = {
+        "steps": [
+            {
+                "id": "a",
+                "name": "GLOBAL_FIT",
+                "residues": ["15", "31", "G24N-H"],
+                "residueMode": "include",
+                "parameters": [
+                    {"name": "PB", "mode": "fit"},
+                    {"name": "R2_B", "mode": "constrain", "expression": "0.5 * ([R2_A] + 1.0)"},
+                ],
+                "search": {
+                    "mode": "grid",
+                    "axes": [
+                        {"id": "1", "param": "PB", "fn": "values", "low": 0, "high": 0, "count": 0, "values": [0.01, 0.05, 0.1]},
+                        {"id": "2", "param": "KEX_AB", "fn": "log", "low": 20, "high": 2000, "count": 12},
+                        {"id": "3", "param": "DW_AB", "qualifier": "NUC->G24N-H, B0->800.13MHz, T->25C", "fn": "lin", "low": -10, "high": 10, "count": 21},
+                    ],
+                },
+                "statistics": {
+                    "mc": {"enabled": True, "replicates": 5, "seed": 1},
+                    "mcmc": {"enabled": True, "steps": 100, "burn": 10, "seed": 3},
+                },
+            },
+            {
+                "id": "b",
+                "name": "LOCAL",
+                "residues": ["ALL"],
+                "residueMode": "include",
+                "rolesFrom": "GLOBAL_FIT",
+                "parameters": [{"name": "PB", "mode": "fix"}],
+                "roleRules": [
+                    {"id": "r", "action": "CONSTRAIN", "entries": ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"]},
+                    {"id": "r2", "action": "FIX", "entries": ["R1_A, [P]->0.001M, D2O->0.1"]},
+                ],
+                "search": {"mode": "de", "seed": 18446744073709, "axes": [{"id": "4", "param": "KEX_AB", "fn": "log", "low": 10, "high": 5000, "count": 0}]},
+                "statistics": {"bs": {"enabled": True, "replicates": 5}, "bsn": {"enabled": True, "replicates": 5}},
+            },
+            {"id": "c", "name": "EXC", "residues": ["12", "18"], "residueMode": "exclude", "parameters": []},
+        ]
+    }
+    # Output of frontend/src/lib/methodToml.ts configToToml() for the same payload.
+    ts_output = (
+        'FORMAT_VERSION = 2\n\n[GLOBAL_FIT]\nINCLUDE = [15, 31, "G24N-H"]\nROLES = [\n'
+        '  { CONSTRAIN = ["[R2_B] = 0.5 * ([R2_A] + 1.0)"] },\n'
+        '  { FIT = ["PB", "KEX_AB", "DW_AB, NUC->G24N-H, B0->800.13MHz, T->25C"] },\n]\n\n'
+        '[GLOBAL_FIT.SEARCH.GRID]\nAXES = [\n  "[PB] = values(0.01, 0.05, 0.1)",\n'
+        '  "[KEX_AB] = log(20, 2000, 12)",\n'
+        '  "[DW_AB, NUC->G24N-H, B0->800.13MHz, T->25C] = lin(-10, 10, 21)",\n]\n\n'
+        '[GLOBAL_FIT.STATISTICS.MC]\nREPLICATES = 5\nSEED = 1\n\n'
+        '[GLOBAL_FIT.STATISTICS.MCMC]\nSTEPS = 100\nBURN = 10\nSEED = 3\n\n'
+        '[LOCAL]\nINCLUDE = "ALL"\nROLES_FROM = "GLOBAL_FIT"\nROLES = [\n'
+        '  { FIX = ["PB"] },\n  { FIT = ["KEX_AB"] },\n'
+        '  { CONSTRAIN = ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"] },\n'
+        '  { FIX = ["R1_A, [P]->0.001M, D2O->0.1"] },\n]\n\n'
+        '[LOCAL.SEARCH.DE]\nSEED = 18446744073709\nCOORDINATES = [\n  "[KEX_AB] = log(10, 5000)",\n]\n\n'
+        '[LOCAL.STATISTICS.BS]\nREPLICATES = 5\n\n[LOCAL.STATISTICS.BSN]\nREPLICATES = 5\n\n'
+        '[EXC]\nEXCLUDE = [12, 18]\n'
+    )
+    config = MethodConfigModel(**payload)
+    toml = emit_method_toml_v2(config)
+    assert toml == ts_output
+    plan = _chemex_plan(toml)
+    assert [s.name for s in plan.steps] == ["GLOBAL_FIT", "LOCAL", "EXC"]
+
+    # parse → emit is a fixed point
+    assert emit_method_toml_v2(parse_method_toml(toml)) == toml
+
+
+def test_parse_v2_roles_ordering_into_table_and_rules():
+    config = parse_method_toml(
+        """FORMAT_VERSION = 2
+[STEP]
+ROLES = [
+  { FIX = ["DW_AB"] },
+  { FIT = ["DW_AB, NUC->G24N-H"] },
+  { CONSTRAIN = ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"] },
+]
+"""
+    )
+    step = config.steps[0]
+    assert [(p.name, p.mode) for p in step.parameters] == [("DW_AB", "fix")]
+    assert [(r.action, r.entries) for r in step.role_rules] == [
+        ("FIT", ["DW_AB, NUC->G24N-H"]),
+        ("CONSTRAIN", ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"]),
+    ]
+    reemitted = emit_method_toml_v2(config)
+    assert (
+        'ROLES = [\n  { FIX = ["DW_AB"] },\n  { FIT = ["DW_AB, NUC->G24N-H"] },\n'
+        '  { CONSTRAIN = ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"] },\n]'
+    ) in reemitted
+
+
+def test_parse_v2_de_search():
+    config = parse_method_toml(
+        """FORMAT_VERSION = 2
+[STEP]
+ROLES = [{ FIT = ["PB", "KEX_AB", "DW_AB"] }]
+
+[STEP.SEARCH.DE]
+SEED = 597
+COORDINATES = ["[PB] = log(0.001, 0.20)", "[KEX_AB] = log(100.0, 5000.0)"]
+"""
+    )
+    search = config.steps[0].search
+    assert search.mode == "de" and search.seed == 597
+    assert [(a.param, a.fn, a.low, a.high) for a in search.axes] == [("PB", "log", 0.001, 0.2), ("KEX_AB", "log", 100.0, 5000.0)]
+    assert "[STEP.SEARCH.DE]\nSEED = 597\nCOORDINATES = [\n" in emit_method_toml_v2(config)
+
+
+def test_v1_migration_shipped_example_method_stat():
+    """examples/Experiments/CPMG_15N_IP/Methods/method_stat.toml (v1) → v2."""
+    config = parse_method_toml(
+        """[STEP1]
 INCLUDE = [15, 31, 33, 34, 37]
 STATISTICS = { "MC" = 10, "BS" = 10, "BSN" = 10 }
 
@@ -240,137 +301,108 @@ STATISTICS = { "MC" = 10, "BS" = 10, "BSN" = 10 }
 INCLUDE = ["ALL"]
 FIX = ["PB", "KEX_AB"]
 """
-
-    config = parse_method_toml(raw_fixture)
-    assert len(config.steps) == 2
-
-    # Step 1
-    step1 = config.steps[0]
-    assert step1.name == "STEP1"
+    )
+    step1, step2 = config.steps
     assert step1.residues == [15, 31, 33, 34, 37]
-    assert step1.statistics is not None
-    assert step1.statistics.mc == 10
-    assert step1.statistics.bs == 10
-    assert step1.statistics.bsn == 10
+    assert (step1.statistics.mc, step1.statistics.bs, step1.statistics.bsn) == (10, 10, 10)
+    # v1 implicit role carry-over becomes explicit ROLES_FROM
+    assert step2.roles_from == "STEP1"
+    assert {p.name for p in step2.parameters if p.mode == "fix"} == {"PB", "KEX_AB"}
 
-    # Step 2
-    step2 = config.steps[1]
-    assert step2.name == "STEP2"
-    assert step2.statistics is None or step2.statistics.is_empty()
-    fix_names = [p.name for p in step2.parameters if p.mode == "fix"]
-    assert "PB" in fix_names
-    assert "KEX_AB" in fix_names
-
-    # Re-emit v1 and verify
-    reemitted_v1 = emit_method_toml_v1(config)
-    assert 'STATISTICS = { "MC" = 10, "BS" = 10, "BSN" = 10 }' in reemitted_v1
-    assert 'FIX = ["PB", "KEX_AB"]' in reemitted_v1
-
-    # Re-emit v2 and verify
-    reemitted_v2 = emit_method_toml_v2(config)
-    assert 'FORMAT_VERSION = 2' in reemitted_v2
-    assert '[STEP1.STATISTICS.MC]' in reemitted_v2
-    parsed_again = parse_method_toml(reemitted_v2)
-    assert parsed_again.steps[0].statistics.mc == 10
+    v2 = emit_method_toml_v2(config)
+    assert 'ROLES_FROM = "STEP1"' in v2
+    assert "[STEP1.STATISTICS.MC]\nREPLICATES = 10\n" in v2
+    assert len(_chemex_plan(v2).steps) == 2
 
 
-def test_roundtrip_shipped_mcmc_fixture():
-    """
-    Test round-trip parsing of verbatim MCMC test fixture from ChemEx:
-    tests/configuration/test_methods.py
-    """
-    raw_mcmc_toml = """[STEP1]
+def test_v1_migration_grid_bounds_and_mcmc():
+    config = parse_method_toml(
+        """[STEP1]
 FIT = ["PB", "KEX_AB"]
+CONSTRAINTS = ["[PB] < 0.5", "[R2_B] = 0.5 * [R2_A]"]
+GRID = [
+  "[KEX_AB] = log(100.0, 600.0, 10)",
+  "[PB] = (0.01, 0.05, 0.10)",
+]
 [STEP1.STATISTICS.MCMC]
 STEPS = 5000
-BURN = 1000
+BURN = "AUTO"
 THIN = 10
 WALKERS = 64
 SEED = 1234
-WORKERS = 2
 """
-
-    config = parse_method_toml(raw_mcmc_toml)
-    assert len(config.steps) == 1
+    )
     step = config.steps[0]
-    assert step.name == "STEP1"
-    assert step.statistics is not None
-    assert isinstance(step.statistics.mcmc, McmcSettingsModel)
-    assert step.statistics.mcmc.steps == 5000
-    assert step.statistics.mcmc.burn == 1000
-    assert step.statistics.mcmc.thin == 10
-    assert step.statistics.mcmc.walkers == 64
-    assert step.statistics.mcmc.seed == 1234
-    assert step.statistics.mcmc.workers == 2
+    pb = next(p for p in step.parameters if p.name == "PB")
+    assert pb.mode == "fit" and pb.bounds == "< 0.5"
+    assert [(a.param, a.fn) for a in step.search.axes] == [("KEX_AB", "log"), ("PB", "values")]
+    assert step.statistics.mcmc.burn == "auto" and step.statistics.mcmc.thin == 10
+
+    v2 = emit_method_toml_v2(config)
+    assert '"[PB] = values(0.01, 0.05, 0.1)",' in v2
+    assert "< 0.5" not in v2 and "THIN" not in v2 and "BURN" not in v2
+    assert "[STEP1.STATISTICS.MCMC]\nSTEPS = 5000\nSEED = 1234\n" in v2
+    _chemex_plan(v2)
+
+    issues = validate_method_config(config)
+    assert any("v1 inequality" in i["message"] for i in issues)
+    assert any("v1-only controls" in i["message"] for i in issues)
 
 
-def test_validation_errors_and_warnings():
-    """Test validation bounds for resampling and MCMC."""
-    # 1. Negative replicate count
+def test_v1_legacy_inline_table_grid():
+    config = parse_method_toml(
+        """[GRID_STEP]
+FIT = ["DW_AB"]
+GRID = { PB = [0.01, 0.2, 20], KEX_AB = [100, 2000, 20] }
+"""
+    )
+    axes = config.steps[0].search.axes
+    assert [(a.param, a.fn, a.low, a.high, a.count) for a in axes] == [
+        ("PB", "lin", 0.01, 0.2, 20),
+        ("KEX_AB", "lin", 100.0, 2000.0, 20),
+    ]
+
+
+def test_mcmc_model_validation():
     with pytest.raises(ValueError, match="positive integer"):
         StatisticsModel(mc=-5)
-
-    # 2. MCMC burn >= steps
     with pytest.raises(ValueError, match="burn .* must be smaller than steps"):
         McmcSettingsModel(steps=100, burn=100)
-
-    # 3. MCMC zero retained samples
     with pytest.raises(ValueError, match="retain 0 samples"):
         McmcSettingsModel(steps=100, burn=95, thin=10)
 
-    # 4. Conflict between GRID and STATISTICS
-    conflict_config = MethodConfigModel(
+
+def test_validation_v2_rules():
+    config = MethodConfigModel(
         steps=[
             MethodStepModel(
-                name="STEP1",
-                parameters=[
-                    ParamSettingModel(name="PB", mode="grid", grid={"min": 0.01, "max": 0.2, "steps": 10}),
-                ],
+                name="A",
+                roles_from="B",
+                parameters=[ParamSettingModel(name="PB", mode="fix")],
+                search=StepSearchModel(
+                    mode="de",
+                    axes=[
+                        SearchAxisModel(param="PB", fn="log", low=0.001, high=0.2),
+                        SearchAxisModel(param="KEX_AB", fn="values", values=[1, 2]),
+                        SearchAxisModel(param="DW_AB", fn="log", low=-1, high=5),
+                    ],
+                ),
+                role_rules=[RoleRuleModel(action="FIT", entries=["DW_AB, FOO->1"])],
+            ),
+            MethodStepModel(
+                name="B",
+                search=StepSearchModel(mode="grid", axes=[SearchAxisModel(param="PB", fn="lin", low=0.2, high=0.1, count=1)]),
                 statistics=StatisticsModel(mc=100),
-            )
+            ),
         ]
     )
-    issues = validate_method_config(conflict_config)
-    assert any("GRID search and STATISTICS" in i["message"] for i in issues)
-    assert any(i["severity"] == "warning" for i in issues)
-
-
-def test_grid_emission_and_parsing():
-    """Test ChemEx standard GRID list syntax emission and parsing in v1 and v2."""
-    raw_toml = """[GRID_STEP]
-FIT = ["DW_AB"]
-GRID = [
-  "[KEX_AB] = log(100.0, 600.0, 10)",
-  "[PB] = log(0.03, 0.15, 10)",
-  "[DW_AB] = lin(0.0, 10.0, 5)"
-]
-"""
-    config = parse_method_toml(raw_toml)
-    assert len(config.steps) == 1
-    step = config.steps[0]
-    assert step.name == "GRID_STEP"
-
-    grid_params = {p.name: p for p in step.parameters if p.mode == "grid"}
-    assert "KEX_AB" in grid_params
-    assert grid_params["KEX_AB"].grid == {"min": 100.0, "max": 600.0, "steps": 10, "scale": "log"}
-
-    assert "PB" in grid_params
-    assert grid_params["PB"].grid == {"min": 0.03, "max": 0.15, "steps": 10, "scale": "log"}
-
-    assert "DW_AB" in grid_params
-    assert grid_params["DW_AB"].grid == {"min": 0.0, "max": 10.0, "steps": 5, "scale": "lin"}
-
-    emitted_v1 = emit_method_toml_v1(config)
-    assert 'GRID = [\n  "[KEX_AB] = log(100.0, 600.0, 10)",\n  "[PB] = log(0.03, 0.15, 10)",\n  "[DW_AB] = lin(0.0, 10.0, 5)"\n]' in emitted_v1
-
-    emitted_v2 = emit_method_toml_v2(config)
-    assert 'FORMAT_VERSION = 2' in emitted_v2
-    assert '[GRID_STEP.SEARCH.GRID]' in emitted_v2
-    assert 'AXES = [\n  "[KEX_AB] = log(100.0, 600.0, 10)",\n  "[PB] = log(0.03, 0.15, 10)",\n  "[DW_AB] = lin(0.0, 10.0, 5)",\n]' in emitted_v2
-
-    # Roundtrip from v2
-    parsed_v2 = parse_method_toml(emitted_v2)
-    grid_params_v2 = {p.name: p for p in parsed_v2.steps[0].parameters if p.mode == "grid"}
-    assert "KEX_AB" in grid_params_v2
-    assert grid_params_v2["KEX_AB"].grid["scale"] == "log"
-    assert grid_params_v2["KEX_AB"].grid["min"] == 100.0
+    messages = [i["message"] for i in validate_method_config(config)]
+    assert any("ROLES_FROM 'B' must name an earlier step" in m for m in messages)
+    assert any("search targets must be FIT" in m for m in messages)
+    assert any("requires an unsigned 64-bit SEED" in m for m in messages)
+    assert any("DE coordinates must use lin" in m for m in messages)
+    assert any("must be positive" in m for m in messages)
+    assert any("Invalid qualifier" in m for m in messages)
+    assert any("low < high" in m for m in messages)
+    assert any("at least 2 points" in m for m in messages)
+    assert any("The last step uses GRID" in m for m in messages)

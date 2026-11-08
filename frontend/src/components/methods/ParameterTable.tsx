@@ -24,7 +24,6 @@ export const DEFAULT_PARAM_METAS: AvailableParamMeta[] = [
     gloss: 'Population of minor state B (0 - 0.5)',
     scope: 'global',
     default_mode: 'default',
-    default_bounds: '< 0.5',
     category: 'kinetic',
     is_primary: true,
   },
@@ -103,6 +102,8 @@ interface ParameterTableProps {
   startingValues?: Record<string, number | string>;
   onNavigateToParameters?: () => void;
   readOnly?: boolean;
+  /** Parameter names targeted by this step's SEARCH (shown as a badge). */
+  searchTargets?: Record<string, 'grid' | 'de'>;
 }
 
 export const ParameterTable: React.FC<ParameterTableProps> = ({
@@ -112,6 +113,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
   startingValues = {},
   onNavigateToParameters,
   readOnly = false,
+  searchTargets = {},
 }) => {
   const [showAllParams, setShowAllParams] = useState(false);
   const [activeAutocompleteParam, setActiveAutocompleteParam] = useState<string | null>(null);
@@ -227,17 +229,8 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
     const meta = effectiveAvailableParams.find(m => m.name.toUpperCase() === paramName.toUpperCase());
     const updates: Partial<ParamSetting> = { mode: newMode };
 
-    if (newMode === 'grid') {
-      updates.grid = {
-        min: 0.01,
-        max: 0.2,
-        steps: 20,
-        scale: 'lin',
-      };
-    } else if (newMode === 'constrain') {
+    if (newMode === 'constrain' && !stepParamMap.get(paramName.toUpperCase())?.expression) {
       updates.expression = meta?.default_expression || '';
-    } else if (newMode === 'fit') {
-      updates.bounds = meta?.default_bounds || '';
     }
 
     updateParamSetting(paramName, updates);
@@ -262,7 +255,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
               const isFitted = setting.mode === 'fit';
               const isFixed = setting.mode === 'fix';
               const isConstrained = setting.mode === 'constrain';
-              const isGrid = setting.mode === 'grid';
+              const searchKind = searchTargets[setting.name.toUpperCase()];
 
               return (
                 <tr
@@ -286,6 +279,14 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                           >
                             {meta.scope}
                           </span>
+                          {searchKind && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                              title={searchKind === 'grid' ? 'Scanned by this step\'s GRID search (must be FIT)' : 'DE coordinate in this step (must be FIT)'}
+                            >
+                              {searchKind === 'grid' ? 'Grid' : 'DE'}
+                            </span>
+                          )}
                         </div>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-xs leading-snug">
                           {meta.gloss}
@@ -297,14 +298,14 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                   {/* Treatment (Segmented Control) */}
                   <td className="py-3.5 px-4 align-top">
                     <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700/80">
-                      {(['default', 'fit', 'fix', 'constrain', 'grid'] as ParamMode[]).map(mode => {
+                      {(['default', 'fit', 'fix', 'constrain'] as ParamMode[]).map(mode => {
                         const isActive = setting.mode === mode;
                         const modeLabels: Record<ParamMode, string> = {
                           default: 'Default',
                           fit: 'Fit',
                           fix: 'Fix',
                           constrain: 'Constrain',
-                          grid: 'Grid',
+                          grid: 'Fit',
                         };
 
                         return (
@@ -331,7 +332,11 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                     {/* DEFAULT Mode */}
                     {isDefault && (
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500 text-xs italic py-1">
-                        <span>Default (omitted from method.toml)</span>
+                        <span>
+                          {searchKind
+                            ? 'Baseline role — auto-added to FIT because it is a search target'
+                            : 'Baseline model role (omitted from ROLES)'}
+                        </span>
                       </div>
                     )}
                     {/* FIT Mode */}
@@ -356,38 +361,43 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                           )}
                         </div>
 
-                        {/* Optional Bound */}
-                        <div className="flex items-center gap-1.5 flex-grow max-w-xs">
-                          <span className="text-slate-400 text-[11px]">Bound:</span>
-                          <input
-                            type="text"
-                            disabled={readOnly}
-                            value={setting.bounds || ''}
-                            onChange={e => updateParamSetting(meta.name, { bounds: e.target.value })}
-                            placeholder='e.g. < 0.5 or > 0'
-                            className="w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"
-                          />
-                        </div>
+                        {setting.bounds && setting.bounds.trim() && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                            <span title="v1 inequality constraints are not supported by ChemEx v2 method files">
+                              Legacy bound "{setting.bounds}" ignored in v2
+                            </span>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => updateParamSetting(meta.name, { bounds: undefined })}
+                                className="underline hover:text-amber-700"
+                              >
+                                remove
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {/* FIX Mode */}
                     {isFixed && (
-                      <div className="flex items-center gap-2 max-w-xs">
-                        <span className="text-slate-400 text-xs">Value:</span>
-                        <input
-                          type="number"
-                          step="any"
-                          disabled={readOnly}
-                          value={setting.value !== undefined ? setting.value : ''}
-                          onChange={e =>
-                            updateParamSetting(meta.name, {
-                              value: e.target.value === '' ? undefined : parseFloat(e.target.value),
-                            })
-                          }
-                          placeholder={startVal !== undefined ? `Default (${startVal})` : 'Fixed value'}
-                          className="w-full text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"
-                        />
+                      <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs py-1">
+                        <span>Held at current value:</span>
+                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                          {startVal !== undefined ? String(startVal) : 'from parameters / previous step'}
+                        </span>
+                        {onNavigateToParameters && (
+                          <button
+                            type="button"
+                            onClick={onNavigateToParameters}
+                            className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 ml-1 text-[11px]"
+                            title="Values are set in the Parameters tab"
+                          >
+                            <span>Params</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -440,85 +450,6 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                       </div>
                     )}
 
-                    {/* GRID Mode */}
-                    {isGrid && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-md">
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-0.5">Min</label>
-                          <input
-                            type="number"
-                            step="any"
-                            disabled={readOnly}
-                            value={setting.grid?.min ?? 0.01}
-                            onChange={e =>
-                              updateParamSetting(meta.name, {
-                                grid: {
-                                  ...(setting.grid || { min: 0.01, max: 0.2, steps: 20, scale: 'lin' }),
-                                  min: parseFloat(e.target.value),
-                                },
-                              })
-                            }
-                            className="w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-0.5">Max</label>
-                          <input
-                            type="number"
-                            step="any"
-                            disabled={readOnly}
-                            value={setting.grid?.max ?? 0.2}
-                            onChange={e =>
-                              updateParamSetting(meta.name, {
-                                grid: {
-                                  ...(setting.grid || { min: 0.01, max: 0.2, steps: 20, scale: 'lin' }),
-                                  max: parseFloat(e.target.value),
-                                },
-                              })
-                            }
-                            className="w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-0.5">Steps</label>
-                          <input
-                            type="number"
-                            min="2"
-                            max="500"
-                            disabled={readOnly}
-                            value={setting.grid?.steps ?? 20}
-                            onChange={e =>
-                              updateParamSetting(meta.name, {
-                                grid: {
-                                  ...(setting.grid || { min: 0.01, max: 0.2, steps: 20, scale: 'lin' }),
-                                  steps: parseInt(e.target.value, 10) || 2,
-                                },
-                              })
-                            }
-                            className="w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-0.5">Scale</label>
-                          <select
-                            disabled={readOnly}
-                            value={setting.grid?.scale || 'lin'}
-                            onChange={e =>
-                              updateParamSetting(meta.name, {
-                                grid: {
-                                  ...(setting.grid || { min: 0.01, max: 0.2, steps: 20, scale: 'lin' }),
-                                  scale: e.target.value as 'lin' | 'log',
-                                },
-                              })
-                            }
-                            className="w-full text-xs px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none"
-                          >
-                            <option value="lin">Linear</option>
-                            <option value="log">Log</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
                   </td>
                 </tr>
               );
