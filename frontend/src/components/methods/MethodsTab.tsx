@@ -17,7 +17,8 @@ import StepStatisticsSection from './StepStatisticsSection';
 import StepSearchSection from './StepSearchSection';
 import StepRolesSection from './StepRolesSection';
 import ResolvedRolesSummary from './ResolvedRolesSummary';
-import { errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName } from '../../lib/resolvedRoles';
+import { errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName, stepBadge, type StepBadge } from '../../lib/resolvedRoles';
+import { stepDisplayName } from '../../lib/methodSteps';
 import {
   ChemexModalShell,
   ChemexTabHeader,
@@ -67,6 +68,28 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   const resolvedCounts = useMemo(() => resolvedCountsByName(resolvedStep), [resolvedStep]);
   // Error locations index ROLES actions, so only map them onto rules for the current method text.
   const chemexErrors = useMemo(() => (stale ? [] : errorsForStep(report, activeStep.name || '')), [report, stale, activeStep.name]);
+
+  // Step tabs: resolved counts, blocking errors, which steps have last-run results.
+  const stepBadges = useMemo(() => {
+    const out: Record<string, StepBadge> = {};
+    methodConfig.steps.forEach((s, i) => {
+      const name = stepDisplayName(s, i);
+      out[s.id] = stepBadge(s, report?.steps.find(r => r.name === name));
+    });
+    return out;
+  }, [methodConfig.steps, report]);
+  const errorCounts = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const e of editor.validationErrors) if (e.severity === 'error') out[e.stepId] = (out[e.stepId] ?? 0) + 1;
+    if (!stale) {
+      methodConfig.steps.forEach((s, i) => {
+        const n = errorsForStep(report, stepDisplayName(s, i)).length;
+        if (n) out[s.id] = (out[s.id] ?? 0) + n;
+      });
+    }
+    return out;
+  }, [editor.validationErrors, methodConfig.steps, report, stale]);
+  const stepsWithResults = useMemo(() => new Set(Object.keys(committedByStep ?? {})), [committedByStep]);
 
   // "Mixed · N rules" → highlight and scroll to the rules targeting that parameter.
   const [highlighted, setHighlighted] = useState<Set<string>>(() => new Set());
@@ -149,7 +172,16 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
         />
       ) : (
         <div className="space-y-6">
-          <StepTabs steps={methodConfig.steps} activeStepIdx={editor.activeStepIdx} {...editor.stepHandlers} readOnly={readOnly} />
+          <StepTabs
+            steps={methodConfig.steps}
+            activeStepIdx={editor.activeStepIdx}
+            {...editor.stepHandlers}
+            readOnly={readOnly}
+            badges={stepBadges}
+            badgesStale={stale}
+            errorCounts={errorCounts}
+            stepsWithResults={stepsWithResults}
+          />
 
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">

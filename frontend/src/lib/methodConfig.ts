@@ -1,4 +1,5 @@
 import { type Seed, randomSeed as randomU64Seed, toSeed } from './seed';
+import { linkRolesFrom } from './methodSteps';
 export type { Seed } from './seed';
 
 export const KINETIC_MODELS = [
@@ -38,7 +39,7 @@ export type KineticModel = (typeof KINETIC_MODELS)[number];
  * ChemEx v2 method model (FORMAT_VERSION = 2).
  *
  * A step's effective roles are built in this order:
- *   1. baseline model roles, or the effective roles of `rolesFrom` (ROLES_FROM)
+ *   1. baseline model roles, or the effective roles of the ROLES_FROM step (`rolesFromStepId`)
  *   2. the per-parameter table (`parameters`) — plain-name CONSTRAIN → FIX → FIT
  *   3. `roleRules`, top to bottom — selector-qualified overrides (later wins)
  * then an optional deterministic search (`search`: GRID or DE), then STATISTICS.
@@ -138,7 +139,16 @@ export interface Step {
   parameters: ParamSetting[];
   residueMode: 'include' | 'exclude';
   residues: string[];       // profile/spin-system names or residue numbers; empty = all profiles
-  /** ROLES_FROM: name of an earlier step whose effective roles this step starts from. */
+  /**
+   * ROLES_FROM target, by step id (authoritative; survives renames and reordering).
+   * Serialised as that step's current name.
+   */
+  rolesFromStepId?: string;
+  /**
+   * Last known name of the ROLES_FROM target. Used to link imported / legacy name-only
+   * references, and as the serialised name if the target step was deleted (which
+   * validation then reports instead of silently dropping the reference).
+   */
   rolesFrom?: string;
   /** Ordered selector-level ROLES actions applied after the parameter table. */
   roleRules?: RoleRule[];
@@ -245,5 +255,5 @@ export function normalizeStep(step: Step): Step {
 }
 
 export function normalizeMethodConfig(config: MethodConfig): MethodConfig {
-  return { ...config, steps: (config.steps || []).map(normalizeStep) };
+  return linkRolesFrom({ ...config, steps: (config.steps || []).map(normalizeStep) });
 }

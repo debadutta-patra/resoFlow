@@ -11,7 +11,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
 import type { ChemexEndpointFamily } from '../lib/experimentPlugin';
 import type { MethodConfig, Step } from '../lib/methodConfig';
-import { createDefaultMethodConfig, createDefaultStep, normalizeMethodConfig } from '../lib/methodConfig';
+import { createDefaultMethodConfig, createDefaultStep, newMethodId, normalizeMethodConfig } from '../lib/methodConfig';
+import { stepDisplayName, uniqueStepName } from '../lib/methodSteps';
 import { configToToml, tomlToConfig } from '../lib/methodToml';
 import { validateMethodConfig } from '../lib/methodValidation';
 import type { MethodTemplate } from '../lib/methodTemplates';
@@ -136,42 +137,64 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     updateSteps(steps);
   };
 
+  /** Index of a step id in `steps` (keeps the user's active step across reorder/delete). */
+  const indexOfId = (steps: Step[], id: string | undefined, fallback: number) => {
+    const k = id ? steps.findIndex(s => s.id === id) : -1;
+    return k === -1 ? Math.max(0, Math.min(fallback, steps.length - 1)) : k;
+  };
+
   const stepHandlers = {
     onSelectStep: setActiveStepIdx,
     onAddStep: () => {
-      const steps = [...methodConfig.steps, createDefaultStep(`STEP${methodConfig.steps.length + 1}`)];
+      const steps = [...methodConfig.steps, createDefaultStep(uniqueStepName(`STEP${methodConfig.steps.length + 1}`, methodConfig.steps))];
       updateSteps(steps, steps.length - 1);
     },
     onDuplicateStep: (idx: number) => {
       const src = methodConfig.steps[idx];
       if (!src) return;
-      const dup: Step = { ...JSON.parse(JSON.stringify(src)), id: newStepId(), name: `${src.name}_COPY` };
+      const copy: Step = JSON.parse(JSON.stringify(src));
+      const dup: Step = {
+        ...copy,
+        id: newStepId(),
+        name: uniqueStepName(`${stepDisplayName(src, idx)}_COPY`, methodConfig.steps),
+        // Fresh ids so rules/axes of the two steps never share DOM ids or React keys.
+        roleRules: (copy.roleRules ?? []).map(r => ({ ...r, id: newMethodId('rule') })),
+        search: copy.search ? { ...copy.search, axes: copy.search.axes.map(a => ({ ...a, id: newMethodId('axis') })) } : copy.search,
+      };
       const steps = [...methodConfig.steps];
       steps.splice(idx + 1, 0, dup);
       updateSteps(steps, idx + 1);
     },
+    /**
+     * Steps whose ROLES_FROM pointed at the deleted step keep the (now dangling)
+     * reference: validation shows it instead of silently changing their roles.
+     */
     onDeleteStep: (idx: number) => {
       if (methodConfig.steps.length <= 1) return;
+      const activeId = methodConfig.steps[activeStepIdx]?.id;
       const steps = methodConfig.steps.filter((_, i) => i !== idx);
-      updateSteps(steps, Math.max(0, Math.min(activeStepIdx, steps.length - 1)));
+      updateSteps(steps, indexOfId(steps, activeId === methodConfig.steps[idx]?.id ? undefined : activeId, Math.min(activeStepIdx, idx)));
     },
     onRenameStep: (idx: number, name: string) => {
-      if (!methodConfig.steps[idx]) return;
-      const oldName = (methodConfig.steps[idx].name || '').trim().toUpperCase();
-      const newName = name.trim().toUpperCase();
-      // Keep ROLES_FROM references pointing at the renamed step.
+      const target = methodConfig.steps[idx];
+      if (!target) return;
+      const newName = name.trim();
+      // References are by id; only the name snapshot used for display/legacy needs refreshing.
       const steps = methodConfig.steps.map((s, i) => {
-        if (i === idx) return { ...s, name };
-        if (oldName && s.rolesFrom && s.rolesFrom.trim().toUpperCase() === oldName) return { ...s, rolesFrom: newName };
+        if (i === idx) return { ...s, name: newName };
+        if (s.rolesFromStepId === target.id) return { ...s, rolesFrom: newName };
         return s;
       });
       updateSteps(steps);
     },
+    /** Reordering never rewrites ROLES_FROM; a reference that now points forward is reported. */
     onReorderSteps: (from: number, to: number) => {
+      if (from === to || to < 0 || to >= methodConfig.steps.length) return;
+      const activeId = methodConfig.steps[activeStepIdx]?.id;
       const steps = [...methodConfig.steps];
       const [moved] = steps.splice(from, 1);
       steps.splice(to, 0, moved);
-      updateSteps(steps, to);
+      updateSteps(steps, indexOfId(steps, activeId, to));
     },
   };
 

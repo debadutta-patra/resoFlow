@@ -289,6 +289,10 @@ class MethodStepModel(BaseModel):
         default="include", validation_alias=AliasChoices("residue_mode", "residueMode")
     )
     residues: List[Union[int, str]] = Field(default_factory=list)
+    # ROLES_FROM target by step id (authoritative) and its last known name (legacy / dangling fallback).
+    roles_from_step_id: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("roles_from_step_id", "rolesFromStepId")
+    )
     roles_from: Optional[str] = Field(default=None, validation_alias=AliasChoices("roles_from", "rolesFrom"))
     role_rules: List[RoleRuleModel] = Field(
         default_factory=list, validation_alias=AliasChoices("role_rules", "roleRules")
@@ -568,6 +572,32 @@ def step_role_actions(step: MethodStepModel) -> List[Tuple[str, List[str]]]:
     return actions
 
 
+_BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def step_display_name(step: MethodStepModel, idx: int) -> str:
+    """Name as emitted: trimmed, case preserved (ChemEx compares ROLES_FROM case-sensitively)."""
+    return (step.name or "").strip() or f"STEP{idx + 1}"
+
+
+def toml_key(name: str) -> str:
+    """Bare TOML key when possible, else a quoted basic string (as ChemEx renders)."""
+    return name if _BARE_KEY.match(name) else _q(name)
+
+
+def roles_from_name(steps: List[MethodStepModel], idx: int) -> Optional[str]:
+    """ROLES_FROM name to emit: the id target's current name; a dangling or name-only
+    reference keeps its last known name so the problem stays visible."""
+    step = steps[idx]
+    last = (step.roles_from or "").strip() or None
+    if step.roles_from_step_id:
+        for j, other in enumerate(steps):
+            if other.id == step.roles_from_step_id:
+                return step_display_name(other, j)
+        return last
+    return last
+
+
 def _format_residue(r: Union[int, str]) -> str:
     s = str(r).strip()
     return s if s.isdigit() else _q(s)
@@ -582,7 +612,7 @@ def emit_method_toml_v2(config: MethodConfigModel) -> str:
 
     for idx, raw_step in enumerate(config.steps):
         step = normalize_step(raw_step)
-        name = (step.name or f"STEP{idx + 1}").strip().upper()
+        name = toml_key(step_display_name(step, idx))
         lines += ["", f"[{name}]"]
 
         residues = [str(r).strip() for r in step.residues if str(r).strip()]
@@ -592,8 +622,9 @@ def emit_method_toml_v2(config: MethodConfigModel) -> str:
             value = '"ALL"' if is_all else "[" + ", ".join(_format_residue(r) for r in residues) + "]"
             lines.append(f"{key} = {value}")
 
-        if step.roles_from and step.roles_from.strip():
-            lines.append(f"ROLES_FROM = {_q(step.roles_from.strip().upper())}")
+        rf = roles_from_name(config.steps, idx)
+        if rf:
+            lines.append(f"ROLES_FROM = {_q(rf)}")
 
         actions = step_role_actions(step)
         if actions:
@@ -898,16 +929,28 @@ def parse_method_toml(toml_str: str) -> MethodConfigModel:
     for section_name, section in data.items():
         if not isinstance(section, dict):
             continue
-        name = str(section_name).upper()
-        steps.append(_parse_v2_step(name, section) if is_v2 else _parse_v1_step(name, section))
+        name = str(section_name)  # case preserved
+        parsed = _parse_v2_step(name, section) if is_v2 else _parse_v1_step(name, section)
+        parsed.id = _new_id("step")
+        steps.append(parsed)
 
     if not is_v2:
         # v1 carried roles and selection implicitly between steps; make it explicit.
         for i in range(1, len(steps)):
             steps[i].roles_from = steps[i - 1].name
+            steps[i].roles_from_step_id = steps[i - 1].id
             if not steps[i].residues and steps[i - 1].residues:
                 steps[i].residue_mode = steps[i - 1].residue_mode
                 steps[i].residues = list(steps[i - 1].residues)
+
+    # Link name-only ROLES_FROM references to step ids (earlier steps first).
+    for i, st in enumerate(steps):
+        if st.roles_from and not st.roles_from_step_id:
+            target = next((s for s in steps[:i] if s.name == st.roles_from), None) or next(
+                (s for s in steps if s.name == st.roles_from), None
+            )
+            if target is not None:
+                st.roles_from_step_id = target.id
 
     return MethodConfigModel(steps=steps or [MethodStepModel(name="STEP1")])
 
@@ -984,17 +1027,19 @@ def validate_method_config(
         })
         return issues
 
-    earlier: set[str] = set()
+    earlier: set[str] = set()  # lower-cased names (uniqueness ignores case)
     for idx, raw in enumerate(config.steps):
         step = normalize_step(raw)
-        label = (step.name or f"STEP{idx + 1}").strip().upper()
+        label = step_display_name(step, idx)
 
         if not _STEP_NAME.match(label):
             add(idx, label, "name", "error", f"Step name '{label}' may only contain letters, digits, '_' and '-'.", "name")
-        if label in earlier:
+        if label.lower() in earlier:
             add(idx, label, "name", "error", f"Duplicate step name '{label}'.", "duplicate")
-        if step.roles_from and step.roles_from.strip().upper() not in earlier:
-            add(idx, label, "roles_from", "error", f"ROLES_FROM '{step.roles_from}' must name an earlier step.", "roles-from")
+        rf = roles_from_name(config.steps, idx)
+        earlier_names = {step_display_name(s, j) for j, s in enumerate(config.steps[:idx])}
+        if rf and rf not in earlier_names:
+            add(idx, label, "roles_from", "error", f"ROLES_FROM '{rf}' must name an earlier step.", "roles-from")
 
         mode_of = {p.name.upper(): p.mode for p in step.parameters}
         for p in step.parameters:
@@ -1065,6 +1110,6 @@ def validate_method_config(
                     add(idx, label, "statistics.mcmc", "warning",
                         f"MCMC {', '.join(legacy)} are v1-only controls and are not emitted in v2.", "mcmc-legacy")
 
-        earlier.add(label)
+        earlier.add(label.lower())
 
     return issues

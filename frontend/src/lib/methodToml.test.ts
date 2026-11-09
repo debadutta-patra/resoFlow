@@ -418,7 +418,7 @@ describe('Method Configuration Validation (v2)', () => {
       ],
     };
     const msgs = validateMethodConfig(cfg, known).map(e => e.message);
-    expect(msgs.some(m => m.includes('ROLES_FROM "B" must name an earlier step'))).toBe(true);
+    expect(msgs.some(m => m.includes('ROLES_FROM "B" is step 2, after this one; it must name an earlier step'))).toBe(true);
     expect(msgs.some(m => m.includes('search targets must be fitted'))).toBe(true);
     expect(msgs.some(m => m.includes('DE search: SEED is required'))).toBe(true);
     expect(msgs.some(m => m.includes('must use lin(low, high) or log(low, high)'))).toBe(true);

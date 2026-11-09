@@ -1,0 +1,303 @@
+{
+  "_comment": "Shared emitter contract: frontend/src/lib/methodToml.contract.test.ts and backend/tests/test_method_emit_contract.py must both emit exactly `toml` for `config`.",
+  "cases": [
+    {
+      "name": "table roles in CONSTRAIN → FIX → FIT order; Default omitted",
+      "config": {
+        "steps": [
+          {
+            "id": "s1",
+            "name": "STEP1",
+            "residueMode": "include",
+            "residues": [],
+            "parameters": [
+              {
+                "name": "PB",
+                "mode": "fit"
+              },
+              {
+                "name": "kex_ab",
+                "mode": "fit"
+              },
+              {
+                "name": "R2_A",
+                "mode": "fix"
+              },
+              {
+                "name": "R2_B",
+                "mode": "constrain",
+                "expression": "0.5 * ([R2_A] + 1.0)"
+              },
+              {
+                "name": "R1_A",
+                "mode": "default"
+              }
+            ]
+          }
+        ]
+      },
+      "toml": "FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { CONSTRAIN = [\"[R2_B] = 0.5 * ([R2_A] + 1.0)\"] },\n  { FIX = [\"R2_A\"] },\n  { FIT = [\"PB\", \"KEX_AB\"] },\n]\n"
+    },
+    {
+      "name": "docs multi-step GLOBAL_FIT / LOCAL_FITS with id-based ROLES_FROM, case-preserved names, rules and expanded statistics",
+      "config": {
+        "steps": [
+          {
+            "id": "g",
+            "name": "Global_Fit",
+            "residueMode": "include",
+            "residues": [
+              "15",
+              "31",
+              "33",
+              "34",
+              "37"
+            ],
+            "parameters": [
+              {
+                "name": "PB",
+                "mode": "fit"
+              },
+              {
+                "name": "KEX_AB",
+                "mode": "fit"
+              }
+            ]
+          },
+          {
+            "id": "l",
+            "name": "LOCAL_FITS",
+            "residueMode": "include",
+            "residues": [
+              "ALL"
+            ],
+            "rolesFromStepId": "g",
+            "rolesFrom": "OLD_NAME",
+            "parameters": [
+              {
+                "name": "PB",
+                "mode": "fix"
+              },
+              {
+                "name": "KEX_AB",
+                "mode": "fix"
+              },
+              {
+                "name": "DW_AB",
+                "mode": "fit"
+              }
+            ],
+            "roleRules": [
+              {
+                "id": "r1",
+                "action": "FIX",
+                "entries": [
+                  "DW_AB, NUC->G31N-H",
+                  ""
+                ]
+              },
+              {
+                "id": "r2",
+                "action": "CONSTRAIN",
+                "entries": [
+                  "[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"
+                ]
+              }
+            ],
+            "statistics": {
+              "mc": {
+                "enabled": true,
+                "replicates": 100,
+                "seed": "18446744073709551615"
+              },
+              "bs": {
+                "enabled": false,
+                "replicates": 50
+              },
+              "bsn": {
+                "enabled": true,
+                "replicates": 20
+              },
+              "mcmc": {
+                "enabled": true,
+                "steps": 20000,
+                "burn": 4000,
+                "seed": "680"
+              }
+            }
+          },
+          {
+            "id": "e",
+            "name": "exc",
+            "residueMode": "exclude",
+            "residues": [
+              "12",
+              "18",
+              "G2N-HN"
+            ],
+            "parameters": []
+          }
+        ]
+      },
+      "toml": "FORMAT_VERSION = 2\n\n[Global_Fit]\nINCLUDE = [15, 31, 33, 34, 37]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\"] },\n]\n\n[LOCAL_FITS]\nINCLUDE = \"ALL\"\nROLES_FROM = \"Global_Fit\"\nROLES = [\n  { FIX = [\"PB\", \"KEX_AB\"] },\n  { FIT = [\"DW_AB\"] },\n  { FIX = [\"DW_AB, NUC->G31N-H\"] },\n  { CONSTRAIN = [\"[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]\"] },\n]\n\n[LOCAL_FITS.STATISTICS.MC]\nREPLICATES = 100\nSEED = 18446744073709551615\n\n[LOCAL_FITS.STATISTICS.BSN]\nREPLICATES = 20\n\n[LOCAL_FITS.STATISTICS.MCMC]\nSTEPS = 20000\nBURN = 4000\nSEED = 680\n\n[exc]\nEXCLUDE = [12, 18, \"G2N-HN\"]\n"
+    },
+    {
+      "name": "GRID axes: values/log/lin, awkward floats, qualifiers, search targets auto-added to FIT",
+      "config": {
+        "steps": [
+          {
+            "id": "s",
+            "name": "GRID_STEP",
+            "residueMode": "include",
+            "residues": [],
+            "parameters": [
+              {
+                "name": "DW_AB",
+                "mode": "fit"
+              }
+            ],
+            "search": {
+              "mode": "grid",
+              "axes": [
+                {
+                  "id": "a",
+                  "param": "PB",
+                  "fn": "values",
+                  "low": 0,
+                  "high": 0,
+                  "count": 0,
+                  "values": [
+                    0.005,
+                    0.30000000000000004,
+                    1e-7,
+                    2
+                  ]
+                },
+                {
+                  "id": "b",
+                  "param": "kex_ab",
+                  "fn": "log",
+                  "low": 20,
+                  "high": 2000.5,
+                  "count": 12
+                },
+                {
+                  "id": "c",
+                  "param": "DW_AB",
+                  "qualifier": "NUC->G24N-H, B0->800.13MHz",
+                  "fn": "lin",
+                  "low": -10,
+                  "high": 1e+21,
+                  "count": 21
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "toml": "FORMAT_VERSION = 2\n\n[GRID_STEP]\nROLES = [\n  { FIT = [\"DW_AB\", \"PB\", \"KEX_AB\"] },\n]\n\n[GRID_STEP.SEARCH.GRID]\nAXES = [\n  \"[PB] = values(0.005, 0.30000000000000004, 1e-7, 2)\",\n  \"[KEX_AB] = log(20, 2000.5, 12)\",\n  \"[DW_AB, NUC->G24N-H, B0->800.13MHz] = lin(-10, 1e+21, 21)\",\n]\n"
+    },
+    {
+      "name": "DE with full-range u64 seed and a residue-qualified coordinate (docs method_de.toml shape)",
+      "config": {
+        "steps": [
+          {
+            "id": "d",
+            "name": "DE",
+            "residueMode": "include",
+            "residues": [
+              "K19N-H"
+            ],
+            "parameters": [
+              {
+                "name": "KEX_BC",
+                "mode": "fix"
+              },
+              {
+                "name": "PB",
+                "mode": "fit"
+              },
+              {
+                "name": "PC",
+                "mode": "fit"
+              },
+              {
+                "name": "DW_AB",
+                "mode": "fit"
+              }
+            ],
+            "search": {
+              "mode": "de",
+              "seed": "12345678901234567890",
+              "axes": [
+                {
+                  "id": "1",
+                  "param": "PB",
+                  "fn": "log",
+                  "low": 0.001,
+                  "high": 0.2,
+                  "count": 0
+                },
+                {
+                  "id": "2",
+                  "param": "DW_AB",
+                  "qualifier": "NUC->K19N",
+                  "fn": "lin",
+                  "low": -15,
+                  "high": 15,
+                  "count": 0
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "toml": "FORMAT_VERSION = 2\n\n[DE]\nINCLUDE = [\"K19N-H\"]\nROLES = [\n  { FIX = [\"KEX_BC\"] },\n  { FIT = [\"PB\", \"PC\", \"DW_AB\"] },\n]\n\n[DE.SEARCH.DE]\nSEED = 12345678901234567890\nCOORDINATES = [\n  \"[PB] = log(0.001, 0.2)\",\n  \"[DW_AB, NUC->K19N] = lin(-15, 15)\",\n]\n"
+    },
+    {
+      "name": "dangling ROLES_FROM keeps its last known name; non-bare step name is quoted",
+      "config": {
+        "steps": [
+          {
+            "id": "x",
+            "name": "my step",
+            "residueMode": "include",
+            "residues": [],
+            "parameters": [
+              {
+                "name": "PB",
+                "mode": "fit"
+              }
+            ]
+          },
+          {
+            "id": "y",
+            "name": "AFTER",
+            "residueMode": "include",
+            "residues": [],
+            "rolesFromStepId": "deleted-id",
+            "rolesFrom": "GONE",
+            "parameters": []
+          },
+          {
+            "id": "z",
+            "name": "LEGACY",
+            "residueMode": "include",
+            "residues": [],
+            "rolesFrom": "my step",
+            "parameters": []
+          }
+        ]
+      },
+      "toml": "FORMAT_VERSION = 2\n\n[\"my step\"]\nROLES = [\n  { FIT = [\"PB\"] },\n]\n\n[AFTER]\nROLES_FROM = \"GONE\"\n\n[LEGACY]\nROLES_FROM = \"my step\"\n"
+    },
+    {
+      "name": "raw override is emitted verbatim",
+      "config": {
+        "steps": [],
+        "rawOverride": "# hand-written\nFORMAT_VERSION = 2\n\n[RAW]\n"
+      },
+      "toml": "# hand-written\nFORMAT_VERSION = 2\n\n[RAW]\n"
+    }
+  ]
+}

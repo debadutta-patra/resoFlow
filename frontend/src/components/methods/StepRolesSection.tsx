@@ -13,6 +13,7 @@ import { ChevronDown, ChevronUp, GripVertical, ListOrdered, Plus, Trash2, X } fr
 import type { RoleAction, RoleRule, Step } from '../../lib/methodConfig';
 import { newMethodId } from '../../lib/methodConfig';
 import { stepRoleActions } from '../../lib/methodToml';
+import { rolesFromError, rolesFromTarget, setRolesFrom, stepDisplayName } from '../../lib/methodSteps';
 import type { ParameterCatalog } from '../../lib/baselineRoles';
 import { actionTarget, ruleDomId, tableActionCount, type ChemexError } from '../../lib/resolvedRoles';
 import SelectorBuilder from './SelectorBuilder';
@@ -60,7 +61,10 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
   const [dropIdx, setDropIdx] = useState<number | null>(null);
   /** Dragging starts only from the grip, so text selection inside entries never drags the rule. */
   const [armedId, setArmedId] = useState<string | null>(null);
-  const earlierSteps = steps.slice(0, stepIdx).map((s, i) => (s.name || `STEP${i + 1}`).trim().toUpperCase());
+  const rolesFrom = rolesFromTarget(steps, stepIdx);
+  const rolesFromMsg = rolesFromError(steps, stepIdx);
+  const currentRef = step.rolesFromStepId ?? (step.rolesFrom ? `name:${step.rolesFrom}` : '');
+  const BROKEN_LABEL: Record<string, string> = { missing: 'deleted step', forward: 'later step', self: 'this step' };
 
   // A highlight request (e.g. from the table's "Mixed" link) always shows the rules.
   const open = isOpen || (highlightedRuleIds?.size ?? 0) > 0;
@@ -110,7 +114,7 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
           <ListOrdered className="w-4 h-4 text-indigo-500" />
           <span>Ordered Roles (ROLES) — applied top to bottom, later entries win</span>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
-            {step.rolesFrom ? `from ${step.rolesFrom}` : 'baseline'} · {tableCount + rules.filter(r => r.entries.some(e => e.trim())).length} actions
+            {rolesFrom.status === 'none' ? 'baseline' : `from ${rolesFrom.name}${rolesFrom.status === 'ok' ? '' : ' ⚠'}`} · {tableCount + rules.filter(r => r.entries.some(e => e.trim())).length} actions
           </span>
         </button>
       </div>
@@ -124,20 +128,26 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
             <select
               id={`roles-from-${step.id}`}
               disabled={readOnly || stepIdx === 0}
-              value={step.rolesFrom ?? ''}
-              onChange={e => onChange({ ...step, rolesFrom: e.target.value || undefined })}
-              className={`${selectCls} w-56`}
+              value={currentRef}
+              onChange={e => {
+                const k = steps.findIndex(s => s.id === e.target.value);
+                onChange(setRolesFrom(step, k === -1 ? undefined : steps[k], k));
+              }}
+              className={`${selectCls} w-56 ${rolesFromMsg ? 'border-red-400 dark:border-red-500' : ''}`}
             >
               <option value="">Baseline model roles</option>
-              {earlierSteps.map(n => (
-                <option key={n} value={n}>
-                  Step {n} (ROLES_FROM)
+              {steps.slice(0, stepIdx).map((s, i) => (
+                <option key={s.id} value={s.id}>
+                  {i + 1}. {stepDisplayName(s, i)}
                 </option>
               ))}
-              {step.rolesFrom && !earlierSteps.includes(step.rolesFrom.toUpperCase()) && (
-                <option value={step.rolesFrom}>{step.rolesFrom} (invalid — not an earlier step)</option>
+              {rolesFrom.status !== 'none' && rolesFrom.status !== 'ok' && (
+                <option value={currentRef}>
+                  ⚠ {rolesFrom.name ?? 'unknown'} ({BROKEN_LABEL[rolesFrom.status]})
+                </option>
               )}
             </select>
+            {rolesFromMsg && <p className="w-full text-[11px] text-red-600 dark:text-red-400">{rolesFromMsg}</p>}
             <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xl">
               Copies only roles and constraints — not values, residue selection, search, statistics or seeds. Values always continue from the
               latest committed fit.

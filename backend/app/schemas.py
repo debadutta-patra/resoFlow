@@ -451,14 +451,17 @@ class MethodStepSchema(BaseModel):
     parameters: List[ParamSettingSchema] = []
     residue_mode: str = Field("include", validation_alias=AliasChoices("residue_mode", "residueMode"))
     residues: List[int | str] = []
+    roles_from_step_id: Optional[str] = Field(None, validation_alias=AliasChoices("roles_from_step_id", "rolesFromStepId"))
     roles_from: Optional[str] = Field(None, validation_alias=AliasChoices("roles_from", "rolesFrom"))
     role_rules: List[RoleRuleSchema] = Field([], validation_alias=AliasChoices("role_rules", "roleRules"))
     search: Optional[StepSearchSchema] = None
     statistics: Optional[StatisticsSchema] = None
 
 class MethodConfigSchema(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     steps: List[MethodStepSchema] = []
-    raw_override: Optional[str] = None
+    raw_override: Optional[str] = Field(None, validation_alias=AliasChoices("raw_override", "rawOverride"))
 
 class MethodValidationIssue(BaseModel):
     id: str

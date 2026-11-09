@@ -28,6 +28,7 @@ import type {
 } from './methodConfig';
 import { createDefaultStep, newMethodId, normalizeStep } from './methodConfig';
 import { isValidSeed, toSeed } from './seed';
+import { linkRolesFrom, rolesFromTarget, stepDisplayName } from './methodSteps';
 
 // ── Emission ────────────────────────────────────────────────────────────
 
@@ -125,7 +126,11 @@ function emitMcmc(lines: string[], stepName: string, m?: McmcConfig) {
   if (seed) lines.push(seed);
 }
 
-export const stepTomlName = (step: Step, idx: number): string => (step.name || `STEP${idx + 1}`).trim().toUpperCase();
+/** TOML key for a step header: bare when possible, else a quoted basic string (as ChemEx renders). */
+export const tomlKey = (name: string): string => (/^[A-Za-z0-9_-]+$/.test(name) ? name : q(name));
+
+/** Step name as written to TOML (case preserved; ChemEx compares ROLES_FROM case-sensitively). */
+export const stepTomlName = (step: Step, idx: number): string => stepDisplayName(step, idx);
 
 /**
  * Serializes a structured MethodConfig into canonical ChemEx v2 method.toml.
@@ -139,7 +144,7 @@ export function configToToml(config: MethodConfig): string {
 
   config.steps.forEach((rawStep, idx) => {
     const step = normalizeStep(rawStep);
-    const name = stepTomlName(step, idx);
+    const name = tomlKey(stepTomlName(step, idx));
     lines.push('', `[${name}]`);
 
     // Selection (step-local; omitted = all profiles)
@@ -150,9 +155,10 @@ export function configToToml(config: MethodConfig): string {
       lines.push(`${key} = ${isAll ? '"ALL"' : `[${residues.map(formatResidue).join(', ')}]`}`);
     }
 
-    if (step.rolesFrom && step.rolesFrom.trim()) {
-      lines.push(`ROLES_FROM = ${q(step.rolesFrom.trim().toUpperCase())}`);
-    }
+    // By id → the target's current name; a dangling reference keeps its last known
+    // name so the problem stays visible (validation reports it) instead of vanishing.
+    const rf = rolesFromTarget(config.steps, idx);
+    if (rf.status !== 'none' && rf.name) lines.push(`ROLES_FROM = ${q(rf.name)}`);
 
     const actions = stepRoleActions(step);
     if (actions.length) {
@@ -792,7 +798,7 @@ export function tomlToConfig(toml: string): ParseResult {
   for (const name of topOrder) {
     const sec = data[name];
     if (!isTable(sec)) continue;
-    const stepName = name.toUpperCase();
+    const stepName = name;
     steps.push(isV2 ? parseV2Step(stepName, sec, unparsed) : parseV1Step(stepName, sec, unparsed));
   }
   for (const k of Object.keys(data)) {
@@ -803,6 +809,7 @@ export function tomlToConfig(toml: string): ParseResult {
   if (!isV2) {
     for (let i = 1; i < steps.length; i++) {
       steps[i].rolesFrom = steps[i - 1].name;
+      steps[i].rolesFromStepId = steps[i - 1].id;
       if (steps[i].residues.length === 0 && steps[i - 1].residues.length > 0) {
         steps[i].residueMode = steps[i - 1].residueMode;
         steps[i].residues = [...steps[i - 1].residues];
@@ -811,7 +818,7 @@ export function tomlToConfig(toml: string): ParseResult {
   }
 
   return {
-    config: { steps: steps.length > 0 ? steps : [createDefaultStep()] },
+    config: linkRolesFrom({ steps: steps.length > 0 ? steps : [createDefaultStep()] }),
     unparsed,
   };
 }

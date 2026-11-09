@@ -177,3 +177,34 @@ export function rulesByTargetName(step: Step): Record<string, string[]> {
   }
   return out;
 }
+
+/** Compact per-step facts for the step tabs. */
+export interface StepBadge {
+  /** Independent FIT coordinates after all roles (null until ChemEx has resolved the step). */
+  coords: number | null;
+  /** Residues (spin systems) in the step's active scope. */
+  residues: number | null;
+  search: 'grid' | 'de' | null;
+  statistics: string[];
+}
+
+export function stepBadge(step: Step, resolved: ResolvedStep | undefined): StepBadge {
+  const search = step.search && step.search.mode !== 'none' && step.search.axes.length > 0 ? step.search.mode : null;
+  const st = step.statistics;
+  const statistics = [
+    st?.mc?.enabled ? 'MC' : null,
+    st?.bs?.enabled ? 'BS' : null,
+    st?.bsn?.enabled ? 'BSN' : null,
+    st?.mcmc?.enabled ? 'MCMC' : null,
+  ].filter((x): x is string => !!x);
+  if (!resolved || resolved.error) return { coords: null, residues: null, search, statistics };
+  const coords = resolved.parameters.filter(p => p.role === 'fit').length;
+  const residues = new Set(resolved.parameters.filter(p => p.spin).map(p => p.spin)).size;
+  return { coords, residues, search, statistics };
+}
+
+/** "4 coords · 2 res" */
+export function stepBadgeText(b: StepBadge): string | null {
+  if (b.coords === null) return null;
+  return `${b.coords} coord${b.coords === 1 ? '' : 's'} · ${b.residues ?? 0} res`;
+}

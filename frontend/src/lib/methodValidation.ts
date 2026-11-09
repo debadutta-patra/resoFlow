@@ -3,6 +3,7 @@ import { normalizeStep } from './methodConfig';
 import { stepRoleActions, stepTomlName } from './methodToml';
 import { axisPointCount } from './searchDefaults';
 import { seedError } from './seed';
+import { rolesFromError, stepNameError } from './methodSteps';
 import { constraintTargetName, parseConstraint, parseSelector, selectorName } from './methodGrammar';
 import type { ParameterCatalog } from './baselineRoles';
 
@@ -16,7 +17,6 @@ export interface ValidationError {
 
 export type MethodValidationError = ValidationError;
 
-const STEP_NAME = /^[A-Za-z0-9_-]+$/;
 /** Check a v2 selector "NAME[, QUAL->value]..." with ChemEx's grammar — returns an error message or null. */
 export function selectorError(selector: string, knownUpper?: Set<string>): string | null {
   const { selector: parsed, error } = parseSelector(selector);
@@ -58,23 +58,19 @@ export function validateMethodConfig(
     return errors;
   }
 
-  const earlier = new Set<string>();
-
   config.steps.forEach((rawStep, i) => {
     const step: Step = normalizeStep(rawStep);
     const stepName = stepTomlName(step, i);
     const push = (message: string, severity: 'error' | 'warning' = 'error', paramName?: string) =>
       errors.push({ stepId: step.id, stepName, paramName, message, severity });
 
-    // ── Step name ──
-    if (!STEP_NAME.test(stepName)) push(`Step name "${stepName}" may only contain letters, digits, "_" and "-".`);
-    if (earlier.has(stepName)) push(`Duplicate step name "${stepName}". ChemEx v2 rejects duplicate steps.`);
+    // ── Step name (TOML key and ChemEx output folder) ──
+    const nameMsg = stepNameError(stepName, config.steps, i);
+    if (nameMsg) push(nameMsg);
 
-    // ── ROLES_FROM ──
-    if (step.rolesFrom) {
-      const rf = step.rolesFrom.trim().toUpperCase();
-      if (!earlier.has(rf)) push(`ROLES_FROM "${rf}" must name an earlier step.`);
-    }
+    // ── ROLES_FROM (by step id; a dangling or forward reference is an error, never auto-fixed) ──
+    const rfMsg = rolesFromError(config.steps, i);
+    if (rfMsg) push(rfMsg);
 
     // ── Parameter table ──
     const seen = new Set<string>();
@@ -136,7 +132,7 @@ export function validateMethodConfig(
     const hasFit = actions.some(a => a.action === 'FIT');
     const search = step.search;
     const searching = !!search && search.mode !== 'none' && search.axes.length > 0;
-    if (!hasFit && !step.rolesFrom) {
+    if (!hasFit && !step.rolesFromStepId && !step.rolesFrom) {
       push(`Step "${stepName}" has no FIT action; ChemEx will fit the model's baseline parameters.`, 'warning');
     }
 
@@ -244,7 +240,6 @@ export function validateMethodConfig(
       }
     }
 
-    earlier.add(stepName);
   });
 
   return errors;
