@@ -400,8 +400,16 @@ def get_analysis_results(
     from ..services.results_bundle import store, is_bundle_valid
     from ..services.results_bundle.tasks import ingest_results_task
 
+    ingest_failed = analysis.status == "COMPLETED_WITH_ERRORS" and analysis.bundle_status == "ERROR"
+
     # 1. If valid bundle exists, serve directly from bundle with ETag
     if run_dir and os.path.exists(run_dir) and is_bundle_valid(run_dir):
+        if ingest_failed:
+            # A concurrent ingest built the bundle after this one failed; re-ingest reuses it and clears the error.
+            try:
+                ingest_results_task.delay(analysis.analysis_uuid)
+            except Exception as q_exc:
+                logger.debug("Could not queue ingest retry: %s", q_exc)
         etag = store.get_etag(run_dir)
         response.headers["ETag"] = etag
         inm = request.headers.get("if-none-match")
@@ -431,7 +439,7 @@ def get_analysis_results(
     # 2. Lazy migration fallback: bundle missing or stale for completed runs
     # Parse raw tree once, return results, and enqueue background ingest
     if (
-        analysis.status == "COMPLETED"
+        (analysis.status == "COMPLETED" or ingest_failed)
         and run_dir
         and os.path.exists(run_dir)
         and analysis.analysis_type

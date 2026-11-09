@@ -86,6 +86,7 @@ def ingest_results_task(self, analysis_uuid: str) -> Dict[str, Any]:
             chemex_version=analysis.chemex_version,
             analysis_name=analysis.name,
             analysis_type=analysis.analysis_type or "CEST",
+            skip_if_current=True,
         )
 
         analysis.bundle_status = "VALID"

@@ -19,6 +19,9 @@ from ..reporting.model import ReportModel
 logger = logging.getLogger(__name__)
 
 
+REQUIRED_BUNDLE_FILES = ("summary.json", "results.sqlite", "report_model.json")
+
+
 def is_bundle_valid(run_dir: Union[str, Path]) -> bool:
     """
     Check if a results bundle exists, matches current parser and schema versions,
@@ -27,6 +30,9 @@ def is_bundle_valid(run_dir: Union[str, Path]) -> bool:
     r_dir = Path(run_dir).resolve()
     manifest_path = r_dir / "results" / "manifest.json"
     if not manifest_path.is_file():
+        return False
+    # A bundle damaged after promotion (e.g. by an interrupted or concurrent ingest) must be rebuilt.
+    if not all((r_dir / "results" / name).is_file() for name in REQUIRED_BUNDLE_FILES):
         return False
 
     try:

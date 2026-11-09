@@ -73,3 +73,22 @@ def test_concurrent_ingests_of_one_run_all_succeed(tmp_path):
     assert is_bundle_valid(run)
     assert not (run / "results.tmp").exists()
     assert not (run / "results.old").exists()
+
+
+def test_queued_duplicate_ingest_reuses_current_bundle(tmp_path):
+    run = _ingested_copy(tmp_path)
+    manifest = (run / "results" / "manifest.json").read_text()
+    meta = ingest_results(run, analysis_uuid="u", skip_if_current=True)
+    assert meta["status"] == "complete" and meta.get("reused") is True
+    assert meta["summary_n_residues"] > 0
+    assert (run / "results" / "manifest.json").read_text() == manifest  # not rebuilt
+
+
+def test_damaged_bundle_is_invalid_and_rebuilt(tmp_path):
+    run = _ingested_copy(tmp_path)
+    (run / "results" / "summary.json").unlink()  # what the ingest race left behind
+    (run / "results" / "results.sqlite").unlink()
+    assert not is_bundle_valid(run)
+    meta = ingest_results(run, analysis_uuid="u", skip_if_current=True)
+    assert "reused" not in meta
+    assert is_bundle_valid(run)

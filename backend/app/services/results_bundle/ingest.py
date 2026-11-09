@@ -78,17 +78,46 @@ def ingest_results(
     chemex_version: Optional[str] = None,
     analysis_name: Optional[str] = None,
     analysis_type: str = "CEST",
+    *,
+    skip_if_current: bool = False,
 ) -> Dict[str, Any]:
     """
     Parse the ChemEx output tree and derive the complete results bundle atomically.
     Raises on failure, leaving raw files and any existing bundle intact. Concurrent
-    ingests of the same run directory are serialized.
+    ingests of the same run directory are serialized; with ``skip_if_current`` an
+    ingest that finds an up-to-date bundle once it holds the lock reuses it.
     """
     r_dir = Path(run_dir).resolve()
     if not r_dir.exists():
         raise FileNotFoundError(f"Run directory does not exist: {r_dir}")
     with _run_dir_lock(r_dir):
+        if skip_if_current:
+            current = _current_bundle_meta(r_dir)
+            if current is not None:
+                return current
         return _ingest_results_locked(r_dir, analysis_uuid, chemex_version, analysis_name, analysis_type)
+
+
+def _current_bundle_meta(r_dir: Path) -> Optional[Dict[str, Any]]:
+    """Result metadata of an existing, up-to-date bundle (None when it must be rebuilt)."""
+    from .store import is_bundle_valid
+
+    invalidate_fingerprint_cache(r_dir)
+    if not is_bundle_valid(r_dir):
+        return None
+    try:
+        manifest = json.loads((r_dir / "results" / "manifest.json").read_text(encoding="utf-8"))
+        summary = json.loads((r_dir / "results" / "summary.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    g = summary.get("global") or {}
+    return {
+        "status": "complete",
+        "fingerprint": manifest.get("fingerprint"),
+        "summary_redchi": g.get("redchi") or g.get("chi2_red"),
+        "summary_n_residues": len(summary.get("residues") or {}),
+        "reused": True,
+    }
 
 
 def _ingest_results_locked(
