@@ -1,5 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import type { Step, ParamSetting, ParamMode } from '../../lib/methodConfig';
+import type { StartingProvenance } from '../../lib/parameterConfig';
+import { baselineRoleLabel } from '../../lib/baselineRoles';
+import type { BaselineRolesState } from '../../hooks/useBaselineRoles';
 import {
   ChevronDown,
   ChevronUp,
@@ -104,7 +107,82 @@ interface ParameterTableProps {
   readOnly?: boolean;
   /** Parameter names targeted by this step's SEARCH (shown as a badge). */
   searchTargets?: Record<string, 'grid' | 'de'>;
+  /** Position of this step in the method (0 = first). */
+  stepIndex?: number;
+  /** Name of the step before this one (later steps start from its committed result). */
+  previousStepName?: string;
+  /** Last completed run's committed global values per step name (upper-case keys). */
+  committedByStep?: Record<string, Record<string, number>>;
+  /** Step-1 starting-value provenance per parameter (upper-case keys). */
+  startingProvenance?: Record<string, StartingProvenance>;
+  /** ChemEx-resolved baseline roles: what "Default" means for this analysis. */
+  baselineRoles?: BaselineRolesState;
 }
+
+const fmtValue = (v: number | string) => {
+  const n = typeof v === 'string' ? Number(v) : v;
+  if (!Number.isFinite(n)) return String(v);
+  return Math.abs(n) >= 1e4 || (Math.abs(n) < 1e-3 && n !== 0) ? n.toExponential(3) : String(Number(n.toPrecision(4)));
+};
+
+const PREVIOUS_STEP_TITLE =
+  'ChemEx v2 starts every step from the latest successfully committed fit, whatever ROLES_FROM says. ' +
+  'Parameter-file values only seed the first step.';
+
+/** Where a FIT/FIX parameter's numeric value comes from in this step. */
+const StartingValueNote: React.FC<{
+  label: string;
+  name: string;
+  stepIndex: number;
+  previousStepName?: string;
+  committed?: number;
+  startVal?: number | string;
+  provenance?: StartingProvenance;
+  onNavigateToParameters?: () => void;
+}> = ({ label, name, stepIndex, previousStepName, committed, startVal, provenance, onNavigateToParameters }) => {
+  if (stepIndex > 0) {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs" title={PREVIOUS_STEP_TITLE}>
+        <Activity className="w-3.5 h-3.5 text-blue-500" />
+        <span>{label}</span>
+        <span className="font-semibold text-slate-800 dark:text-slate-200">From previous step result</span>
+        {committed !== undefined && previousStepName && (
+          <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
+            (last run, {previousStepName}: {fmtValue(committed)})
+          </span>
+        )}
+      </div>
+    );
+  }
+  const value = startVal ?? provenance?.value;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs">
+      <Activity className="w-3.5 h-3.5 text-blue-500" />
+      <span>{label}</span>
+      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+        {value !== undefined ? fmtValue(value) : 'Auto'}
+      </span>
+      {provenance?.source ? (
+        <span className="text-[11px] text-slate-400 dark:text-slate-500">· {provenance.source}</span>
+      ) : value === undefined ? (
+        <span className="text-[11px] text-slate-400 dark:text-slate-500" title={`No ${name} entry in parameters.toml`}>
+          · ChemEx default
+        </span>
+      ) : null}
+      {onNavigateToParameters && (
+        <button
+          type="button"
+          onClick={onNavigateToParameters}
+          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 ml-1 text-[11px]"
+          title="Jump to the Parameters tab to adjust starting values"
+        >
+          <span>Params</span>
+          <ExternalLink className="w-2.5 h-2.5" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 export const ParameterTable: React.FC<ParameterTableProps> = ({
   step,
@@ -114,6 +192,11 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
   onNavigateToParameters,
   readOnly = false,
   searchTargets = {},
+  stepIndex = 0,
+  previousStepName,
+  committedByStep = {},
+  startingProvenance = {},
+  baselineRoles,
 }) => {
   const [showAllParams, setShowAllParams] = useState(false);
   const [activeAutocompleteParam, setActiveAutocompleteParam] = useState<string | null>(null);
@@ -256,6 +339,21 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
               const isFixed = setting.mode === 'fix';
               const isConstrained = setting.mode === 'constrain';
               const searchKind = searchTargets[setting.name.toUpperCase()];
+              const uName = setting.name.toUpperCase();
+              const committed = previousStepName ? committedByStep[previousStepName.toUpperCase()]?.[uName] : undefined;
+              const baseline = baselineRoleLabel(baselineRoles?.roles?.[uName]);
+              const valueNote = (label: string) => (
+                <StartingValueNote
+                  label={label}
+                  name={uName}
+                  stepIndex={stepIndex}
+                  previousStepName={previousStepName}
+                  committed={committed}
+                  startVal={startVal}
+                  provenance={startingProvenance[uName]}
+                  onNavigateToParameters={onNavigateToParameters}
+                />
+              );
 
               return (
                 <tr
@@ -331,35 +429,28 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                   <td className="py-3.5 px-4 align-top">
                     {/* DEFAULT Mode */}
                     {isDefault && (
-                      <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500 text-xs italic py-1">
-                        <span>
-                          {searchKind
-                            ? 'Baseline role — auto-added to FIT because it is a search target'
-                            : 'Baseline model role (omitted from ROLES)'}
+                      <div className="flex flex-wrap items-center gap-1.5 text-slate-400 dark:text-slate-500 text-xs py-1">
+                        <span
+                          className="font-semibold"
+                          title={
+                            baseline
+                              ? 'Role ChemEx assigns when ROLES does not mention this parameter (resolved for the loaded experiments and model).'
+                              : baselineRoles?.loading
+                                ? 'Resolving the baseline role with ChemEx…'
+                                : `Baseline role unknown${baselineRoles?.error ? `: ${baselineRoles.error}` : ''}`
+                          }
+                        >
+                          Default → {baseline ?? (baselineRoles?.loading ? '…' : 'unresolved')}
+                        </span>
+                        <span className="italic">
+                          {searchKind ? '· auto-added to FIT because it is a search target' : '· omitted from ROLES'}
                         </span>
                       </div>
                     )}
                     {/* FIT Mode */}
                     {isFitted && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs">
-                          <Activity className="w-3.5 h-3.5 text-blue-500" />
-                          <span>Starting:</span>
-                          <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                            {startVal !== undefined ? String(startVal) : 'Auto'}
-                          </span>
-                          {onNavigateToParameters && (
-                            <button
-                              type="button"
-                              onClick={onNavigateToParameters}
-                              className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 ml-1 text-[11px]"
-                              title="Jump to Parameters step to adjust starting values"
-                            >
-                              <span>Params</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </button>
-                          )}
-                        </div>
+                        {valueNote('Starting:')}
 
                         {setting.bounds && setting.bounds.trim() && (
                           <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
@@ -381,25 +472,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                     )}
 
                     {/* FIX Mode */}
-                    {isFixed && (
-                      <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs py-1">
-                        <span>Held at current value:</span>
-                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                          {startVal !== undefined ? String(startVal) : 'from parameters / previous step'}
-                        </span>
-                        {onNavigateToParameters && (
-                          <button
-                            type="button"
-                            onClick={onNavigateToParameters}
-                            className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 ml-1 text-[11px]"
-                            title="Values are set in the Parameters tab"
-                          >
-                            <span>Params</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    {isFixed && <div className="py-1">{valueNote('Held at:')}</div>}
 
                     {/* CONSTRAIN Mode */}
                     {isConstrained && (

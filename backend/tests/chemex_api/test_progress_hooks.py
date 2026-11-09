@@ -77,6 +77,12 @@ def test_fit_and_grid_progress_events(tmp_path: Path):
     assert len(grid_events) >= 1
     assert any("done" in e and "total" in e for e in grid_events)
 
+    # Each method step is announced, in order, before its fit events (never throttled away).
+    step_events = [e for e in lines if e.get("kind") == "step"]
+    assert [(e["name"], e["index"], e["total"]) for e in step_events] == [("STEP1", 1, 2), ("STEP2", 2, 2)]
+    first_step2 = next(i for i, e in enumerate(lines) if e.get("kind") == "step" and e["name"] == "STEP2")
+    assert any(e.get("kind") == "fit" for e in lines[first_step2 + 1 :])
+
 
 def test_mcmc_progress_events(tmp_path: Path):
     job_dir = tmp_path / "mcmc_progress_job"

@@ -453,3 +453,45 @@ def test_run_chemex_job_e2e_local():
         assert log_file.exists()
 
 
+
+
+def test_wait_for_job_tracks_current_step():
+    """progress.json carries the running method step alongside live fit statistics."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        job_dir = Path(temp_dir)
+        (job_dir / "progress.jsonl").write_text(
+            '{"kind": "step", "name": "GLOBAL_FIT", "index": 1, "total": 2, "t": 100.0}\n'
+            '{"kind": "fit", "iteration": 3, "chisqr": 10.0, "redchi": 1.1}\n'
+            '{"kind": "step", "name": "LOCAL_FITS", "index": 2, "total": 2, "t": 200.0}\n'
+            '{"kind": "fit", "iteration": 7, "chisqr": 9.0, "redchi": 1.05}\n'
+        )
+        log_file = job_dir / "chemex.log"
+        snapshots = []
+        orig = Path.replace
+
+        def spy(self, target):
+            if Path(target).name == "progress.json":
+                snapshots.append(json.loads(Path(self).read_text()))
+            return orig(self, target)
+
+        Path.replace = spy
+        try:
+            wait_for_job(
+                launcher=FakeLauncher([JobState.RUNNING, JobState.DONE]),
+                handle=JobHandle(launcher="fake", id="f2", job_dir=str(job_dir)),
+                log_file=log_file,
+                poll_interval=0.01,
+            )
+        finally:
+            Path.replace = orig
+
+        steps_seen = [(s.get("step") or {}).get("name") for s in snapshots if s.get("kind") in ("step", "fit")]
+        assert "GLOBAL_FIT" in steps_seen and "LOCAL_FITS" in steps_seen
+        # Both step changes are written even though they arrive within the 250 ms throttle window.
+        assert [s["step"]["name"] for s in snapshots if s.get("kind") == "step"] == ["GLOBAL_FIT", "LOCAL_FITS"]
+        assert snapshots[-1]["kind"] == "completed"
+        log_text = log_file.read_text()
+        assert "Step 1/2: GLOBAL_FIT" in log_text and "Step 2/2: LOCAL_FITS" in log_text
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)

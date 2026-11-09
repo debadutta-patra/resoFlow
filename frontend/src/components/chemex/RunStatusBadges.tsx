@@ -1,8 +1,9 @@
 /** Status-bar badges shared by every ChemEx analysis page. */
 
 import React from 'react';
-import { AlertTriangle, GitFork } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, GitFork, HelpCircle } from 'lucide-react';
 import type { LineageInfo } from '../../lib/chemexRun';
+import { FIT_MODE_HELP, lastCommittedText, liveRunText, type RunProgress } from '../../lib/runProgress';
 
 export const StaleStartingValuesBadge: React.FC<{ count: number; noun: string; onClick?: () => void }> = ({
   count,
@@ -61,3 +62,34 @@ export const LineageBadge: React.FC<{
       )}
     </span>
   ) : null;
+
+export const LiveRunBadge: React.FC<{ progress: RunProgress }> = ({ progress }) => (
+  <span
+    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 flex items-center gap-1.5 shadow-2xs"
+    title={progress.message || undefined}
+  >
+    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+    <span className="font-mono">{liveRunText(progress)}</span>
+  </span>
+);
+
+/** "Last committed: <STEP> · red-χ² Y · <time>" from the last completed run. */
+export const LastCommittedBadge: React.FC<{ stepName?: string; redchi?: number; at?: string | null }> = ({ stepName, redchi, at }) => {
+  const text = lastCommittedText({ stepName, redchi, at });
+  if (!text) return null;
+  return (
+    <span
+      className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 font-mono"
+      title="Result of the last completed run (not the run in progress)"
+    >
+      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+      <span>{text}</span>
+    </span>
+  );
+};
+
+export const FitModeHelp: React.FC = () => (
+  <span title={FIT_MODE_HELP} aria-label={FIT_MODE_HELP} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-help">
+    <HelpCircle className="w-3.5 h-3.5" />
+  </span>
+);

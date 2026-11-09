@@ -406,3 +406,58 @@ export interface ExtraGlobalField {
   hint?: string;
   defaultValue: number;
 }
+
+/** Where a parameter's step-1 starting value comes from, for the Methods tab. */
+export interface StartingProvenance {
+  /** Single value (global parameters only). */
+  value?: number;
+  /** Human-readable source, e.g. "Pick CEST", "manual", "Per residue · Pick CEST 10 · default 2". */
+  source: string;
+}
+
+function sourceLabel(source: Source | undefined, pickLabel: string): string {
+  switch (source?.kind) {
+    case 'pick':
+      return pickLabel;
+    case 'manual':
+      return 'manual';
+    case 'imported':
+      return 'imported';
+    case 'inherited':
+      return `run ${source.sourceRunLabel}`;
+    case 'estimated_from_rex':
+      return 'Rex estimate';
+    default:
+      return 'default';
+  }
+}
+
+/**
+ * Step-1 starting-value provenance per parameter (upper-case names): globals carry
+ * their value and source; residue parameters summarise their sources across residues.
+ * `pickLabel` names the experiment's pick step (e.g. "Pick CEST").
+ */
+export function startingProvenance(config: ParameterConfig, pickLabel: string): Record<string, StartingProvenance> {
+  const out: Record<string, StartingProvenance> = {};
+  for (const [key, pv] of Object.entries(config.globals || {})) {
+    if (!pv || Number.isNaN(pv.value)) continue;
+    out[key.toUpperCase()] = { value: pv.value, source: sourceLabel(pv.source, pickLabel) };
+  }
+  const counts: Record<string, Map<string, number>> = {};
+  for (const params of Object.values(config.residues || {})) {
+    for (const [key, pv] of Object.entries(params || {})) {
+      if (!pv) continue;
+      const name = key.toUpperCase();
+      const label = sourceLabel(pv.source, pickLabel);
+      const m = (counts[name] ??= new Map());
+      m.set(label, (m.get(label) ?? 0) + 1);
+    }
+  }
+  for (const [name, m] of Object.entries(counts)) {
+    if (out[name]) continue;
+    const parts = [...m.entries()].sort((a, b) => b[1] - a[1]);
+    const detail = parts.length === 1 ? parts[0][0] : parts.map(([label, n]) => `${label} ${n}`).join(' · ');
+    out[name] = { source: `Per residue · ${detail}` };
+  }
+  return out;
+}

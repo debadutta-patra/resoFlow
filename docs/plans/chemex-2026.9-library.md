@@ -438,8 +438,8 @@ Tests (`backend/tests/chemex_api/`):
 
 1. `method_emitter.py` emits v2 via `MethodPlan.render()` (§3.4); `parse_method_toml` reads v1 and v2.
 2. Parity test: for each built-in Methods preset, v1 emission and v2 emission produce identical fits under 2026.9.2.
-3. `POST /api/chemex/validate` (in-process `validate_inputs`) is called by the frontend before queuing a run. Errors are shown inline in the Parameters and Methods panels. *(Frontend touch: show the returned error list; no layout redesign.)*
-4. `POST /api/chemex/parameters/inspect` (in-process `inspect_parameters`) feeds the Parameters panel: fit/fix/constrained status per parameter, shared-across-experiments flags, and the `CONDITION_MISMATCH`/`NEAR_FIELD`/`ISOLATED` warnings from the preflight sharing map.
+3. `POST /api/projects/{project_uuid}/analysis/{analysis_uuid}/chemex/validate` (in-process `validate_inputs`) is called by the frontend before queuing a run. Errors are shown inline in the Parameters and Methods panels. *(Frontend touch: show the returned error list; no layout redesign.)*
+4. `POST /api/projects/{project_uuid}/analysis/{analysis_uuid}/chemex/parameters/inspect` (in-process `inspect_parameters`) feeds the Parameters panel: fit/fix/constrained status per parameter, shared-across-experiments flags, and the `CONDITION_MISMATCH`/`NEAR_FIELD`/`ISOLATED` warnings from the preflight sharing map.
 5. "Continue from run" action: creates a new run whose first parameter file is `<source>/run_info/restart.toml`.
 6. **STOP-AND-ASK:** apply the MCMC UI change from §3.4.
 

@@ -17,6 +17,7 @@ import { validateMethodConfig } from '../lib/methodValidation';
 import type { MethodTemplate } from '../lib/methodTemplates';
 import { DEFAULT_PARAM_METAS, type AvailableParamMeta } from '../components/methods/ParameterTable';
 import type { ResidueItem } from '../components/methods/ResidueSelector';
+import { useBaselineRoles } from './useBaselineRoles';
 
 
 /** URL segment of the per-analysis ChemEx routes for each family. */
@@ -44,6 +45,10 @@ export interface UseMethodEditorOptions {
   isResidueExcluded: (resId: string) => boolean;
   /** Changes whenever the exclusion set changes (e.g. parameterConfig.excludedResidues). */
   exclusionKey: unknown;
+  /** Fingerprint of the experiment inputs (generated experiment files); refreshes the ChemEx baseline roles. */
+  inputsKey?: string;
+  /** While a run is in progress the method is the submitted snapshot: no automatic edits. */
+  locked?: boolean;
   notify?: (message: string) => void;
 }
 
@@ -58,6 +63,8 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const [unparsedTomlLines, setUnparsedTomlLines] = useState<string[]>([]);
   const [activeStepIdx, setActiveStepIdx] = useState(0);
   const [availableParamsMeta, setAvailableParamsMeta] = useState<AvailableParamMeta[]>(DEFAULT_PARAM_METAS);
+  /** Roles ChemEx assigns with no ROLES actions — what "Default" means for this analysis. */
+  const baselineRoles = useBaselineRoles({ projectUuid, analysisUuid, model, inputsKey: opts.inputsKey ?? '' });
 
   /** Replace the structured config and keep the TOML mirror in sync. */
   const setMethodConfig = useCallback((next: MethodConfig) => {
@@ -86,6 +93,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     isExcludedRef.current = opts.isResidueExcluded;
   });
   useEffect(() => {
+    if (opts.locked) return; // re-runs on unlock
     setMethodConfigState(prev => {
       let changed = false;
       const steps = prev.steps.map(step => {
@@ -100,7 +108,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
       setMethodToml(configToToml(next));
       return next;
     });
-  }, [opts.exclusionKey]);
+  }, [opts.exclusionKey, opts.locked]);
 
   const activeStep: Step = methodConfig.steps[activeStepIdx] || methodConfig.steps[0] || createDefaultStep();
 
@@ -281,6 +289,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     applyTemplate,
     importToml,
     availableParamsMeta,
+    baselineRoles,
     knownParamNames,
     validationErrors,
     blockingErrors,

@@ -13,7 +13,9 @@ from app.routers.exchange import (
     update_exchange_config,
     get_exchange_profiles,
     get_exchange_method_parameters,
+    get_exchange_logs,
     run_exchange_analysis,
+    _get_exchange_run_dir,
 )
 from app.services.fitting.chemex_jobs import build_fit_spec
 from app.services.fitting.exchange_tasks import _setup_exchange_directory
@@ -276,3 +278,19 @@ def test_exchange_chemex_command_builder(tmp_path):
     assert not (param_dir / "fixed.toml").exists()
     assert (param_dir / "parameters.toml").exists()
 
+
+
+def test_exchange_logs_include_progress_and_status(db_session):
+    """The Exchange logs route reports live progress (incl. current method step) like CEST/CPMG."""
+    db, user, project, analysis = db_session
+    run_dir = _get_exchange_run_dir(analysis)
+    with open(os.path.join(run_dir, "chemex.log"), "w") as f:
+        f.write("hello\n")
+    progress = {"kind": "fit", "iteration": 4, "redchi": 1.2, "step": {"name": "GLOBAL_FIT", "index": 1, "total": 2}}
+    with open(os.path.join(run_dir, "progress.json"), "w") as f:
+        json.dump(progress, f)
+
+    res = get_exchange_logs(analysis=analysis, current_user=user)
+    assert res["logs"] == "hello\n"
+    assert res["status"] == "SETUP"
+    assert res["progress"]["step"]["name"] == "GLOBAL_FIT"

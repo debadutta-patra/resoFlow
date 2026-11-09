@@ -406,3 +406,55 @@ def test_validation_v2_rules():
     assert any("low < high" in m for m in messages)
     assert any("at least 2 points" in m for m in messages)
     assert any("The last step uses GRID" in m for m in messages)
+
+
+# ── u64 seeds ────────────────────────────────────────────────────────────
+
+MAX_U64 = "18446744073709551615"
+
+
+def test_seed_precision_round_trip_and_chemex_acceptance():
+    """2**64 - 1 survives frontend-string → model → TOML → ChemEx → parse → JSON."""
+    payload = {
+        "steps": [
+            {
+                "name": "STEP",
+                "parameters": [{"name": "PB", "mode": "fit"}, {"name": "KEX_AB", "mode": "fit"}],
+                "search": {"mode": "de", "seed": MAX_U64, "axes": [{"param": "PB", "fn": "log", "low": 0.001, "high": 0.2}]},
+                "statistics": {
+                    "mc": {"enabled": True, "replicates": 10, "seed": MAX_U64},
+                    "mcmc": {"enabled": True, "steps": 100, "seed": "9007199254740993"},
+                },
+            }
+        ]
+    }
+    toml = emit_method_toml_v2(MethodConfigModel(**payload))
+    assert f"SEED = {MAX_U64}\nCOORDINATES" in toml
+    assert f"REPLICATES = 10\nSEED = {MAX_U64}" in toml
+    assert "STEPS = 100\nSEED = 9007199254740993" in toml
+
+    plan = _chemex_plan(toml)
+    assert plan.steps[0].search.seed == int(MAX_U64)
+    assert plan.steps[0].statistics.mc.seed == int(MAX_U64)
+
+    parsed = parse_method_toml(toml)
+    assert parsed.steps[0].search.seed == int(MAX_U64)
+    dumped = parsed.model_dump(mode="json")["steps"][0]
+    # JSON carries seeds as strings so browsers never round them through a float.
+    assert dumped["search"]["seed"] == MAX_U64
+    assert dumped["statistics"]["mc"]["seed"] == MAX_U64
+    assert dumped["statistics"]["mcmc"]["seed"] == "9007199254740993"
+
+
+@pytest.mark.parametrize("bad", ["18446744073709551616", "-1", "1.5", "abc", True, -1, 1 << 64])
+def test_seed_out_of_range_or_malformed_is_rejected(bad):
+    with pytest.raises(Exception):
+        StepSearchModel(mode="de", seed=bad)
+    with pytest.raises(Exception):
+        McmcSettingsModel(steps=10, seed=bad)
+
+
+def test_seed_accepts_legacy_int_and_empty_string():
+    assert StepSearchModel(mode="de", seed=597).seed == 597
+    assert StepSearchModel(mode="de", seed="0").seed == 0
+    assert StepSearchModel(mode="de", seed="").seed is None

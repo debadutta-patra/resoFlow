@@ -554,16 +554,25 @@ def get_exchange_logs(
     analysis: models.Analysis = Depends(get_analysis),
     current_user: models.User = Depends(security.get_current_user),
 ):
-    """Retrieve contents of chemex.log."""
+    """Retrieve chemex.log plus the live progress state (same shape as the CEST/CPMG log routes)."""
     run_dir = _get_exchange_run_dir(analysis)
+    progress = None
+    progress_path = os.path.join(run_dir, "progress.json")
+    if os.path.exists(progress_path):
+        try:
+            with open(progress_path, "r", encoding="utf-8") as pf:
+                progress = json.load(pf)
+        except Exception:
+            progress = None
     log_path = os.path.join(run_dir, "chemex.log")
+    logs = ""
     if os.path.exists(log_path):
         try:
             with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                return {"logs": f.read()}
+                logs = f.read()
         except Exception as e:
-            return {"logs": f"Error reading log file: {e}"}
-    return {"logs": ""}
+            logs = f"Error reading log file: {e}"
+    return {"logs": logs, "status": analysis.status, "progress": progress}
 
 
 @router.post("/restore")

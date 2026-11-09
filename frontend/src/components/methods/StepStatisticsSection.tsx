@@ -8,6 +8,7 @@ import {
   Flame,
   Settings2,
 } from 'lucide-react';
+import { randomSeed, seedError, toSeed } from '../../lib/seed';
 
 interface StepStatisticsSectionProps {
   step: Step;
@@ -84,7 +85,6 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
     });
   };
 
-  const generateRandomSeed = () => Math.floor(Math.random() * 2147483646) + 1;
 
   // Calculate live cost estimates
   const mcReps = stats.mc?.enabled ? Number(stats.mc.replicates || 0) : 0;
@@ -187,16 +187,19 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                     <label className="text-slate-600 dark:text-slate-400 font-medium">Seed (opt):</label>
                     <div className="flex items-center gap-1">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         placeholder="auto"
+                        title={seedError(stats.mc.seed) ?? 'Optional u64 seed; empty → ChemEx generates and records one'}
                         value={stats.mc.seed ?? ''}
-                        onChange={e => handleUpdateResampling('mc', 'seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                        onChange={e => handleUpdateResampling('mc', 'seed', toSeed(e.target.value))}
                         disabled={readOnly}
-                        className="w-20 px-2 py-1 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                        className="w-44 px-2 py-1 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                       />
                       <button
+                        disabled={readOnly}
                         type="button"
-                        onClick={() => handleUpdateResampling('mc', 'seed', generateRandomSeed())}
+                        onClick={() => handleUpdateResampling('mc', 'seed', randomSeed())}
                         className="p-1 text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
                         title="Generate random seed"
                       >
@@ -253,16 +256,19 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                     <label className="text-slate-600 dark:text-slate-400 font-medium">Seed (opt):</label>
                     <div className="flex items-center gap-1">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         placeholder="auto"
+                        title={seedError(stats.bs.seed) ?? 'Optional u64 seed; empty → ChemEx generates and records one'}
                         value={stats.bs.seed ?? ''}
-                        onChange={e => handleUpdateResampling('bs', 'seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                        onChange={e => handleUpdateResampling('bs', 'seed', toSeed(e.target.value))}
                         disabled={readOnly}
-                        className="w-20 px-2 py-1 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                        className="w-44 px-2 py-1 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                       />
                       <button
+                        disabled={readOnly}
                         type="button"
-                        onClick={() => handleUpdateResampling('bs', 'seed', generateRandomSeed())}
+                        onClick={() => handleUpdateResampling('bs', 'seed', randomSeed())}
                         className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
                         title="Generate random seed"
                       >
@@ -319,16 +325,19 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                     <label className="text-slate-600 dark:text-slate-400 font-medium">Seed (opt):</label>
                     <div className="flex items-center gap-1">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         placeholder="auto"
+                        title={seedError(stats.bsn.seed) ?? 'Optional u64 seed; empty → ChemEx generates and records one'}
                         value={stats.bsn.seed ?? ''}
-                        onChange={e => handleUpdateResampling('bsn', 'seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                        onChange={e => handleUpdateResampling('bsn', 'seed', toSeed(e.target.value))}
                         disabled={readOnly}
-                        className="w-20 px-2 py-1 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                        className="w-44 px-2 py-1 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                       />
                       <button
+                        disabled={readOnly}
                         type="button"
-                        onClick={() => handleUpdateResampling('bsn', 'seed', generateRandomSeed())}
+                        onClick={() => handleUpdateResampling('bsn', 'seed', randomSeed())}
                         className="p-1 text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
                         title="Generate random seed"
                       >
@@ -386,6 +395,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                     <label className="text-slate-600 dark:text-slate-400 font-medium">Burn-in (steps):</label>
                     <div className="flex items-center gap-1.5">
                       <button
+                        disabled={readOnly}
                         type="button"
                         onClick={() => handleUpdateMcmc('burn', stats.mcmc?.burn === 'auto' ? 1000 : 'auto')}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-colors ${
@@ -427,16 +437,19 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                         <span className="text-slate-600 dark:text-slate-400">Random Seed:</span>
                         <div className="flex items-center gap-1">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             placeholder="auto (recorded)"
+                            title={seedError(stats.mcmc.seed) ?? 'Optional u64 seed; empty → ChemEx generates and records one'}
                             value={stats.mcmc.seed ?? ''}
-                            onChange={e => handleUpdateMcmc('seed', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                            onChange={e => handleUpdateMcmc('seed', toSeed(e.target.value))}
                             disabled={readOnly}
-                            className="w-24 px-1.5 py-0.5 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                            className="w-44 px-1.5 py-0.5 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                           />
                           <button
+                            disabled={readOnly}
                             type="button"
-                            onClick={() => handleUpdateMcmc('seed', generateRandomSeed())}
+                            onClick={() => handleUpdateMcmc('seed', randomSeed())}
                             className="p-1 text-slate-400 hover:text-purple-500"
                             title="Generate random seed"
                           >
@@ -452,6 +465,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({
                             <span>Legacy v1 settings (ignored by ChemEx v2)</span>
                             {!readOnly && (
                               <button
+                                disabled={readOnly}
                                 type="button"
                                 className="normal-case underline"
                                 onClick={() =>

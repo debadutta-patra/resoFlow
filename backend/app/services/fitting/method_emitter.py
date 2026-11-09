@@ -20,7 +20,7 @@ import math
 import re
 import sys
 import uuid
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -30,11 +30,48 @@ else:
 from pydantic import (
     AliasChoices,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
+    PlainSerializer,
     field_validator,
     model_validator,
 )
+
+MAX_SEED = (1 << 64) - 1
+
+
+def _coerce_seed(value: Any) -> Any:
+    """Accept a ChemEx SEED as int or canonical decimal string; enforce unsigned 64-bit.
+
+    The frontend carries seeds as decimal strings because JS numbers lose precision
+    above 2**53. ``None`` passes through (seed omitted).
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("SEED must be an unsigned 64-bit integer, not a boolean")
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if not text.isdigit():
+            raise ValueError(f"SEED must be an unsigned 64-bit integer (got {value!r})")
+        value = int(text)
+    if not isinstance(value, int):
+        raise ValueError(f"SEED must be an unsigned 64-bit integer (got {value!r})")
+    if not 0 <= value <= MAX_SEED:
+        raise ValueError(f"SEED must be between 0 and {MAX_SEED} (got {value})")
+    return value
+
+
+#: Optional unsigned 64-bit seed: validated as int (``None``/``""`` = omitted) and
+#: serialised to JSON as a decimal string so browsers never round it through a float.
+U64Seed = Annotated[
+    Optional[int],
+    BeforeValidator(_coerce_seed),
+    PlainSerializer(lambda v: None if v is None else str(v), return_type=Optional[str], when_used="json"),
+]
 
 
 class McmcSettingsModel(BaseModel):
@@ -50,7 +87,7 @@ class McmcSettingsModel(BaseModel):
         default=None,
         description="Number of walkers (default: max(32, 2 * nvarys))",
     )
-    seed: Optional[int] = Field(default=None, description="Random seed for reproducibility")
+    seed: U64Seed = Field(default=None, description="Unsigned 64-bit random seed for reproducibility")
     workers: Optional[int] = Field(default=None, description="Parallel worker count for MCMC")
     update_parameters: bool = Field(
         default=False,
@@ -120,7 +157,7 @@ class ResamplingSettingsModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     replicates: int
-    seed: Optional[int] = None
+    seed: U64Seed = None
 
     @field_validator("replicates")
     @classmethod
@@ -168,10 +205,10 @@ class StatisticsModel(BaseModel):
                 raise ValueError(f"Expanded {info.field_name.upper()} request requires REPLICATES")
             if int(reps) < 1:
                 raise ValueError(f"Replicate count for {info.field_name.upper()} must be a positive integer (>= 1)")
-            seed = lower.get("seed")
+            seed = _coerce_seed(lower.get("seed"))
             if seed is None:
                 return int(reps)
-            return ResamplingSettingsModel(replicates=int(reps), seed=int(seed))
+            return ResamplingSettingsModel(replicates=int(reps), seed=seed)
         if isinstance(v, int) and not isinstance(v, bool):
             if v < 1:
                 raise ValueError(f"Replicate count for {info.field_name.upper()} must be a positive integer (>= 1)")
@@ -229,7 +266,7 @@ class StepSearchModel(BaseModel):
 
     mode: Literal["none", "grid", "de"] = "none"
     axes: List[SearchAxisModel] = Field(default_factory=list)
-    seed: Optional[int] = None
+    seed: U64Seed = None
 
 
 class RoleRuleModel(BaseModel):
@@ -786,7 +823,7 @@ def _parse_v2_step(name: str, section: dict) -> MethodStepModel:
             search = StepSearchModel(
                 mode="de",
                 axes=_parse_axes(_get(de, "COORDINATES"), legacy=False),
-                seed=seed if isinstance(seed, int) else None,
+                seed=seed if isinstance(seed, int) and not isinstance(seed, bool) else None,
             )
     # Keep parse → emit a fixed point: a leading FIT rule made only of search selectors
     # on baseline parameters is exactly what the emitter auto-adds to the table FIT.
@@ -879,7 +916,7 @@ def parse_method_toml(toml_str: str) -> MethodConfigModel:
 
 _STEP_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 _QUALIFIER = re.compile(r"^(NUC|T|B0|\[P\]|\[L\]|D2O)\s*->\s*\S.*$", re.I)
-_MAX_SEED = (1 << 64) - 1
+_MAX_SEED = MAX_SEED
 
 
 def _selector_error(selector: str) -> Optional[str]:

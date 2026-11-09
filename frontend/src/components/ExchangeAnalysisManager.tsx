@@ -17,7 +17,9 @@ import { KINETIC_MODELS } from '../lib/methodConfig';
 import type { ResidueItem } from './methods/ResidueSelector';
 import { MethodsTab } from './methods/MethodsTab';
 import { ParametersTab } from './parameters/ParametersTab';
-import { ConfigChangedBadge, LineageBadge, StaleStartingValuesBadge } from './chemex/RunStatusBadges';
+import { ConfigChangedBadge, LastCommittedBadge, LineageBadge, LiveRunBadge, StaleStartingValuesBadge } from './chemex/RunStatusBadges';
+import type { RunProgress } from '../lib/runProgress';
+import { committedGlobalsByStep, lastCommittedStep } from '../lib/committedResults';
 import type { ProfileRef } from '../lib/parameterConfig';
 import {
   computePickHash,
@@ -25,12 +27,13 @@ import {
   isResidueExcluded,
   sortSpinKeys,
   applyGridCoordinatesToConfig,
+  startingProvenance,
 } from '../lib/parameterConfig';
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
 import { CpmgDispersionTab, type CpmgProfileItem } from './cpmg/CpmgDispersionTab';
 import { getNucleusInfoForModule } from '../lib/experimentPlugin';
-import { chemexConfigHash, findLineage, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from '../lib/chemexRun';
+import { chemexConfigHash, experimentsFingerprint, findLineage, isRunActive, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from '../lib/chemexRun';
 import { useMethodEditor } from '../hooks/useMethodEditor';
 import { useParameterEditor } from '../hooks/useParameterEditor';
 import { exchangePlugin } from '../plugins/exchangePlugin';
@@ -74,6 +77,7 @@ export interface Analysis {
   bundle_status?: string;
   summary_redchi?: number;
   summary_n_residues?: number;
+  completed_at?: string;
 }
 
 export interface CestExperiment {
@@ -214,6 +218,9 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
 
   // Results State
   const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const committedByStep = useMemo(() => committedGlobalsByStep(analysisResults), [analysisResults]);
+  const lastCommitted = useMemo(() => lastCommittedStep(analysisResults), [analysisResults]);
+  const [progressInfo, setProgressInfo] = useState<RunProgress | null>(null);
   const [selectedResultResidue, setSelectedResultResidue] = useState<string>('');
   const [selectedResultStep, setSelectedResultStep] = useState<string>('');
   const [fieldColors, setFieldColors] = useState<Record<string, string>>({});
@@ -290,6 +297,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       }));
   }, [parameterConfig, cestProfiles, cpmgProfiles, combinedProfiles, residueMapping]);
 
+  const runLocked = isRunActive(status, isFitting);
   const methodEditor = useMethodEditor({
     projectUuid,
     analysisUuid: analysis.analysis_uuid,
@@ -298,6 +306,8 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     residueItems,
     isResidueExcluded: parameterEditor.isExcluded,
     exclusionKey: parameterConfig.excludedResidues,
+    inputsKey: experimentsFingerprint(generatedExperiments),
+    locked: runLocked,
     notify,
   });
   const { methodConfig } = methodEditor;
@@ -443,6 +453,9 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     try {
       const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/logs`);
       setLogs(res.data.logs || '');
+      const incoming = res.data.status;
+      const terminal = ['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED'].includes(incoming);
+      setProgressInfo(res.data.progress && !terminal ? res.data.progress : null);
     } catch (error) {
       console.error('Error fetching logs', error);
     }
@@ -775,9 +788,13 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800">
             Combined Exchange (CEST + CPMG)
           </span>
+          {runLocked && progressInfo && <LiveRunBadge progress={progressInfo} />}
           <StaleStartingValuesBadge count={staleParamCount} noun="pick" onClick={() => setActiveTab('parameters')} />
           <ConfigChangedBadge show={isConfigChangedSinceRun} />
           <LineageBadge lineage={lineageInfo} projectUuid={projectUuid} sourceExists={sourceRunStillExists} />
+          {lastCommitted && (
+            <LastCommittedBadge stepName={lastCommitted.name} redchi={lastCommitted.redchi} at={analysis.completed_at} />
+          )}
         </div>
 
         {/* Global Action Buttons */}
@@ -912,7 +929,9 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
                 setIsSidebarCollapsed(newVal);
                 try {
                   localStorage.setItem('resoFlow_sidebar_collapsed', String(newVal));
-                } catch {}
+                } catch {
+                  /* storage unavailable (private mode): keep the in-memory toggle */
+                }
               }}
               className="flex items-center gap-2 p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs w-full justify-center transition-colors"
               title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -1474,8 +1493,11 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
           analysisUuid={analysis.analysis_uuid}
           residueItems={residueItems}
           startingValues={parameterEditor.startingValues}
+          startingProvenance={startingProvenance(parameterConfig, 'Pick CEST')}
+          committedByStep={committedByStep}
           onNavigateToParameters={() => setActiveTab('parameters')}
           notify={notify}
+          readOnly={runLocked}
         />
       )}
 

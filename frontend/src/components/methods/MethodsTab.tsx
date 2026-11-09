@@ -6,7 +6,8 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Sparkles, Upload, Workflow } from 'lucide-react';
+import { Lock, Sparkles, Upload, Workflow } from 'lucide-react';
+import type { StartingProvenance } from '../../lib/parameterConfig';
 import type { MethodEditor } from '../../hooks/useMethodEditor';
 import { METHOD_TEMPLATES } from '../../lib/methodTemplates';
 import ParameterTable from './ParameterTable';
@@ -37,6 +38,12 @@ export interface MethodsTabProps {
   startingValues: Record<string, number | string>;
   onNavigateToParameters: () => void;
   notify?: (message: string) => void;
+  /** Step-1 starting-value provenance per parameter (upper-case keys). */
+  startingProvenance?: Record<string, StartingProvenance>;
+  /** Last completed run's committed global values per step name. */
+  committedByStep?: Record<string, Record<string, number>>;
+  /** True while a run is queued or in progress: the editor shows the submitted snapshot read-only. */
+  readOnly?: boolean;
 }
 
 export const MethodsTab: React.FC<MethodsTabProps> = ({
@@ -46,6 +53,9 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   startingValues,
   onNavigateToParameters,
   notify,
+  startingProvenance,
+  committedByStep,
+  readOnly = false,
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -65,18 +75,30 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
         description="ChemEx v2 method (FORMAT_VERSION = 2): ordered steps with parameter roles, role inheritance, optional GRID/DE search, profile selection and statistics."
         actions={
           <>
-            <button type="button" onClick={() => setShowTemplates(true)} className={actionBtnAccent}>
+            <button type="button" disabled={readOnly} onClick={() => setShowTemplates(true)} className={`${actionBtnAccent} disabled:opacity-50 disabled:cursor-not-allowed`}>
               <Sparkles className="w-3.5 h-3.5 text-blue-500" />
               <span>Templates</span>
             </button>
-            <button type="button" onClick={() => setShowImport(true)} className={actionBtnNeutral}>
+            <button type="button" disabled={readOnly} onClick={() => setShowImport(true)} className={`${actionBtnNeutral} disabled:opacity-50 disabled:cursor-not-allowed`}>
               <Upload className="w-3.5 h-3.5" />
               <span>Import TOML</span>
             </button>
-            <RawModeToggleButton active={editor.isRawEditMode} onClick={editor.toggleRawMode} />
+            <RawModeToggleButton active={editor.isRawEditMode} onClick={editor.toggleRawMode} disabled={readOnly} />
           </>
         }
       />
+
+      {readOnly && (
+        <div
+          role="status"
+          className="flex items-center gap-2 p-3 rounded-xl border border-blue-200 dark:border-blue-800/80 bg-blue-50 dark:bg-blue-950/40 text-xs text-blue-800 dark:text-blue-200"
+        >
+          <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>
+            <strong>Showing the method snapshot used by the running job.</strong> Editing unlocks when the run completes, fails or is stopped.
+          </span>
+        </div>
+      )}
 
       <ValidationBanner
         title="Method Validation Issues"
@@ -103,10 +125,11 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
           onApply={editor.applyRawToml}
           onDiscard={editor.discardRawToml}
           rows={16}
+          readOnly={readOnly}
         />
       ) : (
         <div className="space-y-6">
-          <StepTabs steps={methodConfig.steps} activeStepIdx={editor.activeStepIdx} {...editor.stepHandlers} />
+          <StepTabs steps={methodConfig.steps} activeStepIdx={editor.activeStepIdx} {...editor.stepHandlers} readOnly={readOnly} />
 
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
@@ -119,6 +142,12 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               startingValues={startingValues}
               onNavigateToParameters={onNavigateToParameters}
               searchTargets={searchTargets}
+              baselineRoles={editor.baselineRoles}
+              stepIndex={editor.activeStepIdx}
+              previousStepName={editor.activeStepIdx > 0 ? methodConfig.steps[editor.activeStepIdx - 1]?.name : undefined}
+              committedByStep={committedByStep}
+              startingProvenance={startingProvenance}
+              readOnly={readOnly}
             />
           </div>
 
@@ -127,6 +156,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             stepIdx={editor.activeStepIdx}
             steps={methodConfig.steps}
             onChange={editor.handleStepChange}
+            readOnly={readOnly}
           />
 
           <StepSearchSection
@@ -135,6 +165,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             family={editor.family}
             availableParams={editor.availableParamsMeta}
             startingValues={startingValues}
+            readOnly={readOnly}
           />
 
           <ResidueSelector
@@ -143,9 +174,10 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             selectedIds={activeStep.residues || []}
             onModeChange={residueMode => editor.handleStepChange({ ...activeStep, residueMode })}
             onSelectionChange={residues => editor.handleStepChange({ ...activeStep, residues })}
+            readOnly={readOnly}
           />
 
-          <StepStatisticsSection step={activeStep} onChange={editor.handleStepChange} />
+          <StepStatisticsSection step={activeStep} onChange={editor.handleStepChange} readOnly={readOnly} />
         </div>
       )}
 

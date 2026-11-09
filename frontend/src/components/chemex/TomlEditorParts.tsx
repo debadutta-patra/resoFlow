@@ -40,11 +40,12 @@ export const ChemexTabHeader: React.FC<{
   </div>
 );
 
-export const RawModeToggleButton: React.FC<{ active: boolean; onClick: () => void }> = ({ active, onClick }) => (
+export const RawModeToggleButton: React.FC<{ active: boolean; onClick: () => void; disabled?: boolean }> = ({ active, onClick, disabled }) => (
   <button
     type="button"
     onClick={onClick}
-    className={active ? `${actionBtnBase} bg-amber-500 text-white border-amber-600` : actionBtnNeutral}
+    disabled={disabled}
+    className={`${active ? `${actionBtnBase} bg-amber-500 text-white border-amber-600` : actionBtnNeutral} disabled:opacity-50 disabled:cursor-not-allowed`}
   >
     <Code className="w-3.5 h-3.5" />
     <span>{active ? 'Return to Form' : 'Edit Raw TOML'}</span>
@@ -104,8 +105,11 @@ export const RawTomlEditor: React.FC<{
   onApply: () => void;
   onDiscard: () => void;
   rows?: number;
-}> = ({ fileName, value, onChange, onApply, onDiscard, rows = 18 }) => (
+  /** View-only (e.g. while a run is using this file): no editing, no apply/discard. */
+  readOnly?: boolean;
+}> = ({ fileName, value, onChange, onApply, onDiscard, rows = 18, readOnly = false }) => (
   <div className="space-y-3">
+    {!readOnly && (
     <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-300">
       <span className="font-medium">
         ✏️ <strong>Raw TOML Mode Active</strong>: You are editing {fileName} directly.
@@ -127,8 +131,10 @@ export const RawTomlEditor: React.FC<{
         </button>
       </div>
     </div>
+    )}
     <textarea
       value={value}
+      readOnly={readOnly}
       onChange={e => onChange(e.target.value)}
       rows={rows}
       className={`${chemexInputCls} font-mono text-xs`}

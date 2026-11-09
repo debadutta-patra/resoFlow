@@ -1,3 +1,6 @@
+import { type Seed, randomSeed as randomU64Seed, toSeed } from './seed';
+export type { Seed } from './seed';
+
 export const KINETIC_MODELS = [
   '1st',
   '2st',
@@ -97,14 +100,15 @@ export interface SearchAxis {
 export interface StepSearch {
   mode: SearchMode;
   axes: SearchAxis[];
-  /** DE only — required unsigned 64-bit seed. */
-  seed?: number;
+  /** DE only — required unsigned 64-bit seed (decimal string; see lib/seed). */
+  seed?: Seed;
 }
 
 export interface ResamplingConfig {
   enabled: boolean;
   replicates: number;
-  seed?: number;
+  /** Optional unsigned 64-bit seed (decimal string). Omitted → ChemEx generates and records one. */
+  seed?: Seed;
 }
 
 export interface McmcConfig {
@@ -112,7 +116,8 @@ export interface McmcConfig {
   steps: number;
   /** 'auto' → BURN omitted (ChemEx discards ceil(2·τ_max)). */
   burn: number | 'auto';
-  seed?: number;
+  /** Optional unsigned 64-bit seed (decimal string). */
+  seed?: Seed;
   /** Legacy v1-only controls; ChemEx v2 rejects them and they are never emitted. */
   thin?: number;
   walkers?: number;
@@ -156,8 +161,8 @@ export const newMethodId = (prefix = 'id'): string =>
     ? crypto.randomUUID()
     : `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-/** Random seed in [1, 2^31) — valid as a ChemEx unsigned 64-bit SEED. */
-export const randomSeed = (): number => Math.floor(Math.random() * 2147483646) + 1;
+/** Full-range random ChemEx SEED (unsigned 64-bit, decimal string). */
+export const randomSeed = (): Seed => randomU64Seed();
 
 export const createDefaultStep = (name = 'STEP1', id?: string): Step => ({
   id: id || newMethodId('step'),
@@ -206,10 +211,22 @@ export function normalizeStep(step: Step): Step {
     }
     search = { mode: 'grid', axes, seed: search?.seed };
   }
+  if (search && search.seed !== undefined && typeof search.seed !== 'string') {
+    search = { ...search, seed: toSeed(search.seed) };
+  }
   const parameters = (step.parameters || []).map(p =>
     p.mode === 'grid' ? { name: p.name, mode: 'fit' as const } : p
   );
   let statistics = step.statistics;
+  if (statistics) {
+    // Legacy saved configs stored seeds as JS numbers; carry them as decimal strings.
+    for (const key of ['mc', 'bs', 'bsn', 'mcmc'] as const) {
+      const conf: ResamplingConfig | McmcConfig | undefined = statistics[key];
+      if (conf && conf.seed !== undefined && typeof conf.seed !== 'string') {
+        statistics = { ...statistics, [key]: { ...conf, seed: toSeed(conf.seed) } };
+      }
+    }
+  }
   if (statistics?.mcmc) {
     const burn = statistics.mcmc.burn as unknown;
     const normBurn =

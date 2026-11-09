@@ -27,7 +27,7 @@ const step = (id: string, name: string, parameters: ParamSetting[], extra: Parti
   ...extra,
 });
 
-const search = (mode: Exclude<SearchMode, 'none'>, family: ExperimentFamily, params: string[], seed?: number) => ({
+const search = (mode: Exclude<SearchMode, 'none'>, family: ExperimentFamily, params: string[], seed?: string) => ({
   mode,
   axes: params.map(p => createSearchAxis(p, mode, family)),
   ...(seed !== undefined ? { seed } : {}),
@@ -134,7 +134,7 @@ export const METHOD_TEMPLATES: MethodTemplate[] = [
           { name: 'DW_AB', mode: 'fit' },
           { name: 'CS_A', mode: 'fit' },
           ...relaxTied2st,
-        ], { search: search('de', 'cest', ['PB', 'KEX_AB'], 597) }),
+        ], { search: search('de', 'cest', ['PB', 'KEX_AB'], '597') }),
       ],
     },
   },

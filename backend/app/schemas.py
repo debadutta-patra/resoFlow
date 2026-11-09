@@ -1,6 +1,7 @@
 from datetime import datetime
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import List, Optional
+from .services.fitting.method_emitter import U64Seed
 
 class Token(BaseModel):
     access_token: str
@@ -403,7 +404,7 @@ class McmcSettingsSchema(BaseModel):
     burn: Optional[str | int] = "auto"
     thin: int = 1
     walkers: Optional[int] = None
-    seed: Optional[int] = None
+    seed: U64Seed = None
     workers: Optional[int] = None
     update_parameters: bool = False
 
@@ -435,7 +436,7 @@ class SearchAxisSchema(BaseModel):
 class StepSearchSchema(BaseModel):
     mode: str = "none"  # none | grid | de
     axes: List[SearchAxisSchema] = []
-    seed: Optional[int] = None
+    seed: U64Seed = None
 
 class RoleRuleSchema(BaseModel):
     id: Optional[str] = None

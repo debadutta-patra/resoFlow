@@ -14,13 +14,20 @@ from .base import JobHandle, JobState, Launcher
 logger = logging.getLogger(__name__)
 
 
-def _format_progress_data(event: dict[str, Any]) -> dict[str, Any]:
+def _format_progress_data(event: dict[str, Any], step: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Shape one engine event for progress.json; ``step`` is the method step currently running."""
     k = event.get("kind", "progress")
     prog: dict[str, Any] = {
         "kind": k,
         "updated_at": time.time(),
     }
-    if k == "fit":
+    if step:
+        prog["step"] = step
+    if k == "step":
+        prog["stage"] = "Step"
+        label = event.get("name") or "DEFAULT"
+        prog["message"] = f"Starting step {label} ({event.get('index')}/{event.get('total')})"
+    elif k == "fit":
         prog["stage"] = "Minimization"
         prog["iteration"] = event.get("iteration", 0)
         prog["chisqr"] = event.get("chisqr")
@@ -82,11 +89,12 @@ def wait_for_job(
 
     last_file_write_time = 0.0
     last_milestones: dict[str, int] = {}
+    current_step: dict[str, Any] | None = None
     last_heartbeat_seen = time.time()
     start_time = time.time()
 
     def _drain_progress() -> None:
-        nonlocal progress_offset, last_file_write_time
+        nonlocal progress_offset, last_file_write_time, current_step
         if not progress_jsonl.exists():
             return
         try:
@@ -107,11 +115,28 @@ def wait_for_job(
                         except Exception as e:
                             logger.debug(f"on_progress callback error: {e}")
 
-                    # Write structured progress.json throttled to 250ms
-                    prog_data = _format_progress_data(event)
+                    step_changed = event.get("kind") == "step"
+                    if step_changed:
+                        current_step = {
+                            "name": event.get("name") or "",
+                            "index": event.get("index"),
+                            "total": event.get("total"),
+                            "started_at": event.get("t", time.time()),
+                        }
+                        # Fresh milestones per step; announce it in the run log.
+                        last_milestones.clear()
+                        if log_fp:
+                            log_fp.write(
+                                f"[{handle.id}] Step {current_step['index']}/{current_step['total']}: "
+                                f"{current_step['name'] or 'DEFAULT'}\n"
+                            )
+                            log_fp.flush()
+
+                    # Write structured progress.json throttled to 250ms (step changes always written)
+                    prog_data = _format_progress_data(event, current_step)
                     now = time.time()
                     pct = prog_data.get("percent", 0)
-                    if pct >= 100 or (now - last_file_write_time >= 0.25):
+                    if step_changed or pct >= 100 or (now - last_file_write_time >= 0.25):
                         last_file_write_time = now
                         try:
                             tmp_p = progress_file.with_name(f"{progress_file.name}.tmp")

@@ -16,8 +16,10 @@ import { KINETIC_MODELS } from '../lib/methodConfig';
 import type { ResidueItem } from './methods/ResidueSelector';
 import { MethodsTab } from './methods/MethodsTab';
 import { ParametersTab } from './parameters/ParametersTab';
-import { ConfigChangedBadge, LineageBadge, StaleStartingValuesBadge } from './chemex/RunStatusBadges';
-import { chemexConfigHash, findLineage, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from '../lib/chemexRun';
+import { ConfigChangedBadge, FitModeHelp, LastCommittedBadge, LineageBadge, LiveRunBadge, StaleStartingValuesBadge } from './chemex/RunStatusBadges';
+import { FIT_MODE_HELP } from '../lib/runProgress';
+import { committedGlobalsByStep, lastCommittedStep } from '../lib/committedResults';
+import { chemexConfigHash, experimentsFingerprint, findLineage, isRunActive, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from '../lib/chemexRun';
 import { useMethodEditor } from '../hooks/useMethodEditor';
 import { useParameterEditor } from '../hooks/useParameterEditor';
 import { cestPlugin } from '../plugins/cestPlugin';
@@ -29,6 +31,7 @@ import {
   sortSpinKeys,
   deduplicateSpinKeys,
   applyGridCoordinatesToConfig,
+  startingProvenance,
 } from '../lib/parameterConfig';
 import {
   applyExclusionsToExperimentToml,
@@ -77,6 +80,7 @@ interface Analysis {
   bundle_status?: string;
   summary_redchi?: number;
   summary_n_residues?: number;
+  completed_at?: string;
 }
 
 interface StepResidueResult {
@@ -207,6 +211,7 @@ interface ProgressInfo {
   redchi?: number;
   message?: string;
   updated_at?: number;
+  step?: { name: string; index?: number; total?: number };
 }
 
 interface CestAnalysisManagerProps {
@@ -376,6 +381,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     [profiles, parameterConfig]
   );
 
+  const runLocked = isRunActive(status, isRunning);
   const methodEditor = useMethodEditor({
     projectUuid,
     analysisUuid: analysis.analysis_uuid,
@@ -384,6 +390,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     residueItems,
     isResidueExcluded: parameterEditor.isExcluded,
     exclusionKey: parameterConfig.excludedResidues,
+    inputsKey: experimentsFingerprint(generatedExperiments),
+    locked: runLocked,
     notify,
   });
   const { methodConfig, blockingErrors } = methodEditor;
@@ -392,6 +400,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
 
   // ── Results Tab State ──
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult | null>(null);
+  const committedByStep = useMemo(() => committedGlobalsByStep(analysisResults), [analysisResults]);
+  const lastCommitted = useMemo(() => lastCommittedStep(analysisResults), [analysisResults]);
   const [selectedStep, setSelectedStep] = useState<string>('');
   const [currentResultResidue, setCurrentResultResidue] = useState<string>('');
   const [fieldColors, setFieldColors] = useState<Record<string, string>>({});
@@ -1016,12 +1026,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             <span>{status}</span>
           </span>
 
-          {(status === 'RUNNING' || status === 'CANCELLING' || isRunning) && progressInfo && (
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 flex items-center gap-1.5 shadow-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span>{progressInfo.percent !== undefined ? `${progressInfo.stage || 'Progress'}: ${progressInfo.percent.toFixed(0)}%` : (progressInfo.message || progressInfo.stage)}</span>
-            </span>
-          )}
+          {(status === 'RUNNING' || status === 'CANCELLING' || isRunning) && progressInfo && <LiveRunBadge progress={progressInfo} />}
 
           <StaleStartingValuesBadge count={staleParamCount} noun="pick" onClick={() => setActiveTab('parameters')} />
           <ConfigChangedBadge show={isConfigChangedSinceRun} />
@@ -1035,16 +1040,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             {fitMode} Fit
           </span>
 
-          {analysisResults?.global?.chi2_red !== undefined && (
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-              Red. χ²: <strong className="text-slate-800 dark:text-slate-200">{analysisResults.global.chi2_red.toFixed(2)}</strong>
-            </span>
-          )}
-
-          {lastRunTimestamp && (
-            <span className="text-[11px] text-slate-400 hidden xl:inline">
-              • {lastRunTimestamp}
-            </span>
+          {lastCommitted && (
+            <LastCommittedBadge stepName={lastCommitted.name} redchi={lastCommitted.redchi} at={analysis.completed_at} />
           )}
         </div>
 
@@ -1058,9 +1055,10 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               <Square size={13} fill="currentColor" /> {isCancelling || status === 'CANCELLING' ? 'Cancelling...' : 'Stop Run'}
             </button>
           )}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700" title={FIT_MODE_HELP}>
             <button onClick={() => setFitMode('global')} className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${fitMode === 'global' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 hover:text-slate-700'}`}>Global</button>
             <button onClick={() => setFitMode('individual')} className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${fitMode === 'individual' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 hover:text-slate-700'}`}>Individual</button>
+            <FitModeHelp />
           </div>
 
           {status === 'COMPLETED' && analysisResults && (
@@ -1521,8 +1519,11 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               analysisUuid={analysis.analysis_uuid}
               residueItems={residueItems}
               startingValues={parameterEditor.startingValues}
+              startingProvenance={startingProvenance(parameterConfig, cestPlugin.dataPrepTabLabel ?? 'pick')}
+              committedByStep={committedByStep}
               onNavigateToParameters={() => setActiveTab('parameters')}
               notify={notify}
+              readOnly={runLocked}
             />
           )}
 

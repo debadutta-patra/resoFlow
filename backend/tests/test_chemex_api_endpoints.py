@@ -1,4 +1,5 @@
-"""Tests for ChemEx API endpoints: /api/chemex/models, /api/chemex/validate, /api/chemex/parameters/inspect, and /continue."""
+"""Tests for ChemEx API endpoints: /api/chemex/models, the project-scoped
+.../analysis/{uuid}/chemex/validate and /parameters/inspect, and /continue."""
 
 import shutil
 from pathlib import Path
@@ -70,33 +71,9 @@ def test_project(db_session, auth_headers):
     return project
 
 
-def test_get_chemex_models():
-    """Verify GET /api/chemex/models returns ChemEx models catalog and metadata."""
-    res = client.get("/api/chemex/models")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["chemex_version"] == "2026.9.2"
-    assert data["method_format"] == 2
-    assert "2st" in data["models"]
-    assert "3st" in data["models"]
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "baselines" / "2026.6.1" / "cest_15n" / "inputs"
 
-
-def test_validate_inputs_clean(tmp_path: Path):
-    """Verify POST /api/chemex/validate succeeds on valid inputs."""
-    fixture_dir = (
-        Path(__file__).resolve().parent
-        / "fixtures"
-        / "baselines"
-        / "2026.6.1"
-        / "cest_15n"
-        / "inputs"
-    )
-    if not fixture_dir.exists():
-        pytest.skip("Baseline inputs for cest_15n not found.")
-
-    shutil.copytree(fixture_dir, tmp_path, dirs_exist_ok=True)
-
-    method_v2 = """FORMAT_VERSION = 2
+GOOD_METHOD = """FORMAT_VERSION = 2
 
 [STEP1]
 INCLUDE = ["13N"]
@@ -105,91 +82,134 @@ ROLES = [
   { FIX = ["R1_A", "R2_A"] },
 ]
 """
-    payload = {
-        "model": "2st",
-        "experiment_files": [f"Experiments/{f.name}" for f in sorted((tmp_path / "Experiments").glob("*.toml"))],
-        "parameter_files": [f"Parameters/{f.name}" for f in sorted((tmp_path / "Parameters").glob("*.toml"))],
-        "method_toml": method_v2,
-        "include": ["13N"],
-    }
 
-    import contextlib, os
-    with contextlib.chdir(tmp_path):
-        res = client.post("/api/chemex/validate", json=payload)
+
+def _make_analysis(db_session, project, analysis_uuid: str, *, lowercase_data: bool = False) -> Analysis:
+    """Create a CEST analysis whose run directory holds the cest_15n baseline inputs."""
+    if not FIXTURE_DIR.exists():
+        pytest.skip("Baseline inputs for cest_15n not found.")
+    analysis = db_session.query(Analysis).filter_by(analysis_uuid=analysis_uuid).first()
+    if not analysis:
+        analysis = Analysis(
+            analysis_uuid=analysis_uuid,
+            name=f"Run {analysis_uuid}",
+            analysis_type="15N-CEST",
+            project_id=project.id,
+            status="PENDING",
+        )
+        db_session.add(analysis)
+        db_session.commit()
+    run_dir = Path(project.local_directory_path) / "cest_fitting" / analysis_uuid
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    shutil.copytree(FIXTURE_DIR / "Parameters", run_dir / "Parameters")
+    if lowercase_data:
+        # Simulates spectrum extraction into lowercase data/ with renamed dataset dirs.
+        data_dir = run_dir / "data" / "600MHz_28hz"
+        data_dir.mkdir(parents=True)
+        for f in (FIXTURE_DIR / "Data" / "13Hz").glob("*.out"):
+            shutil.copy2(f, data_dir / f.name)
+        (run_dir / "Experiments").mkdir(parents=True)
+        exp = (FIXTURE_DIR / "Experiments" / "13hz.toml").read_text(encoding="utf-8")
+        (run_dir / "Experiments" / "cest_15n_600mhz_28hz.toml").write_text(
+            exp.replace('"../Data/13Hz/"', '"../data/600MHz_28hz"'), encoding="utf-8"
+        )
+    else:
+        shutil.copytree(FIXTURE_DIR / "Data", run_dir / "Data")
+        shutil.copytree(FIXTURE_DIR / "Experiments", run_dir / "Experiments")
+    return analysis
+
+
+def _url(project, analysis_uuid: str, tail: str) -> str:
+    return f"/api/projects/{project.project_uuid}/analysis/{analysis_uuid}/chemex/{tail}"
+
+
+def test_get_chemex_models(auth_headers):
+    """GET /api/chemex/models returns the catalog and the installed ChemEx version."""
+    import chemex
+
+    res = client.get("/api/chemex/models", headers=auth_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["chemex_version"] == chemex.__version__ == "2026.9.2"
+    assert data["method_format"] == 2
+    assert "2st" in data["models"]
+    assert "3st" in data["models"]
+
+
+def test_chemex_endpoints_require_auth(db_session, test_project):
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-noauth")
+    assert client.get("/api/chemex/models").status_code == 401
+    for tail in ("validate", "parameters/inspect"):
+        assert client.post(_url(test_project, analysis.analysis_uuid, tail), json={}).status_code == 401
+
+
+def test_legacy_unscoped_routes_are_gone(auth_headers):
+    """The old unauthenticated /api/chemex/validate and /inspect routes must not exist."""
+    assert client.post("/api/chemex/validate", json={}, headers=auth_headers).status_code in (404, 405)
+    assert client.post("/api/chemex/parameters/inspect", json={}, headers=auth_headers).status_code in (404, 405)
+
+
+def test_chemex_endpoints_enforce_ownership(db_session, test_project):
+    """Another user cannot validate/inspect against someone else's analysis."""
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-owned")
+    other = User(email="intruder@example.com", hashed_password="pw", full_name="Other", is_active=True)
+    db_session.add(other)
+    db_session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(data={'sub': other.email})}"}
+    for tail in ("validate", "parameters/inspect"):
+        res = client.post(_url(test_project, analysis.analysis_uuid, tail), json={"model": "2st"}, headers=headers)
+        assert res.status_code in (403, 404), res.text
+
+
+def test_client_supplied_paths_are_ignored(db_session, test_project, auth_headers, tmp_path):
+    """Requests cannot point ChemEx at arbitrary server files."""
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-paths")
+    secret = tmp_path / "secret.toml"
+    secret.write_text("[GLOBAL]\nPB = 0.5\n", encoding="utf-8")
+    payload = {"model": "2st", "parameter_files": [str(secret)], "experiment_files": [str(secret)], "include": ["13N"]}
+    res = client.post(_url(test_project, analysis.analysis_uuid, "parameters/inspect"), json=payload, headers=auth_headers)
+    assert res.status_code == 200
+    pb = next(p for p in res.json()["parameters"] if p["name"] == "PB")
+    assert pb["value"] != 0.5  # value came from the analysis's own parameters, not the injected file
+
+
+def test_validate_inputs_clean(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-clean")
+    res = client.post(
+        _url(test_project, analysis.analysis_uuid, "validate"),
+        json={"model": "2st", "method_toml": GOOD_METHOD, "include": ["13N"]},
+        headers=auth_headers,
+    )
     assert res.status_code == 200
     report = res.json()
-    assert report["valid"] is True
+    assert report["valid"] is True, report
     assert report["errors"] == []
 
 
-def test_validate_inputs_wrong_selector_error(tmp_path: Path):
-    """Verify POST /api/chemex/validate detects invalid selector with readable MethodFormatError."""
-    fixture_dir = (
-        Path(__file__).resolve().parent
-        / "fixtures"
-        / "baselines"
-        / "2026.6.1"
-        / "cest_15n"
-        / "inputs"
+def test_validate_inputs_wrong_selector_error(db_session, test_project, auth_headers):
+    """An unknown selector is reported with ChemEx's readable MethodFormatError."""
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-badsel")
+    bad_method = GOOD_METHOD.replace('{ FIT = ["PB", "KEX_AB", "DW_AB", "CS_A"] }', '{ FIT = ["INVALID_SELECTOR_XYZ"] }')
+    res = client.post(
+        _url(test_project, analysis.analysis_uuid, "validate"),
+        json={"model": "2st", "method_toml": bad_method, "include": ["13N"]},
+        headers=auth_headers,
     )
-    if not fixture_dir.exists():
-        pytest.skip("Baseline inputs for cest_15n not found.")
-
-    shutil.copytree(fixture_dir, tmp_path, dirs_exist_ok=True)
-
-    bad_method = """FORMAT_VERSION = 2
-
-[STEP1]
-INCLUDE = ["13N"]
-ROLES = [
-  { FIT = ["INVALID_SELECTOR_XYZ"] },
-]
-"""
-    payload = {
-        "model": "2st",
-        "experiment_files": [f"Experiments/{f.name}" for f in sorted((tmp_path / "Experiments").glob("*.toml"))],
-        "parameter_files": [f"Parameters/{f.name}" for f in sorted((tmp_path / "Parameters").glob("*.toml"))],
-        "method_toml": bad_method,
-        "include": ["13N"],
-    }
-
-    import contextlib
-    with contextlib.chdir(tmp_path):
-        res = client.post("/api/chemex/validate", json=payload)
     assert res.status_code == 200
     report = res.json()
     assert report["valid"] is False
     assert any("INVALID_SELECTOR_XYZ" in err["message"] for err in report["errors"])
 
 
-def test_validate_inputs_legacy_parameter_error(tmp_path: Path):
-    """Verify POST /api/chemex/validate detects legacy DWP_AB parameter name."""
-    fixture_dir = (
-        Path(__file__).resolve().parent
-        / "fixtures"
-        / "baselines"
-        / "2026.6.1"
-        / "cest_15n"
-        / "inputs"
+def test_validate_inputs_legacy_parameter_error(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-legacy")
+    params = (FIXTURE_DIR / "Parameters" / "parameters.toml").read_text(encoding="utf-8") + "\n[DWP_AB]\nvalue = 1.0\n"
+    res = client.post(
+        _url(test_project, analysis.analysis_uuid, "validate"),
+        json={"model": "2st", "parameter_toml": params, "include": ["13N"]},
+        headers=auth_headers,
     )
-    if not fixture_dir.exists():
-        pytest.skip("Baseline inputs for cest_15n not found.")
-
-    shutil.copytree(fixture_dir, tmp_path, dirs_exist_ok=True)
-
-    legacy_params = (tmp_path / "Parameters" / "parameters.toml").read_text(encoding="utf-8")
-    legacy_params += "\n[DWP_AB]\nvalue = 1.0\n"
-
-    payload = {
-        "model": "2st",
-        "experiment_files": [f"Experiments/{f.name}" for f in sorted((tmp_path / "Experiments").glob("*.toml"))],
-        "parameter_toml": legacy_params,
-        "include": ["13N"],
-    }
-
-    import contextlib
-    with contextlib.chdir(tmp_path):
-        res = client.post("/api/chemex/validate", json=payload)
     assert res.status_code == 200
     report = res.json()
     assert report["valid"] is False
@@ -197,39 +217,33 @@ def test_validate_inputs_legacy_parameter_error(tmp_path: Path):
     assert any(err.get("type") == "LegacyParameterError" for err in report["errors"])
 
 
-def test_inspect_parameters(tmp_path: Path):
-    """Verify POST /api/chemex/parameters/inspect introspects parameters and flags sharing."""
-    fixture_dir = (
-        Path(__file__).resolve().parent
-        / "fixtures"
-        / "baselines"
-        / "2026.6.1"
-        / "cest_15n"
-        / "inputs"
+def test_inspect_parameters(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-inspect")
+    res = client.post(
+        _url(test_project, analysis.analysis_uuid, "parameters/inspect"),
+        json={"model": "2st", "include": ["13N"]},
+        headers=auth_headers,
     )
-    if not fixture_dir.exists():
-        pytest.skip("Baseline inputs for cest_15n not found.")
-
-    shutil.copytree(fixture_dir, tmp_path, dirs_exist_ok=True)
-
-    payload = {
-        "model": "2st",
-        "experiment_files": [f"Experiments/{f.name}" for f in sorted((tmp_path / "Experiments").glob("*.toml"))],
-        "parameter_files": [f"Parameters/{f.name}" for f in sorted((tmp_path / "Parameters").glob("*.toml"))],
-        "include": ["13N"],
-    }
-
-    import contextlib
-    with contextlib.chdir(tmp_path):
-        res = client.post("/api/chemex/parameters/inspect", json=payload)
     assert res.status_code == 200
     data = res.json()
-    assert "parameters" in data
     assert len(data["parameters"]) > 0
     p0 = data["parameters"][0]
     assert "status" in p0
     assert "is_shared" in p0
     assert "experiments" in data
+
+
+def test_inspect_ignores_broken_saved_method(db_session, test_project, auth_headers):
+    """Baseline inspection must not depend on (or fail because of) the saved method file."""
+    analysis = _make_analysis(db_session, test_project, "analysis-chemex-brokenmethod")
+    run_dir = Path(test_project.local_directory_path) / "cest_fitting" / analysis.analysis_uuid
+    (run_dir / "Methods").mkdir()
+    (run_dir / "Methods" / "method.toml").write_text("FORMAT_VERSION = 2\n[S]\nROLES = 3\n", encoding="utf-8")
+    res = client.post(
+        _url(test_project, analysis.analysis_uuid, "parameters/inspect"), json={"model": "2st"}, headers=auth_headers
+    )
+    assert res.status_code == 200, res.text
+    assert any(p["name"] == "PB" for p in res.json()["parameters"])
 
 
 def test_continue_from_run(db_session, test_project, auth_headers):
@@ -269,66 +283,42 @@ def test_continue_from_run(db_session, test_project, auth_headers):
     assert "[PB]" in new_param_file.read_text(encoding="utf-8")
 
 
-def test_validate_and_inspect_with_analysis_uuid_lowercase_data(db_session, test_project):
-    """Verify POST /api/chemex/validate and /parameters/inspect resolve lowercase data/ paths from analysis_uuid."""
-    fixture_dir = (
-        Path(__file__).resolve().parent
-        / "fixtures"
-        / "baselines"
-        / "2026.6.1"
-        / "cest_15n"
-        / "inputs"
-    )
-    if not fixture_dir.exists():
-        pytest.skip("Baseline inputs for cest_15n not found.")
 
-    analysis_uuid = "analysis-cest-lowercase-data-1234"
-    analysis = Analysis(
-        analysis_uuid=analysis_uuid,
-        name="CESTLowercaseDataRun",
-        analysis_type="15N-CEST",
-        project_id=test_project.id,
-        status="PENDING",
-    )
-    db_session.add(analysis)
-    db_session.commit()
+def test_validate_and_inspect_with_lowercase_data(db_session, test_project, auth_headers):
+    """Validate/inspect resolve lowercase data/ dirs referenced by experiment files."""
+    analysis = _make_analysis(db_session, test_project, "analysis-cest-lowercase-data-1234", lowercase_data=True)
+    payload = {"model": "2st", "include": ["13N"]}
 
-    run_dir = Path(test_project.local_directory_path) / "cest_fitting" / analysis_uuid
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy Parameters
-    shutil.copytree(fixture_dir / "Parameters", run_dir / "Parameters", dirs_exist_ok=True)
-
-    # Create lowercase 'data' directory (simulating spectrum extraction in analysis.py)
-    data_dir = run_dir / "data" / "600MHz_28hz"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    for f in (fixture_dir / "Data" / "13Hz").glob("*.out"):
-        shutil.copy2(f, data_dir / f.name)
-
-    # Create Experiments pointing to lowercase '../data/600MHz_28hz'
-    exp_dir = run_dir / "Experiments"
-    exp_dir.mkdir(parents=True, exist_ok=True)
-    exp_toml_content = (fixture_dir / "Experiments" / "13hz.toml").read_text(encoding="utf-8")
-    exp_toml_content = exp_toml_content.replace('"../Data/13Hz/"', '"../data/600MHz_28hz"')
-    (exp_dir / "cest_15n_600mhz_28hz.toml").write_text(exp_toml_content, encoding="utf-8")
-
-    # 1. Test POST /api/chemex/validate
-    payload = {
-        "analysis_uuid": analysis_uuid,
-        "model": "2st",
-        "include": ["13N"],
-    }
-    res_val = client.post("/api/chemex/validate", json=payload)
+    res_val = client.post(_url(test_project, analysis.analysis_uuid, "validate"), json=payload, headers=auth_headers)
     assert res_val.status_code == 200
     report = res_val.json()
     assert report["valid"] is True, f"Validation failed: {report.get('errors')}"
     assert report["errors"] == []
 
-    # 2. Test POST /api/chemex/parameters/inspect
-    res_insp = client.post("/api/chemex/parameters/inspect", json=payload)
+    res_insp = client.post(_url(test_project, analysis.analysis_uuid, "parameters/inspect"), json=payload, headers=auth_headers)
     assert res_insp.status_code == 200
-    insp_data = res_insp.json()
-    assert "parameters" in insp_data
-    assert len(insp_data["parameters"]) > 0
-    assert any(p["name"] == "PB" for p in insp_data["parameters"])
+    assert any(p["name"] == "PB" for p in res_insp.json()["parameters"])
 
+
+def test_inspect_without_experiments_reports_error(db_session, test_project, auth_headers):
+    """Before experiments are generated, inspect explains why instead of returning 500."""
+    analysis = Analysis(analysis_uuid="analysis-chemex-empty", name="Empty", analysis_type="15N-CEST",
+                        project_id=test_project.id, status="PENDING")
+    db_session.add(analysis)
+    db_session.commit()
+    res = client.post(_url(test_project, analysis.analysis_uuid, "parameters/inspect"), json={"model": "2st"}, headers=auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["parameters"] == []
+    assert body["error"]
+
+
+def test_validate_without_experiments_reports_error(db_session, test_project, auth_headers):
+    analysis = Analysis(analysis_uuid="analysis-chemex-empty-v", name="EmptyV", analysis_type="15N-CEST",
+                        project_id=test_project.id, status="PENDING")
+    db_session.add(analysis)
+    db_session.commit()
+    res = client.post(_url(test_project, analysis.analysis_uuid, "validate"), json={"model": "2st"}, headers=auth_headers)
+    assert res.status_code == 200
+    assert res.json()["valid"] is False
+    assert "experiment" in res.json()["errors"][0]["message"].lower()

@@ -10,11 +10,15 @@ from pathlib import Path
 from typing import Any, Callable, Generator
 
 import chemex.optimize.mcmc
+import chemex.optimize.method_plan_execution
 import chemex.optimize.native_deterministic
 import chemex.optimize.resampling
 from chemex.messages import McmcProgressReporter, MinimizationProgressReporter
 
 ProgressObserver = Callable[[dict[str, Any]], None]
+
+#: Event kinds that must never be rate-limited away (each one changes run state).
+_UNTHROTTLED_KINDS = frozenset({"step"})
 
 _ACTIVE_OBSERVER: ProgressObserver | None = None
 _HOOK_LOCK = threading.Lock()
@@ -39,6 +43,7 @@ class ProgressFileLogger:
     def log_event(self, event: dict[str, Any], force: bool = False) -> None:
         kind = event.get("kind", "unknown")
         now = time.time()
+        force = force or kind in _UNTHROTTLED_KINDS
 
         with self._lock:
             is_first = kind not in self._last_emitted_t
@@ -153,6 +158,20 @@ class _WrappedMcmcProgressReporter(McmcProgressReporter):
         super().observe(completed_steps)
 
 
+def _make_wrapped_step_name(original_func: Any) -> Any:
+    """Report each method step as it starts (ChemEx prints it but exposes no hook)."""
+
+    def _wrapped(name: str, index: int, total: int) -> Any:
+        if _ACTIVE_OBSERVER is not None:
+            try:
+                _ACTIVE_OBSERVER({"kind": "step", "name": name, "index": index, "total": total})
+            except Exception:
+                pass
+        return original_func(name, index, total)
+
+    return _wrapped
+
+
 def _make_wrapped_resampling(original_func: Any) -> Any:
     def _wrapped(experiments: Any, path: Any, kind: Any, request: Any, fit: Any, **kwargs: Any) -> Any:
         if _ACTIVE_OBSERVER is not None:
@@ -183,10 +202,12 @@ def install_progress_hooks(observer: ProgressObserver) -> Generator[None, None, 
         orig_min_reporter = chemex.optimize.native_deterministic.MinimizationProgressReporter
         orig_mcmc_reporter = chemex.optimize.mcmc.McmcProgressReporter
         orig_resample_func = chemex.optimize.resampling.run_native_resampling
+        orig_step_name = chemex.optimize.method_plan_execution.print_step_name
 
         chemex.optimize.native_deterministic.MinimizationProgressReporter = _WrappedMinimizationProgressReporter
         chemex.optimize.mcmc.McmcProgressReporter = _WrappedMcmcProgressReporter
         chemex.optimize.resampling.run_native_resampling = _make_wrapped_resampling(orig_resample_func)
+        chemex.optimize.method_plan_execution.print_step_name = _make_wrapped_step_name(orig_step_name)
 
         try:
             yield
@@ -194,4 +215,5 @@ def install_progress_hooks(observer: ProgressObserver) -> Generator[None, None, 
             chemex.optimize.native_deterministic.MinimizationProgressReporter = orig_min_reporter
             chemex.optimize.mcmc.McmcProgressReporter = orig_mcmc_reporter
             chemex.optimize.resampling.run_native_resampling = orig_resample_func
+            chemex.optimize.method_plan_execution.print_step_name = orig_step_name
             _ACTIVE_OBSERVER = prev_observer

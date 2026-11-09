@@ -2,6 +2,7 @@ import type { MethodConfig, Step } from './methodConfig';
 import { normalizeStep } from './methodConfig';
 import { stepRoleActions, stepTomlName } from './methodToml';
 import { axisPointCount } from './searchDefaults';
+import { seedError } from './seed';
 
 export interface ValidationError {
   stepId: string;
@@ -16,7 +17,6 @@ export type MethodValidationError = ValidationError;
 const STEP_NAME = /^[A-Za-z0-9_-]+$/;
 const SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const QUALIFIER = /^(NUC|T|B0|\[P\]|\[L\]|D2O)\s*->\s*\S.*$/i;
-const MAX_SEED = Number.MAX_SAFE_INTEGER;
 
 /** Check a v2 selector "NAME[, QUAL->value]..." — returns an error message or null. */
 export function selectorError(selector: string, knownUpper?: Set<string>): string | null {
@@ -151,9 +151,8 @@ export function validateMethodConfig(
       const label = search.mode === 'grid' ? 'GRID' : 'DE';
       if (search.axes.length === 0) push(`${label} search is enabled but has no ${search.mode === 'grid' ? 'axes' : 'coordinates'}.`);
       if (search.mode === 'de') {
-        if (search.seed === undefined || search.seed === null || !Number.isInteger(search.seed) || search.seed < 0 || search.seed > MAX_SEED) {
-          push('DE search requires an integer SEED ≥ 0.');
-        }
+        const msg = seedError(search.seed, true);
+        if (msg) push(`DE search: ${msg}`);
       }
       const selectors = new Set<string>();
       let globalProduct = 1;
@@ -211,7 +210,6 @@ export function validateMethodConfig(
     // ── Statistics ──
     const stats = step.statistics;
     if (stats) {
-      const seedOk = (s?: number) => s === undefined || s === null || (Number.isInteger(s) && s >= 0 && s <= MAX_SEED);
       for (const { key, label } of [
         { key: 'mc', label: 'Monte Carlo (MC)' },
         { key: 'bs', label: 'Bootstrap (BS)' },
@@ -224,7 +222,8 @@ export function validateMethodConfig(
         } else if (conf.replicates > 200) {
           push(`${label} replicate count (${conf.replicates}) requires ${conf.replicates} full refits and may have high execution cost.`, 'warning');
         }
-        if (!seedOk(conf.seed)) push(`${label} seed must be an integer ≥ 0.`);
+        const seedMsg = seedError(conf.seed);
+        if (seedMsg) push(`${label}: ${seedMsg}`);
       }
 
       if (stats.mcmc?.enabled) {
@@ -235,7 +234,8 @@ export function validateMethodConfig(
           if (!Number.isInteger(b) || b < 0) push('MCMC burn must be a non-negative integer, or Auto.');
           else if (m.steps && b >= m.steps) push(`MCMC burn (${b}) must be smaller than total steps (${m.steps}).`);
         }
-        if (!seedOk(m.seed)) push('MCMC seed must be an integer ≥ 0.');
+        const seedMsg = seedError(m.seed);
+        if (seedMsg) push(`MCMC: ${seedMsg}`);
         const legacy = [
           m.thin && m.thin > 1 ? `THIN=${m.thin}` : null,
           m.walkers ? `WALKERS=${m.walkers}` : null,

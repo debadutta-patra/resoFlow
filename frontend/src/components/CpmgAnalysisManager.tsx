@@ -42,16 +42,18 @@ import { CpmgResultsTab, type CpmgResultResidue } from "./cpmg/CpmgResultsTab";
 import type { ResidueItem } from "./methods/ResidueSelector";
 import { MethodsTab } from "./methods/MethodsTab";
 import { ParametersTab } from "./parameters/ParametersTab";
-import { ConfigChangedBadge, LineageBadge, StaleStartingValuesBadge } from "./chemex/RunStatusBadges";
+import { ConfigChangedBadge, FitModeHelp, LastCommittedBadge, LineageBadge, LiveRunBadge, StaleStartingValuesBadge } from "./chemex/RunStatusBadges";
+import { FIT_MODE_HELP } from "../lib/runProgress";
+import { committedGlobalsByStep, lastCommittedStep } from "../lib/committedResults";
 import {
   applyGridCoordinatesToCpmgConfig,
   peakFitPicks,
   seedCpmgResiduesFromProfiles,
 } from "../lib/cpmgConfig";
-import type { ParameterConfig } from "../lib/parameterConfig";
+import { startingProvenance, type ParameterConfig } from "../lib/parameterConfig";
 import { evaluateCpmgDiagnostics, type CpmgDiagnosticsResult } from "../lib/cpmgDiagnostics";
 import { getNucleusInfoForModule } from "../lib/experimentPlugin";
-import { chemexConfigHash, findLineage, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from "../lib/chemexRun";
+import { chemexConfigHash, experimentsFingerprint, findLineage, isRunActive, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from "../lib/chemexRun";
 import { useMethodEditor } from "../hooks/useMethodEditor";
 import { useParameterEditor } from "../hooks/useParameterEditor";
 import { cpmgPlugin } from "../plugins/cpmgPlugin";
@@ -80,6 +82,7 @@ interface ProgressInfo {
   redchi?: number;
   message?: string;
   updated_at?: number;
+  step?: { name: string; index?: number; total?: number };
 }
 
 interface Analysis {
@@ -92,6 +95,7 @@ interface Analysis {
   bundle_status?: string;
   summary_redchi?: number;
   summary_n_residues?: number;
+  completed_at?: string;
 }
 
 interface CpmgAnalysisManagerProps {
@@ -223,6 +227,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     [profiles, parameterEditor.isExcluded]
   );
 
+  const runLocked = isRunActive(status, isFitting);
   const methodEditor = useMethodEditor({
     projectUuid,
     analysisUuid: analysis.analysis_uuid,
@@ -231,6 +236,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     residueItems,
     isResidueExcluded: parameterEditor.isExcluded,
     exclusionKey: parameterConfig.excludedResidues,
+    inputsKey: experimentsFingerprint(generatedExperiments),
+    locked: runLocked,
     notify,
   });
   const { methodConfig, blockingErrors } = methodEditor;
@@ -240,6 +247,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
 
   // ── Results Tab State ──
   const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const committedByStep = useMemo(() => committedGlobalsByStep(analysisResults), [analysisResults]);
+  const lastCommitted = useMemo(() => lastCommittedStep(analysisResults), [analysisResults]);
   const [resultsResidues, setResultsResidues] = useState<Record<string, CpmgResultResidue>>({});
   const [resultsGlobals, setResultsGlobals] = useState<Record<string, { value: number; error?: number }>>({});
   const [resultsStats, setResultsStats] = useState<any>({});
@@ -750,12 +759,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             <span>{status}</span>
           </span>
 
-          {(status === "RUNNING" || status === "CANCELLING" || isFitting) && progressInfo && (
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800 flex items-center gap-1.5 shadow-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span>{progressInfo.percent !== undefined ? `${progressInfo.stage || 'Progress'}: ${progressInfo.percent.toFixed(0)}%` : (progressInfo.message || progressInfo.stage)}</span>
-            </span>
-          )}
+          {(status === "RUNNING" || status === "CANCELLING" || isFitting) && progressInfo && <LiveRunBadge progress={progressInfo} />}
 
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border ${
             fitMode === 'global' 
@@ -769,10 +773,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           <ConfigChangedBadge show={isConfigChangedSinceRun} />
           <LineageBadge lineage={lineageInfo} projectUuid={projectUuid} sourceExists={sourceRunStillExists} />
 
-          {analysisResults?.global?.chi2_red !== undefined && (
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-              Red. χ²: <strong className="text-slate-800 dark:text-slate-200">{analysisResults.global.chi2_red.toFixed(2)}</strong>
-            </span>
+          {lastCommitted && (
+            <LastCommittedBadge stepName={lastCommitted.name} redchi={lastCommitted.redchi} at={analysis.completed_at} />
           )}
         </div>
 
@@ -790,7 +792,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           )}
 
           {/* Fit Mode Switcher */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+          <div title={FIT_MODE_HELP} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => setFitMode("global")}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
@@ -811,6 +813,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             >
               Individual
             </button>
+            <FitModeHelp />
           </div>
 
           {status === 'COMPLETED' && analysisResults && (
@@ -1143,8 +1146,11 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
               analysisUuid={analysis.analysis_uuid}
               residueItems={residueItems}
               startingValues={parameterEditor.startingValues}
+              startingProvenance={startingProvenance(parameterConfig, "peak fit")}
+              committedByStep={committedByStep}
               onNavigateToParameters={() => setActiveTab("parameters")}
               notify={notify}
+              readOnly={runLocked}
             />
           )}
 

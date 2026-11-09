@@ -10,13 +10,9 @@ import {
 } from 'lucide-react';
 
 import { resolveNumericRange } from '../../lib/spinSystem';
+import { residueChipLabel, residueMatches, sortResidueItems, type ResidueItem } from '../../lib/residueSelection';
 
-export interface ResidueItem {
-  id: string; // e.g. "13N", "S13N", "G2N-HN", "L3CD1-HD1"
-  number: number; // e.g. 13
-  label: string; // e.g. "SER13N", "S13N", "G2N-HN", "L3CD1-HD1"
-  hasData: boolean;
-}
+export type { ResidueItem } from '../../lib/residueSelection';
 
 interface ResidueSelectorProps {
   residues: ResidueItem[];
@@ -42,20 +38,22 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  // Filtered residues
-  const visibleResidues = useMemo(() => {
-    if (!filterText.trim()) return residues;
-    const q = filterText.toLowerCase().trim();
-    return residues.filter(
-      r =>
-        r.id.toLowerCase().includes(q) ||
-        r.label.toLowerCase().includes(q) ||
-        String(r.number).includes(q)
-    );
-  }, [residues, filterText]);
+  // Natural residue order ("3N" before "39N"), then the search filter.
+  const sortedResidues = useMemo(() => sortResidueItems(residues), [residues]);
+  const visibleResidues = useMemo(
+    () => (filterText.trim() ? sortedResidues.filter(r => residueMatches(r, filterText)) : sortedResidues),
+    [sortedResidues, filterText]
+  );
 
   // Valid selectable residues (having data)
-  const availableResidues = useMemo(() => residues.filter(r => r.hasData), [residues]);
+  const availableResidues = useMemo(() => sortedResidues.filter(r => r.hasData), [sortedResidues]);
+
+  // Emit selections in natural residue order so INCLUDE/EXCLUDE read like the chips.
+  const orderOf = useMemo(() => new Map(sortedResidues.map((r, i) => [r.id, i])), [sortedResidues]);
+  const emitSelection = (ids: Iterable<string>) =>
+    onSelectionChange(
+      Array.from(ids).sort((a, b) => (orderOf.get(a) ?? Number.MAX_SAFE_INTEGER) - (orderOf.get(b) ?? Number.MAX_SAFE_INTEGER))
+    );
 
   // Toggle single residue
   const toggleResidue = (res: ResidueItem, index: number, isShiftKey: boolean) => {
@@ -77,7 +75,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
           nextSet.delete(item.id);
         }
       }
-      onSelectionChange(Array.from(nextSet));
+      emitSelection(nextSet);
     } else {
       const nextSet = new Set(selectedSet);
       if (nextSet.has(res.id)) {
@@ -85,7 +83,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
       } else {
         nextSet.add(res.id);
       }
-      onSelectionChange(Array.from(nextSet));
+      emitSelection(nextSet);
     }
 
     setLastClickedIndex(index);
@@ -94,7 +92,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
   // Bulk Actions
   const handleSelectAll = () => {
     if (readOnly) return;
-    onSelectionChange(availableResidues.map(r => r.id));
+    emitSelection(availableResidues.map(r => r.id));
   };
 
   const handleSelectNone = () => {
@@ -107,7 +105,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
     const nextIds = availableResidues
       .filter(r => !selectedSet.has(r.id))
       .map(r => r.id);
-    onSelectionChange(nextIds);
+    emitSelection(nextIds);
   };
 
   // Range parser: e.g. "13-15, 25, 40-44" using typed spinSystem
@@ -129,7 +127,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
     for (const id of matched) {
       nextSet.add(id);
     }
-    onSelectionChange(Array.from(nextSet));
+    emitSelection(nextSet);
     setRangeInput('');
   };
 
@@ -193,7 +191,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             type="text"
             value={filterText}
             onChange={e => setFilterText(e.target.value)}
-            placeholder="Search residues (e.g. 14, SER)..."
+            placeholder="Search residues (e.g. 14, G14, Gly)..."
             className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -297,7 +295,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${chipCls}`}
               >
                 {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
-                <span>{res.label || res.id}</span>
+                <span>{residueChipLabel(res)}</span>
               </button>
             );
           })

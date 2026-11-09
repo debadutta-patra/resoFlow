@@ -7,7 +7,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Dices, Grid3x3, Plus, RotateCcw, Shuffle, Trash2 } from 'lucide-react';
 import type { SearchAxis, SearchFunction, SearchMode, Step, StepSearch } from '../../lib/methodConfig';
-import { randomSeed } from '../../lib/methodConfig';
+import { randomSeed, seedError, toSeed } from '../../lib/seed';
 import { formatAxis } from '../../lib/methodToml';
 import {
   PREFERRED_SEARCH_PARAMS,
@@ -189,13 +189,14 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
             <div className="flex items-center gap-2">
               <label className="font-semibold text-slate-600 dark:text-slate-300">SEED (required):</label>
               <input
-                type="number"
-                min={0}
-                step={1}
+                type="text"
+                inputMode="numeric"
                 disabled={readOnly}
                 value={search.seed ?? ''}
-                onChange={e => setSearch({ ...search, seed: e.target.value === '' ? undefined : parseInt(e.target.value, 10) })}
-                className={`${inputCls} w-36`}
+                placeholder="unsigned 64-bit integer"
+                onChange={e => setSearch({ ...search, seed: toSeed(e.target.value) })}
+                className={`${inputCls} w-52 ${seedError(search.seed, true) ? 'border-red-400 dark:border-red-500' : ''}`}
+                title={seedError(search.seed, true) ?? 'ChemEx DE seed (0 – 18446744073709551615)'}
               />
               <button
                 type="button"

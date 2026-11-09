@@ -95,7 +95,7 @@ describe('ChemEx v2 method.toml emitter', () => {
           parameters: [{ name: 'PB', mode: 'fit' }, { name: 'KEX_AB', mode: 'fit' }],
           search: {
             mode: 'de',
-            seed: 597,
+            seed: '597',
             axes: [
               { id: 'a', param: 'PB', fn: 'log', low: 0.001, high: 0.2, count: 0 },
               { id: 'b', param: 'KEX_AB', fn: 'log', low: 100, high: 5000, count: 0 },
@@ -121,7 +121,7 @@ describe('ChemEx v2 method.toml emitter', () => {
             { id: 'r2', action: 'CONSTRAIN', entries: ['[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]'] },
           ],
           statistics: {
-            mc: { enabled: true, replicates: 100, seed: 680 },
+            mc: { enabled: true, replicates: 100, seed: '680' },
             bs: { enabled: false, replicates: 100 },
             mcmc: { enabled: true, steps: 20000, burn: 4000 },
           },
@@ -214,7 +214,7 @@ STATISTICS = { MC = 100, MCMC = 5000 }
           rolesFrom: 'G',
           parameters: [{ name: 'PB', mode: 'fix' }],
           roleRules: [{ id: 'r', action: 'FIX', entries: ['R1_A, [P]->0.001M'] }],
-          search: { mode: 'de', seed: 1, axes: [{ id: '3', param: 'KEX_AB', fn: 'log', low: 10, high: 5000, count: 0 }] },
+          search: { mode: 'de', seed: '1', axes: [{ id: '3', param: 'KEX_AB', fn: 'log', low: 10, high: 5000, count: 0 }] },
         }),
       ],
     };
@@ -260,13 +260,13 @@ SEED = 680
 `);
     expect(unparsed).toEqual([]);
     const s = config.steps[0];
-    expect(s.search).toMatchObject({ mode: 'de', seed: 597 });
+    expect(s.search).toMatchObject({ mode: 'de', seed: '597' });
     expect(s.search?.axes.map(a => [a.param, a.fn, a.low, a.high])).toEqual([
       ['PB', 'log', 0.001, 0.2],
       ['KEX_AB', 'log', 100, 5000],
     ]);
-    expect(s.statistics?.bsn).toEqual({ enabled: true, replicates: 100, seed: 682 });
-    expect(s.statistics?.mcmc).toMatchObject({ steps: 20000, burn: 4000, seed: 680 });
+    expect(s.statistics?.bsn).toEqual({ enabled: true, replicates: 100, seed: '682' });
+    expect(s.statistics?.mcmc).toMatchObject({ steps: 20000, burn: 4000, seed: '680' });
   });
 
   it('migrates v1 files: buckets, GRID, bare tuples, implicit carry-over', () => {
@@ -420,7 +420,7 @@ describe('Method Configuration Validation (v2)', () => {
     const msgs = validateMethodConfig(cfg, known).map(e => e.message);
     expect(msgs.some(m => m.includes('ROLES_FROM "B" must name an earlier step'))).toBe(true);
     expect(msgs.some(m => m.includes('search targets must be fitted'))).toBe(true);
-    expect(msgs.some(m => m.includes('DE search requires an integer SEED'))).toBe(true);
+    expect(msgs.some(m => m.includes('DE search: SEED is required'))).toBe(true);
     expect(msgs.some(m => m.includes('must use lin(low, high) or log(low, high)'))).toBe(true);
     expect(msgs.some(m => m.includes('must be strictly positive'))).toBe(true);
     expect(msgs.some(m => m.includes('within [0, 1]'))).toBe(true);
@@ -437,5 +437,73 @@ describe('Method Configuration Validation (v2)', () => {
       known
     ).map(e => e.message);
     expect(msgs.some(m => m.includes('Invalid qualifier'))).toBe(true);
+  });
+});
+
+describe('u64 seed precision', () => {
+  const MAX = '18446744073709551615';
+
+  it('round-trips 2^64 − 1 through parse → model → emit → parse without loss', () => {
+    const input = `FORMAT_VERSION = 2
+
+[STEP]
+ROLES = [{ FIT = ["PB", "KEX_AB"] }]
+
+[STEP.SEARCH.DE]
+SEED = ${MAX}
+COORDINATES = ["[PB] = log(0.001, 0.2)"]
+
+[STEP.STATISTICS.MC]
+REPLICATES = 10
+SEED = ${MAX}
+
+[STEP.STATISTICS.MCMC]
+STEPS = 100
+SEED = 9007199254740993
+`;
+    const { config, unparsed } = tomlToConfig(input);
+    expect(unparsed).toEqual([]);
+    const s = config.steps[0];
+    expect(s.search?.seed).toBe(MAX);
+    expect(s.statistics?.mc?.seed).toBe(MAX);
+    expect(s.statistics?.mcmc?.seed).toBe('9007199254740993'); // 2^53 + 1: not representable as a JS number
+    const out = configToToml(config);
+    expect(out).toContain(`SEED = ${MAX}\nCOORDINATES`);
+    expect(out).toContain(`REPLICATES = 10\nSEED = ${MAX}`);
+    expect(out).toContain('STEPS = 100\nSEED = 9007199254740993');
+    expect(tomlToConfig(out).config.steps[0].search?.seed).toBe(MAX);
+  });
+
+  it('migrates legacy numeric seeds from saved configs', () => {
+    const legacy = {
+      steps: [
+        step({
+          search: { mode: 'de', seed: 597 as unknown as string, axes: [{ id: 'a', param: 'PB', fn: 'log', low: 0.001, high: 0.2, count: 0 }] },
+          statistics: { bs: { enabled: true, replicates: 5, seed: 681 as unknown as string } },
+        }),
+      ],
+    } as MethodConfig;
+    const s = normalizeMethodConfig(legacy).steps[0];
+    expect(s.search?.seed).toBe('597');
+    expect(s.statistics?.bs?.seed).toBe('681');
+  });
+
+  it('keeps a malformed SEED visible instead of dropping it', () => {
+    const { config, unparsed } = tomlToConfig(`FORMAT_VERSION = 2
+[STEP.STATISTICS.MC]
+REPLICATES = 5
+SEED = 1.5
+`);
+    expect(unparsed.some(l => l.includes('SEED = 1.5'))).toBe(true);
+    expect(config.steps[0].statistics?.mc?.seed).toBe('1.5');
+    expect(validateMethodConfig(config).some(e => e.message.includes('SEED must be an integer'))).toBe(true);
+    expect(configToToml(config)).not.toContain('SEED');
+  });
+
+  it('rejects seeds above 2^64 − 1', () => {
+    const errors = validateMethodConfig({
+      steps: [step({ search: { mode: 'de', seed: '18446744073709551616', axes: [{ id: 'a', param: 'PB', fn: 'log', low: 0.001, high: 0.2, count: 0 }] } })],
+    });
+    expect(errors.some(e => e.severity === 'error' && e.message.includes('SEED must be an integer'))).toBe(true);
   });
 });

@@ -27,6 +27,7 @@ import type {
   Step,
 } from './methodConfig';
 import { createDefaultStep, newMethodId, normalizeStep } from './methodConfig';
+import { isValidSeed, toSeed } from './seed';
 
 // ── Emission ────────────────────────────────────────────────────────────
 
@@ -103,17 +104,25 @@ function formatResidue(r: string): string {
   return /^\d+$/.test(s) ? s : q(s);
 }
 
+/** Seeds are u64 decimal strings, emitted as bare TOML integers. Invalid seeds are left to validation. */
+function seedLine(seed: unknown): string | null {
+  const s = toSeed(seed);
+  return isValidSeed(s) ? `SEED = ${s}` : null;
+}
+
 function emitResampling(lines: string[], stepName: string, key: string, conf?: ResamplingConfig) {
   if (!conf?.enabled || !(conf.replicates > 0)) return;
   lines.push('', `[${stepName}.STATISTICS.${key}]`, `REPLICATES = ${Math.floor(conf.replicates)}`);
-  if (conf.seed !== undefined && conf.seed !== null && Number.isFinite(conf.seed)) lines.push(`SEED = ${Math.floor(conf.seed)}`);
+  const seed = seedLine(conf.seed);
+  if (seed) lines.push(seed);
 }
 
 function emitMcmc(lines: string[], stepName: string, m?: McmcConfig) {
   if (!m?.enabled || !(m.steps > 0)) return;
   lines.push('', `[${stepName}.STATISTICS.MCMC]`, `STEPS = ${Math.floor(m.steps)}`);
   if (typeof m.burn === 'number' && Number.isFinite(m.burn)) lines.push(`BURN = ${Math.floor(m.burn)}`);
-  if (m.seed !== undefined && m.seed !== null && Number.isFinite(m.seed)) lines.push(`SEED = ${Math.floor(m.seed)}`);
+  const seed = seedLine(m.seed);
+  if (seed) lines.push(seed);
 }
 
 export const stepTomlName = (step: Step, idx: number): string => (step.name || `STEP${idx + 1}`).trim().toUpperCase();
@@ -162,9 +171,8 @@ export function configToToml(config: MethodConfig): string {
         lines.push(']');
       } else {
         lines.push('', `[${name}.SEARCH.DE]`);
-        if (search.seed !== undefined && search.seed !== null && Number.isFinite(search.seed)) {
-          lines.push(`SEED = ${Math.floor(search.seed)}`);
-        }
+        const seed = seedLine(search.seed);
+        if (seed) lines.push(seed);
         lines.push('COORDINATES = [');
         for (const axis of search.axes) lines.push(`  ${q(formatAxis(axis, 'de'))},`);
         lines.push(']');
@@ -188,7 +196,8 @@ export const configToTomlV2 = configToToml;
 
 // ── Minimal TOML reader (subset used by method files) ───────────────────
 
-type TomlValue = string | number | boolean | TomlValue[] | TomlTable;
+/** Integers beyond Number.MAX_SAFE_INTEGER are returned as `bigint` (ChemEx seeds are u64). */
+type TomlValue = string | number | bigint | boolean | TomlValue[] | TomlTable;
 interface TomlTable {
   [key: string]: TomlValue;
 }
@@ -413,9 +422,22 @@ class TomlReader {
     if (tok === 'false') return false;
     if (/inf$/.test(tok)) return tok.startsWith('-') ? -Infinity : Infinity;
     if (/nan$/.test(tok)) return NaN;
-    if (tok.startsWith('0x')) return parseInt(tok.slice(2).replace(/_/g, ''), 16);
-    return Number(tok.replace(/_/g, ''));
+    if (tok.startsWith('0x')) return safeInt(BigInt(tok.replace(/_/g, '')));
+    const clean = tok.replace(/_/g, '');
+    if (/^[+-]?\d+$/.test(clean)) return safeInt(BigInt(clean));
+    return Number(clean);
   }
+}
+
+/** Integer token → number when exactly representable, else bigint (no precision loss). */
+function safeInt(b: bigint): number | bigint {
+  const n = Number(b);
+  return Number.isSafeInteger(n) ? n : b;
+}
+
+/** JSON.stringify that tolerates bigint (used only for diagnostics in `unparsed`). */
+function show(v: unknown): string {
+  return JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x));
 }
 
 function isTable(v: unknown): v is TomlTable {
@@ -483,7 +505,7 @@ function parseRoles(step: Step, roles: TomlValue, unparsed: string[]) {
   const rules: RoleRule[] = [];
   for (const actionTable of roles) {
     if (!isTable(actionTable) || Object.keys(actionTable).length !== 1) {
-      unparsed.push(`Invalid ROLES action in step ${step.name}: ${JSON.stringify(actionTable)}`);
+      unparsed.push(`Invalid ROLES action in step ${step.name}: ${show(actionTable)}`);
       continue;
     }
     const key = Object.keys(actionTable)[0].toUpperCase();
@@ -537,25 +559,41 @@ function parseRoles(step: Step, roles: TomlValue, unparsed: string[]) {
   step.roleRules = rules;
 }
 
-function parseResampling(v: TomlValue | undefined): ResamplingConfig | undefined {
+/**
+ * Read a SEED value. ChemEx requires a TOML integer; anything else is kept for
+ * validation to report (as raw text) and recorded in `unparsed`, never dropped.
+ */
+function readSeed(v: TomlValue | undefined, unparsed: string[], ctx: string): string | undefined {
+  if (v === undefined) return undefined;
+  if ((typeof v === 'number' && Number.isInteger(v)) || typeof v === 'bigint') return toSeed(v);
+  unparsed.push(`${ctx} SEED = ${show(v)}  (SEED must be an unsigned 64-bit integer)`);
+  return toSeed(typeof v === 'object' ? show(v) : v);
+}
+
+function parseResampling(v: TomlValue | undefined, unparsed: string[], ctx: string): ResamplingConfig | undefined {
   if (v === undefined) return undefined;
   if (typeof v === 'number') return { enabled: true, replicates: Math.floor(v) };
   if (isTable(v)) {
     const reps = get(v, 'REPLICATES');
     const seed = get(v, 'SEED');
+    if (typeof reps !== 'number') unparsed.push(`${ctx} REPLICATES = ${show(reps)}  (expected a positive integer; defaulted to 100)`);
     return {
       enabled: true,
       replicates: typeof reps === 'number' ? Math.floor(reps) : 100,
-      seed: typeof seed === 'number' ? seed : undefined,
+      seed: readSeed(seed, unparsed, ctx),
     };
   }
+  unparsed.push(`${ctx} = ${show(v)}  (expected a replicate count or a table)`);
   return undefined;
 }
 
 function parseMcmc(v: TomlValue | undefined, unparsed: string[], stepName: string): McmcConfig | undefined {
   if (v === undefined) return undefined;
   if (typeof v === 'number') return { enabled: true, steps: Math.floor(v), burn: 'auto' };
-  if (!isTable(v)) return undefined;
+  if (!isTable(v)) {
+    unparsed.push(`[${stepName}.STATISTICS] MCMC = ${show(v)}  (expected a step count or a table)`);
+    return undefined;
+  }
   const steps = get(v, 'STEPS');
   const burn = get(v, 'BURN');
   const seed = get(v, 'SEED');
@@ -563,7 +601,7 @@ function parseMcmc(v: TomlValue | undefined, unparsed: string[], stepName: strin
     enabled: true,
     steps: typeof steps === 'number' ? Math.floor(steps) : 5000,
     burn: typeof burn === 'number' ? Math.floor(burn) : 'auto',
-    seed: typeof seed === 'number' ? seed : undefined,
+    seed: readSeed(seed, unparsed, `[${stepName}.STATISTICS.MCMC]`),
   };
   for (const legacy of ['THIN', 'WALKERS', 'WORKERS', 'UPDATE_PARAMETERS']) {
     const lv = get(v, legacy);
@@ -579,11 +617,15 @@ function parseMcmc(v: TomlValue | undefined, unparsed: string[], stepName: strin
 }
 
 function parseStatistics(v: TomlValue | undefined, unparsed: string[], stepName: string): StatisticsConfig | undefined {
-  if (!isTable(v)) return undefined;
+  if (v === undefined) return undefined;
+  if (!isTable(v)) {
+    unparsed.push(`[${stepName}] STATISTICS = ${show(v)}  (expected a table)`);
+    return undefined;
+  }
   const stats: StatisticsConfig = {};
-  const mc = parseResampling(get(v, 'MC'));
-  const bs = parseResampling(get(v, 'BS'));
-  const bsn = parseResampling(get(v, 'BSN'));
+  const mc = parseResampling(get(v, 'MC'), unparsed, `[${stepName}.STATISTICS.MC]`);
+  const bs = parseResampling(get(v, 'BS'), unparsed, `[${stepName}.STATISTICS.BS]`);
+  const bsn = parseResampling(get(v, 'BSN'), unparsed, `[${stepName}.STATISTICS.BSN]`);
   const mcmc = parseMcmc(get(v, 'MCMC'), unparsed, stepName);
   if (mc) stats.mc = mc;
   if (bs) stats.bs = bs;
@@ -665,7 +707,7 @@ function parseV2Step(name: string, sec: TomlTable, unparsed: string[]): Step {
       step.search = {
         mode: 'de',
         axes: parseAxes(get(de, 'COORDINATES'), unparsed, `[${name}.SEARCH.DE]`),
-        seed: typeof seed === 'number' ? seed : undefined,
+        seed: readSeed(seed, unparsed, `[${name}.SEARCH.DE]`),
       };
     }
   }
@@ -674,7 +716,7 @@ function parseV2Step(name: string, sec: TomlTable, unparsed: string[]): Step {
   if (stats) step.statistics = stats;
 
   for (const k of Object.keys(sec)) {
-    if (!KNOWN_V2_STEP_KEYS.has(k.toUpperCase())) unparsed.push(`[${name}] ${k} = ${JSON.stringify(sec[k])}  (not a v2 step field)`);
+    if (!KNOWN_V2_STEP_KEYS.has(k.toUpperCase())) unparsed.push(`[${name}] ${k} = ${show(sec[k])}  (not a v2 step field)`);
   }
   return step;
 }
@@ -720,13 +762,13 @@ function parseV1Step(name: string, sec: TomlTable, unparsed: string[]): Step {
     step.search = { mode: 'grid', axes: parseAxes(entries, unparsed, `[${name}] GRID`) };
   }
   const fm = get(sec, 'FITMETHOD');
-  if (fm !== undefined) unparsed.push(`[${name}] FITMETHOD = ${JSON.stringify(fm)}  (v2 has no FITMETHOD; TRF is implicit)`);
+  if (fm !== undefined) unparsed.push(`[${name}] FITMETHOD = ${show(fm)}  (v2 has no FITMETHOD; TRF is implicit)`);
 
   const stats = parseStatistics(get(sec, 'STATISTICS'), unparsed, name);
   if (stats) step.statistics = stats;
 
   for (const k of Object.keys(sec)) {
-    if (!KNOWN_V1_STEP_KEYS.has(k.toUpperCase())) unparsed.push(`[${name}] ${k} = ${JSON.stringify(sec[k])}  (unknown method field)`);
+    if (!KNOWN_V1_STEP_KEYS.has(k.toUpperCase())) unparsed.push(`[${name}] ${k} = ${show(sec[k])}  (unknown method field)`);
   }
   return step;
 }
@@ -754,7 +796,7 @@ export function tomlToConfig(toml: string): ParseResult {
     steps.push(isV2 ? parseV2Step(stepName, sec, unparsed) : parseV1Step(stepName, sec, unparsed));
   }
   for (const k of Object.keys(data)) {
-    if (!isTable(data[k]) && k.toUpperCase() !== 'FORMAT_VERSION') unparsed.push(`${k} = ${JSON.stringify(data[k])}  (top-level key outside any step)`);
+    if (!isTable(data[k]) && k.toUpperCase() !== 'FORMAT_VERSION') unparsed.push(`${k} = ${show(data[k])}  (top-level key outside any step)`);
   }
 
   // v1 carried roles and profile selection implicitly between steps; make that explicit.

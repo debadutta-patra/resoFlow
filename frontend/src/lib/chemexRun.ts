@@ -56,14 +56,16 @@ export async function preflightChemexValidation(req: {
   model: string;
 }): Promise<string | null> {
   try {
-    const res = await api.post('/api/chemex/validate', {
-      analysis_uuid: req.analysisUuid,
-      project_uuid: req.projectUuid,
+    const res = await api.post(`/api/projects/${req.projectUuid}/analysis/${req.analysisUuid}/chemex/validate`, {
       parameter_toml: req.parameterToml,
       method_toml: req.methodToml,
       model: req.model,
     });
-    const errors: any[] = res.data?.errors || [];
+    // MissingInputs: experiment/parameter files are only written when the run starts,
+    // so there is nothing to pre-validate yet (the run itself will report problems).
+    const errors: Array<{ message?: string; type?: string }> = (res.data?.errors || []).filter(
+      (e: { type?: string } | null) => e?.type !== 'MissingInputs'
+    );
     if (res.data && !res.data.valid && errors.length > 0) {
       return `ChemEx Validation Error:\n${errors.map(e => e?.message || String(e)).join('\n')}`;
     }
@@ -75,3 +77,23 @@ export async function preflightChemexValidation(req: {
 
 export const RERUN_CONFIRM_MESSAGE =
   'Rerunning this analysis will overwrite your current results. A backup of the current results will be created. Proceed?';
+
+/**
+ * Stable fingerprint of generated experiment files (name + content hash). Changes
+ * when experiments are regenerated, which invalidates the ChemEx baseline roles.
+ */
+export function experimentsFingerprint(experiments: Array<{ filename?: string; toml_content?: string }> | null | undefined): string {
+  return (experiments || [])
+    .map(e => {
+      const text = e?.toml_content || '';
+      let h = 5381;
+      for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+      return `${e?.filename || ''}:${(h >>> 0).toString(36)}`;
+    })
+    .join('|');
+}
+
+/** A run is queued or in progress: the method shown is the submitted snapshot and must not be edited. */
+export function isRunActive(status: string | undefined, localRunning = false): boolean {
+  return localRunning || status === 'RUNNING' || status === 'PENDING' || status === 'CANCELLING';
+}
