@@ -78,6 +78,8 @@ def test_fit_and_grid_progress_events(tmp_path: Path):
     assert any("done" in e and "total" in e for e in grid_events)
 
     # Each method step is announced, in order, before its fit events (never throttled away).
+    execution = [e for e in lines if e.get("kind") == "execution"]
+    assert len(execution) == 1 and isinstance(execution[0]["workers"], int) and execution[0]["workers"] >= 1
     step_events = [e for e in lines if e.get("kind") == "step"]
     assert [(e["name"], e["index"], e["total"]) for e in step_events] == [("STEP1", 1, 2), ("STEP2", 2, 2)]
     first_step2 = next(i for i, e in enumerate(lines) if e.get("kind") == "step" and e["name"] == "STEP2")

@@ -59,7 +59,7 @@ def _format_progress_data(event: dict[str, Any], step: dict[str, Any] | None = N
     return prog
 
 
-def _write_step_timings(job_dir: Path, timings: list[dict[str, Any]], state: JobState) -> None:
+def _write_step_timings(job_dir: Path, timings: list[dict[str, Any]], state: JobState, run_info: dict[str, Any] | None = None) -> None:
     """Persist per-step wall-clock durations of a finished job (step_timings.json).
 
     The last step ends when the job ends; an unfinished (failed/cancelled) step is
@@ -74,7 +74,10 @@ def _write_step_timings(job_dir: Path, timings: list[dict[str, Any]], state: Job
         last["incomplete"] = state != JobState.DONE
     try:
         tmp = job_dir / "step_timings.json.tmp"
-        tmp.write_text(json.dumps({"state": state.value if hasattr(state, "value") else str(state), "steps": timings}), encoding="utf-8")
+        for t in timings:
+            t.pop("mcmc_started_at", None)
+        payload = {"state": state.value if hasattr(state, "value") else str(state), "steps": timings, **(run_info or {})}
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
         tmp.replace(job_dir / "step_timings.json")
     except Exception as exc:  # timing is advisory
         logger.debug(f"Could not write step timings: {exc}")
@@ -113,6 +116,7 @@ def wait_for_job(
     current_step: dict[str, Any] | None = None
     # Wall-clock per method step (for runtime / cost estimates of the next run).
     step_timings: list[dict[str, Any]] = []
+    run_info: dict[str, Any] = {}
     last_heartbeat_seen = time.time()
     start_time = time.time()
 
@@ -138,8 +142,24 @@ def wait_for_job(
                         except Exception as e:
                             logger.debug(f"on_progress callback error: {e}")
 
-                    step_changed = event.get("kind") == "step"
+                    kind = event.get("kind")
                     event_t = event.get("t", time.time())
+                    if kind == "execution":
+                        if isinstance(event.get("workers"), int):
+                            run_info["workers"] = event["workers"]
+                        continue  # not user-facing progress
+                    if kind in ("resample", "mcmc") and step_timings:
+                        cur = step_timings[-1]
+                        # Deterministic part of the step ends where its statistics begin.
+                        if cur.get("fit_seconds") is None:
+                            cur["fit_seconds"] = round(event_t - cur["started_at"], 3)
+                        if kind == "mcmc":
+                            cur.setdefault("mcmc_started_at", event_t)
+                            if isinstance(event.get("total"), int):
+                                cur["mcmc_steps"] = event["total"]
+                            if isinstance(event.get("done"), int) and isinstance(event.get("total"), int) and event["done"] >= event["total"]:
+                                cur["mcmc_seconds"] = round(event_t - cur["mcmc_started_at"], 3)
+                    step_changed = kind == "step"
                     if event.get("kind") == "grid" and step_timings and isinstance(event.get("total"), int):
                         step_timings[-1]["grid_points"] = max(step_timings[-1].get("grid_points") or 0, event["total"])
                     if step_changed:
@@ -251,7 +271,7 @@ def wait_for_job(
                 _drain_progress()
                 _drain_log()
 
-                _write_step_timings(job_dir, step_timings, state)
+                _write_step_timings(job_dir, step_timings, state, run_info)
 
                 # Write final terminal state to progress.json
                 final_stage = "Completed" if state == JobState.DONE else ("Cancelled" if state == JobState.CANCELLED else "Failed")

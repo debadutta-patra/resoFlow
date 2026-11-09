@@ -64,7 +64,8 @@ describe('ChemEx v2 method.toml emitter', () => {
     expect(toml).toContain('[STEP1.SEARCH.GRID]');
     expect(toml).toContain('"[KEX_AB] = log(100, 1000, 5)"');
     expect(toml).toContain('{ FIT = ["PB", "KEX_AB"] }');
-    expect(toml).toContain('[STEP1.STATISTICS.MCMC]\nSTEPS = 5000\n');
+    // No SEED / BURN → compact form, placed in the step table before the SEARCH sub-table.
+    expect(toml).toContain('ROLES = [\n  { FIT = ["PB", "KEX_AB"] },\n]\nSTATISTICS = { MCMC = 5000 }\n\n[STEP1.SEARCH.GRID]');
   });
 
   it('never adds search targets to FIT implicitly (GRID/DE do not change roles)', () => {
@@ -565,5 +566,42 @@ describe('DE breadth (instant check; ChemEx is authoritative)', () => {
     expect(deBreadthError('R2_A', 'NUC->26N', cat)).toContain('2 B0 fields');
     expect(deBreadthError('R2_A', 'NUC->26N, B0->800.1MHz', cat)).toBeNull();
     expect(deBreadthError('DW_AB', undefined, null)).toBeNull();
+  });
+});
+
+describe('compact vs expanded STATISTICS', () => {
+  const st = (statistics: Step['statistics']) => configToToml({ steps: [step({ parameters: [{ name: 'PB', mode: 'fit' }], statistics })] });
+
+  it('uses the compact form when no seed or BURN is set (docs example)', () => {
+    const toml = st({
+      mc: { enabled: true, replicates: 100 },
+      bs: { enabled: true, replicates: 100 },
+      bsn: { enabled: true, replicates: 100 },
+      mcmc: { enabled: true, steps: 5000, burn: 'auto' },
+    });
+    expect(toml).toBe('FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { FIT = ["PB"] },\n]\nSTATISTICS = { MC = 100, BS = 100, BSN = 100, MCMC = 5000 }\n');
+    expect(tomlToConfig(toml).config.steps[0].statistics).toMatchObject({ mc: { replicates: 100 }, mcmc: { steps: 5000, burn: 'auto' } });
+  });
+
+  it('switches every request to expanded tables when any seed or BURN is set', () => {
+    const seeded = st({ mc: { enabled: true, replicates: 100, seed: '680' }, bs: { enabled: true, replicates: 50 } });
+    expect(seeded).toContain('[STEP1.STATISTICS.MC]\nREPLICATES = 100\nSEED = 680\n\n[STEP1.STATISTICS.BS]\nREPLICATES = 50\n');
+    expect(seeded).not.toContain('STATISTICS = {');
+    const burned = st({ mcmc: { enabled: true, steps: 20000, burn: 4000 } });
+    expect(burned).toContain('[STEP1.STATISTICS.MCMC]\nSTEPS = 20000\nBURN = 4000\n');
+    // Invalid seeds do not change the form (validation reports them).
+    expect(st({ mc: { enabled: true, replicates: 10, seed: 'abc' } })).toContain('STATISTICS = { MC = 10 }');
+  });
+
+  it('parses both forms, including a mixed [STEP.STATISTICS] table', () => {
+    const { config, unparsed } = tomlToConfig(`FORMAT_VERSION = 2
+[S.STATISTICS]
+MC = 20
+[S.STATISTICS.MCMC]
+STEPS = 300
+SEED = 7
+`);
+    expect(unparsed).toEqual([]);
+    expect(config.steps[0].statistics).toMatchObject({ mc: { replicates: 20 }, mcmc: { steps: 300, seed: '7', burn: 'auto' } });
   });
 });

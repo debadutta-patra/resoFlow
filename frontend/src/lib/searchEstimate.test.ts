@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateStepSeconds, formatDuration } from './searchEstimate';
+import { estimateStatistics, estimateStepSeconds, formatDuration } from './searchEstimate';
 
 const timings = [
   { name: 'GRID', seconds: 48, evaluations: 24 },
@@ -23,5 +23,25 @@ describe('runtime estimates', () => {
     expect(formatDuration(42)).toBe('42 s');
     expect(formatDuration(240)).toBe('4 min');
     expect(formatDuration(7200)).toBe('2.0 h');
+  });
+});
+
+describe('statistics cost estimate', () => {
+  const t = [
+    { name: 'LOCAL', seconds: 120, fit_seconds: 6, evaluations: 1, mcmc_seconds: 100, mcmc_steps: 1000 },
+    { name: 'OTHER', seconds: 4, evaluations: 1 },
+  ];
+  it('uses replicates × fit-only time ÷ workers, and scales MCMC from the last chain', () => {
+    const e = estimateStatistics(
+      { mc: { enabled: true, replicates: 100 }, bs: { enabled: true, replicates: 50 }, bsn: { enabled: false, replicates: 99 }, mcmc: { enabled: true, steps: 5000 } },
+      'local',
+      t,
+      4
+    );
+    expect(e).toMatchObject({ refits: 150, resamplingSeconds: (150 * 6) / 4, mcmcSeconds: 500, workers: 4, basedOn: 'LOCAL', proxy: false });
+  });
+  it('reports counts only without timing; unknown workers count as 1', () => {
+    expect(estimateStatistics({ mc: { enabled: true, replicates: 10 } }, 'X', [], null)).toMatchObject({ refits: 10, resamplingSeconds: null, mcmcSeconds: null });
+    expect(estimateStatistics({ mc: { enabled: true, replicates: 10 } }, 'OTHER', t, null).resamplingSeconds).toBe(40);
   });
 });

@@ -143,7 +143,8 @@ def test_v2_never_emits_v1_only_constructs():
         assert forbidden not in toml, forbidden
     assert '{ FIT = ["PB", "KEX_AB"] }' in toml
     assert '"[KEX_AB] = log(100, 1000, 5)",' in toml
-    assert "[STEP1.STATISTICS.MCMC]\nSTEPS = 5000\n" in toml
+    # No SEED / BURN → compact form, in the step table before the SEARCH sub-table.
+    assert 'STATISTICS = { MCMC = 5000 }\n\n[STEP1.SEARCH.GRID]' in toml
     plan = _chemex_plan(toml)
     assert plan.steps[0].search is not None
 
@@ -235,9 +236,9 @@ def test_frontend_camelcase_payload_and_ts_parity():
         '[LOCAL]\nINCLUDE = "ALL"\nROLES_FROM = "GLOBAL_FIT"\nROLES = [\n'
         '  { FIX = ["PB"] },\n'
         '  { CONSTRAIN = ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"] },\n'
-        '  { FIX = ["R1_A, [P]->0.001M, D2O->0.1"] },\n]\n\n'
+        '  { FIX = ["R1_A, [P]->0.001M, D2O->0.1"] },\n]\n'
+        'STATISTICS = { BS = 5, BSN = 5 }\n\n'
         '[LOCAL.SEARCH.DE]\nSEED = 18446744073709\nCOORDINATES = [\n  "[KEX_AB] = log(10, 5000)",\n]\n\n'
-        '[LOCAL.STATISTICS.BS]\nREPLICATES = 5\n\n[LOCAL.STATISTICS.BSN]\nREPLICATES = 5\n\n'
         '[EXC]\nEXCLUDE = [12, 18]\n'
     )
     config = MethodConfigModel(**payload)
@@ -312,7 +313,7 @@ FIX = ["PB", "KEX_AB"]
 
     v2 = emit_method_toml_v2(config)
     assert 'ROLES_FROM = "STEP1"' in v2
-    assert "[STEP1.STATISTICS.MC]\nREPLICATES = 10\n" in v2
+    assert "STATISTICS = { MC = 10, BS = 10, BSN = 10 }\n" in v2  # v1 statistics migrate to the compact v2 form
     assert len(_chemex_plan(v2).steps) == 2
 
 
@@ -459,3 +460,16 @@ def test_seed_accepts_legacy_int_and_empty_string():
     assert StepSearchModel(mode="de", seed=597).seed == 597
     assert StepSearchModel(mode="de", seed="0").seed == 0
     assert StepSearchModel(mode="de", seed="").seed is None
+
+
+def test_compact_statistics_form_matches_docs_and_chemex():
+    """Docs: STATISTICS = { MC = 100, BS = 100, BSN = 100, MCMC = 5000 } when no SEED/BURN is set."""
+    config = MethodConfigModel(**{"steps": [{"name": "STEP", "parameters": [{"name": "PB", "mode": "fit"}],
+        "statistics": {"mc": {"enabled": True, "replicates": 100}, "bs": {"enabled": True, "replicates": 100},
+                       "bsn": {"enabled": True, "replicates": 100}, "mcmc": {"enabled": True, "steps": 5000, "burn": "auto"}}}]})
+    toml = emit_method_toml_v2(config)
+    assert toml == 'FORMAT_VERSION = 2\n\n[STEP]\nROLES = [\n  { FIT = ["PB"] },\n]\nSTATISTICS = { MC = 100, BS = 100, BSN = 100, MCMC = 5000 }\n'
+    plan = _chemex_plan(toml)
+    st = plan.steps[0].statistics
+    assert (st.mc.replicates, st.bs.replicates, st.bsn.replicates, st.mcmc.steps, st.mcmc.burn) == (100, 100, 100, 5000, None)
+    assert emit_method_toml_v2(parse_method_toml(toml)) == toml

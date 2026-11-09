@@ -120,6 +120,26 @@ function emitMcmc(lines: string[], stepName: string, m?: McmcConfig) {
 export const tomlKey = (name: string): string => (/^[A-Za-z0-9_-]+$/.test(name) ? name : q(name));
 
 /** Step name as written to TOML (case preserved; ChemEx compares ROLES_FROM case-sensitively). */
+/**
+ * The compact `MC = 100, BS = 100, BSN = 100, MCMC = 5000` form, or null when an
+ * enabled request carries a SEED or BURN (then every request uses expanded
+ * [STEP.STATISTICS.X] tables) or nothing is enabled.
+ */
+export function compactStatistics(stats: StatisticsConfig): string | null {
+  const parts: string[] = [];
+  for (const [key, conf] of [['MC', stats.mc], ['BS', stats.bs], ['BSN', stats.bsn]] as const) {
+    if (!conf?.enabled || !(conf.replicates > 0)) continue;
+    if (isValidSeed(toSeed(conf.seed))) return null;
+    parts.push(`${key} = ${Math.floor(conf.replicates)}`);
+  }
+  const m = stats.mcmc;
+  if (m?.enabled && m.steps > 0) {
+    if (isValidSeed(toSeed(m.seed)) || (typeof m.burn === 'number' && Number.isFinite(m.burn))) return null;
+    parts.push(`MCMC = ${Math.floor(m.steps)}`);
+  }
+  return parts.length ? parts.join(', ') : null;
+}
+
 export const stepTomlName = (step: Step, idx: number): string => stepDisplayName(step, idx);
 
 /**
@@ -159,6 +179,10 @@ export function configToToml(config: MethodConfig): string {
       lines.push(']');
     }
 
+    // Compact STATISTICS = { … } goes in the step table itself, i.e. before any sub-table header.
+    const compactStats = step.statistics ? compactStatistics(step.statistics) : null;
+    if (compactStats) lines.push(`STATISTICS = { ${compactStats} }`);
+
     const search = step.search;
     if (search && search.mode !== 'none' && search.axes.length > 0) {
       if (search.mode === 'grid') {
@@ -176,7 +200,7 @@ export function configToToml(config: MethodConfig): string {
     }
 
     const stats = step.statistics;
-    if (stats) {
+    if (stats && !compactStats) {
       emitResampling(lines, name, 'MC', stats.mc);
       emitResampling(lines, name, 'BS', stats.bs);
       emitResampling(lines, name, 'BSN', stats.bsn);

@@ -48,6 +48,10 @@ def run_fit(
             session, experiments, plan, args_ns, input_files, equivalent_argv = build_session(
                 spec, job_dir=base_dir, command="fit"
             )
+            if observer is not None:
+                # Resolved parallelism ("auto" → a count) for cost estimates of later runs.
+                with contextlib.suppress(Exception):
+                    observer({"kind": "execution", "workers": int(session.execution.workers)})
 
             chemex.chemex.run_fit(
                 args_ns,

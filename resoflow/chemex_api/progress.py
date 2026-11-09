@@ -18,7 +18,7 @@ from chemex.messages import McmcProgressReporter, MinimizationProgressReporter
 ProgressObserver = Callable[[dict[str, Any]], None]
 
 #: Event kinds that must never be rate-limited away (each one changes run state).
-_UNTHROTTLED_KINDS = frozenset({"step"})
+_UNTHROTTLED_KINDS = frozenset({"step", "execution"})
 
 _ACTIVE_OBSERVER: ProgressObserver | None = None
 _HOOK_LOCK = threading.Lock()

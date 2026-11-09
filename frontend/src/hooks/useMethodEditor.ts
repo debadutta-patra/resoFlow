@@ -285,7 +285,9 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const effectiveMethodToml = isRawEditMode ? methodToml : configToToml(methodConfig);
 
   /** Last run's per-step durations (refreshed when a run ends) for runtime estimates. */
-  const stepTimings = useStepTimings(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
+  const runTimings = useStepTimings(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
+  const stepTimings = runTimings.steps;
+  const runWorkers = runTimings.workers;
 
   /** Per-step effective roles of every concrete parameter, resolved by ChemEx (debounced). */
   const resolvedRoles = useResolvedRoles({
@@ -357,6 +359,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     baselineRoles,
     resolvedRoles,
     stepTimings,
+    runWorkers,
     knownParamNames,
     validationErrors,
     blockingErrors,

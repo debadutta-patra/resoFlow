@@ -594,6 +594,30 @@ def _format_residue(r: Union[int, str]) -> str:
     return s if s.isdigit() else _q(s)
 
 
+def compact_statistics(stats: Optional[StatisticsModel]) -> Optional[str]:
+    """``MC = 100, BS = 100, BSN = 100, MCMC = 5000``, or None when a request carries a
+    SEED or BURN (then every request uses expanded tables) or nothing is requested."""
+    if stats is None or stats.is_empty():
+        return None
+    parts: List[str] = []
+    for key, val in (("MC", stats.mc), ("BS", stats.bs), ("BSN", stats.bsn)):
+        reps = _replicates(val)
+        if not reps:
+            continue
+        if _resampling_seed(val) is not None:
+            return None
+        parts.append(f"{key} = {reps}")
+    m = stats.mcmc
+    if m is not None:
+        if isinstance(m, McmcSettingsModel):
+            if isinstance(m.burn, int) or m.seed is not None:
+                return None
+            parts.append(f"MCMC = {m.steps}")
+        else:
+            parts.append(f"MCMC = {int(m)}")
+    return ", ".join(parts) or None
+
+
 def emit_method_toml_v2(config: MethodConfigModel) -> str:
     """Serializes a MethodConfigModel into canonical ChemEx v2 method.toml (FORMAT_VERSION = 2)."""
     if config.raw_override and config.raw_override.strip():
@@ -624,6 +648,11 @@ def emit_method_toml_v2(config: MethodConfigModel) -> str:
                 lines.append(f"  {{ {action} = [{', '.join(_q(e) for e in entries)}] }},")
             lines.append("]")
 
+        # Compact STATISTICS = { ... } lives in the step table, i.e. before any sub-table header.
+        compact_stats = compact_statistics(step.statistics)
+        if compact_stats:
+            lines.append(f"STATISTICS = {{ {compact_stats} }}")
+
         search = step.search
         if search and search.mode != "none" and search.axes:
             if search.mode == "grid":
@@ -639,7 +668,7 @@ def emit_method_toml_v2(config: MethodConfigModel) -> str:
                 lines.append("]")
 
         stats = step.statistics
-        if stats and not stats.is_empty():
+        if stats and not stats.is_empty() and not compact_stats:
             for key, val in (("MC", stats.mc), ("BS", stats.bs), ("BSN", stats.bsn)):
                 reps = _replicates(val)
                 if reps:

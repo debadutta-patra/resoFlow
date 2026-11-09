@@ -242,7 +242,13 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             readOnly={readOnly}
           />
 
-          <StepStatisticsSection step={activeStep} onChange={editor.handleStepChange} readOnly={readOnly} />
+          <StepStatisticsSection
+            step={activeStep}
+            onChange={editor.handleStepChange}
+            readOnly={readOnly}
+            timings={editor.stepTimings}
+            workers={editor.runWorkers}
+          />
         </div>
       )}
 

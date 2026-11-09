@@ -177,7 +177,7 @@
                   "values": [
                     0.005,
                     0.30000000000000004,
-                    1e-07,
+                    1e-7,
                     2
                   ]
                 },
@@ -298,6 +298,62 @@
         ]
       },
       "toml": "FORMAT_VERSION = 2\n\n[\"my step\"]\nROLES = [\n  { FIT = [\"PB\"] },\n]\n\n[AFTER]\nROLES_FROM = \"GONE\"\n\n[LEGACY]\nROLES_FROM = \"my step\"\n"
+    },
+    {
+      "name": "compact STATISTICS (no seed/BURN) sits in the step table, before the SEARCH sub-table",
+      "config": {
+        "steps": [
+          {
+            "id": "c",
+            "name": "STEP",
+            "residueMode": "include",
+            "residues": [],
+            "parameters": [
+              {
+                "name": "PB",
+                "mode": "fit"
+              },
+              {
+                "name": "KEX_AB",
+                "mode": "fit"
+              }
+            ],
+            "search": {
+              "mode": "grid",
+              "axes": [
+                {
+                  "id": "a",
+                  "param": "KEX_AB",
+                  "fn": "log",
+                  "low": 100,
+                  "high": 5000,
+                  "count": 12
+                }
+              ]
+            },
+            "statistics": {
+              "mc": {
+                "enabled": true,
+                "replicates": 100
+              },
+              "bs": {
+                "enabled": true,
+                "replicates": 100
+              },
+              "bsn": {
+                "enabled": true,
+                "replicates": 100
+              },
+              "mcmc": {
+                "enabled": true,
+                "steps": 5000,
+                "burn": "auto"
+              }
+            }
+          }
+        ]
+      },
+      "toml": "FORMAT_VERSION = 2\n\n[STEP]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\"] },\n]\nSTATISTICS = { MC = 100, BS = 100, BSN = 100, MCMC = 5000 }\n\n[STEP.SEARCH.GRID]\nAXES = [\n  \"[KEX_AB] = log(100, 5000, 12)\",\n]\n"
     },
     {
       "name": "raw override is emitted verbatim",

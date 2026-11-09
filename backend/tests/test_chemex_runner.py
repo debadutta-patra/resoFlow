@@ -461,8 +461,12 @@ def test_wait_for_job_tracks_current_step():
     try:
         job_dir = Path(temp_dir)
         (job_dir / "progress.jsonl").write_text(
+            '{"kind": "execution", "workers": 6, "t": 99.0}\n'
             '{"kind": "step", "name": "GLOBAL_FIT", "index": 1, "total": 2, "t": 100.0}\n'
             '{"kind": "fit", "iteration": 3, "chisqr": 10.0, "redchi": 1.1}\n'
+            '{"kind": "resample", "done": 0, "total": null, "t": 130.0}\n'
+            '{"kind": "mcmc", "done": 0, "total": 500, "t": 160.0}\n'
+            '{"kind": "mcmc", "done": 500, "total": 500, "t": 190.0}\n'
             '{"kind": "step", "name": "LOCAL_FITS", "index": 2, "total": 2, "t": 200.0}\n'
             '{"kind": "grid", "done": 3, "total": 12}\n'
             '{"kind": "fit", "iteration": 7, "chisqr": 9.0, "redchi": 1.05}\n'
@@ -500,6 +504,10 @@ def test_wait_for_job_tracks_current_step():
         assert timings["state"] == "DONE"
         g, l = timings["steps"]
         assert (g["name"], g["seconds"], g["grid_points"]) == ("GLOBAL_FIT", 100.0, None)
+        # Fit-only time ends where the step's statistics start; MCMC duration and length recorded.
+        assert (g["fit_seconds"], g["mcmc_steps"], g["mcmc_seconds"]) == (30.0, 500, 30.0)
+        assert "mcmc_started_at" not in g
+        assert timings["workers"] == 6
         assert l["name"] == "LOCAL_FITS" and l["grid_points"] == 12 and l["seconds"] is not None and not l.get("incomplete")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

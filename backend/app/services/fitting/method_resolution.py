@@ -65,11 +65,11 @@ def step_timings_with_evaluations(run_dir: Path, model: str = "2st") -> dict[str
 
     path = run_dir / "step_timings.json"
     if not path.exists():
-        return {"state": None, "steps": []}
+        return {"state": None, "steps": [], "workers": None}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {"state": None, "steps": []}
+        return {"state": None, "steps": [], "workers": None}
     steps = [s for s in data.get("steps", []) if isinstance(s, dict)]
     if steps and any("evaluations" not in s for s in steps):
         method_files = sorted((run_dir / "Methods").glob("*.toml")) if (run_dir / "Methods").is_dir() else []
@@ -91,4 +91,4 @@ def step_timings_with_evaluations(run_dir: Path, model: str = "2st") -> dict[str
             path.write_text(json.dumps(data), encoding="utf-8")
         except Exception:
             pass
-    return {"state": data.get("state"), "steps": steps}
+    return {"state": data.get("state"), "steps": steps, "workers": data.get("workers")}
