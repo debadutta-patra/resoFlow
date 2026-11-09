@@ -303,6 +303,31 @@ def dof_accounting_from_dict(d: Optional[dict[str, Any]]) -> Optional[DegreeOfFr
     )
 
 
+_RESAMPLED_ARRAY_KEYS = ("replicates", "chains", "chisqr")
+
+
+def resampled_from_dict(d: Optional[dict[str, Any]]) -> dict[str, dict]:
+    """Deserialize resampling statistics, restoring the numpy arrays JSON turned into lists.
+
+    Report code slices replicates column-wise (``reps[:, i]``), so a cached model must
+    hand back arrays exactly like a freshly built one.
+    """
+    out: dict[str, dict] = {}
+    for method, entry in (d or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        restored = dict(entry)
+        for key in _RESAMPLED_ARRAY_KEYS:
+            value = restored.get(key)
+            if isinstance(value, (list, tuple)):
+                try:
+                    restored[key] = np.asarray(value, dtype=np.float64)
+                except (TypeError, ValueError):
+                    pass
+        out[method] = restored
+    return out
+
+
 def provenance_from_dict(d: Optional[dict[str, Any]]) -> ReportProvenance:
     """Deserialize a ReportProvenance from a dict."""
     d = d or {}
@@ -569,7 +594,7 @@ class StepReportModel:
             derived_kinetics=derived_kinetics,
             residues=residues,
             dof_info=dof_info,
-            resampled=d.get("resampled", {}),
+            resampled=resampled_from_dict(d.get("resampled")),
             grid_1d=d.get("grid_1d", {}),
             grid_2d=d.get("grid_2d"),
             ledger=d.get("ledger", {}),
@@ -655,7 +680,7 @@ class ReportModel:
             derived_kinetics=derived_kinetics,
             residues=residues,
             global_params=global_params,
-            resampled=d.get("resampled", {}),
+            resampled=resampled_from_dict(d.get("resampled")),
             grid_1d=d.get("grid_1d", {}),
             ledger=d.get("ledger", {}),
             is_multi_step=bool(d.get("is_multi_step", False)),

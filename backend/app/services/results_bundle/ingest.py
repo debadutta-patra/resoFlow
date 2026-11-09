@@ -11,15 +11,17 @@ and atomically promotes it to results/:
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import math
 import os
 import shutil
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 from ..fitting.chemex_output import locate, parse_output_tree
 from ..fitting.chemex_output.grid_parser_v2 import (
@@ -53,6 +55,23 @@ def _sanitize_float(val: Any) -> Optional[float]:
         return None
 
 
+@contextmanager
+def _run_dir_lock(r_dir: Path) -> Iterator[None]:
+    """Exclusive, cross-process lock on one run directory's bundle.
+
+    Several ingests of the same run can be queued at once (Celery workers are separate
+    processes), and they share results.tmp/, results.old/ and results.json.tmp; without
+    the lock one deletes or promotes the other's temporary files mid-write. The lock is
+    taken on the directory itself, so no lock file is added to the run.
+    """
+    fd = os.open(r_dir, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)  # closing releases the lock
+
+
 def ingest_results(
     run_dir: Union[str, Path],
     analysis_uuid: str = "",
@@ -62,12 +81,23 @@ def ingest_results(
 ) -> Dict[str, Any]:
     """
     Parse the ChemEx output tree and derive the complete results bundle atomically.
-    Raises on failure, leaving raw files and any existing bundle intact.
+    Raises on failure, leaving raw files and any existing bundle intact. Concurrent
+    ingests of the same run directory are serialized.
     """
     r_dir = Path(run_dir).resolve()
     if not r_dir.exists():
         raise FileNotFoundError(f"Run directory does not exist: {r_dir}")
+    with _run_dir_lock(r_dir):
+        return _ingest_results_locked(r_dir, analysis_uuid, chemex_version, analysis_name, analysis_type)
 
+
+def _ingest_results_locked(
+    r_dir: Path,
+    analysis_uuid: str,
+    chemex_version: Optional[str],
+    analysis_name: Optional[str],
+    analysis_type: str,
+) -> Dict[str, Any]:
     tmp_dir = r_dir / "results.tmp"
     final_dir = r_dir / "results"
 

@@ -21,6 +21,7 @@ CACHE_TTL_SECONDS = 60.0
 IGNORED_DIRS = {
     "results",
     "results.tmp",
+    "results.old",
     "__pycache__",
     ".git",
     "artifacts",
