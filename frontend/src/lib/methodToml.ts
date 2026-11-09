@@ -776,13 +776,43 @@ function parseV1Step(name: string, sec: TomlTable, unparsed: string[]): Step {
   return step;
 }
 
+/** What converting a v1 file to v2 changes, per step (shown before an import is applied). */
+function v1MigrationNotes(data: TomlTable, topOrder: string[]): string[] {
+  const notes = ['No FORMAT_VERSION: read as a version 1 method and converted to version 2.'];
+  for (const name of topOrder) {
+    const sec = data[name];
+    if (!isTable(sec)) continue;
+    const buckets = ['CONSTRAINTS', 'FIX', 'FIT'].filter(k => get(sec, k) !== undefined);
+    if (buckets.length) notes.push(`[${name}] ${buckets.join(' / ')} buckets → ordered ROLES (CONSTRAIN → FIX → FIT; later actions win)`);
+    for (const c of strList(get(sec, 'CONSTRAINTS'))) {
+      if (BOUND_CONSTRAINT.test(c)) notes.push(`[${name}] inequality constraint "${c}" dropped (v2 has no inequality constraints)`);
+    }
+    const grid = get(sec, 'GRID');
+    if (grid !== undefined) {
+      notes.push(`[${name}] GRID → [${name}.SEARCH.GRID] AXES`);
+      if (isTable(grid)) notes.push(`[${name}] GRID inline table {PARAM = [min, max, n]} → lin(min, max, n) axes`);
+      for (const e of strList(grid)) if (/=\s*\(/.test(e)) notes.push(`[${name}] bare GRID tuple "${e}" → values(…)`);
+    }
+    const fm = get(sec, 'FITMETHOD');
+    if (fm !== undefined) notes.push(`[${name}] FITMETHOD = ${show(fm)} removed (v2 always runs TRF)`);
+    const mcmc = get(get(sec, 'STATISTICS') as TomlTable | undefined, 'MCMC');
+    if (isTable(mcmc)) {
+      const burn = get(mcmc, 'BURN');
+      if (typeof burn === 'string' && burn.toUpperCase() === 'AUTO') notes.push(`[${name}] MCMC BURN = "AUTO" → BURN omitted (ChemEx's automatic burn)`);
+      const legacy = ['THIN', 'WALKERS', 'WORKERS', 'UPDATE_PARAMETERS'].filter(k => get(mcmc, k) !== undefined);
+      if (legacy.length) notes.push(`[${name}] MCMC ${legacy.join(', ')} dropped (v2 has no method-local MCMC controls)`);
+    }
+  }
+  return notes;
+}
+
 /**
  * Parse a ChemEx method.toml (v2, or legacy v1 migrated to v2 semantics).
  * Throws TomlSyntaxError on malformed TOML.
  */
 export function tomlToConfig(toml: string): ParseResult {
   if (!toml || toml.trim() === '') {
-    return { config: { steps: [createDefaultStep()] }, unparsed: [] };
+    return { config: { steps: [createDefaultStep()] }, unparsed: [], format: 'v2', migration: [] };
   }
   const { data, comments, topOrder } = parseTomlDocument(toml);
   const unparsed: string[] = [...comments];
@@ -802,14 +832,20 @@ export function tomlToConfig(toml: string): ParseResult {
     if (!isTable(data[k]) && k.toUpperCase() !== 'FORMAT_VERSION') unparsed.push(`${k} = ${show(data[k])}  (top-level key outside any step)`);
   }
 
+  const migration = isV2 ? [] : v1MigrationNotes(data, topOrder);
+
   // v1 carried roles and profile selection implicitly between steps; make that explicit.
   if (!isV2) {
     for (let i = 1; i < steps.length; i++) {
       steps[i].rolesFrom = steps[i - 1].name;
       steps[i].rolesFromStepId = steps[i - 1].id;
+      migration.push(`[${steps[i].name}] implicit role carry-over → ROLES_FROM = "${steps[i - 1].name}"`);
       if (steps[i].residues.length === 0 && steps[i - 1].residues.length > 0) {
         steps[i].residueMode = steps[i - 1].residueMode;
         steps[i].residues = [...steps[i - 1].residues];
+        migration.push(
+          `[${steps[i].name}] implicit selection carry-over → ${steps[i].residueMode === 'exclude' ? 'EXCLUDE' : 'INCLUDE'} repeated from ${steps[i - 1].name}`
+        );
       }
     }
   }
@@ -817,5 +853,7 @@ export function tomlToConfig(toml: string): ParseResult {
   return {
     config: linkRolesFrom({ steps: steps.length > 0 ? steps : [createDefaultStep()] }),
     unparsed,
+    format: isV2 ? 'v2' : 'v1',
+    migration,
   };
 }

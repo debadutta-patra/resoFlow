@@ -71,19 +71,30 @@ export const ValidationBanner: React.FC<{ title: string; items: React.ReactNode[
     </div>
   );
 
-export const UnparsedLinesNotice: React.FC<{ count: number; subject: string; onViewRaw: () => void }> = ({
-  count,
-  subject,
-  onViewRaw,
-}) =>
+export const UnparsedLinesNotice: React.FC<{
+  count: number;
+  subject: string;
+  onViewRaw: () => void;
+  /** When given, the lines themselves are listed (nothing imported is hidden). */
+  lines?: string[];
+}> = ({ count, subject, onViewRaw, lines }) =>
   count === 0 ? null : (
     <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-start justify-between gap-3 text-xs text-blue-800 dark:text-blue-300">
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-2.5 min-w-0">
         <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-        <div>
+        <div className="min-w-0">
           <span className="font-semibold">Notice:</span> This {subject} contains{' '}
-          <strong>{count} comment/custom lines</strong> from a previous TOML file. Structured edits will generate
-          clean TOML. You can switch to raw mode to preserve custom lines verbatim.
+          <strong>{count} line{count === 1 ? '' : 's'} the form cannot represent</strong> (comments, v1-only or unknown settings).
+          Structured edits generate clean TOML without them; switch to raw mode to keep them verbatim.
+          {lines && lines.length > 0 && (
+            <ul className="mt-2 space-y-0.5 font-mono text-[11px] text-blue-900 dark:text-blue-200 max-h-40 overflow-y-auto" aria-label="Lines not represented">
+              {lines.map((l, i) => (
+                <li key={i} className="break-all">
+                  {l}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
       <button

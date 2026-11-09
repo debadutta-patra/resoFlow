@@ -164,6 +164,10 @@ export interface MethodConfig {
 export interface ParseResult {
   config: MethodConfig;
   unparsed: string[];       // lines or comments the model couldn't represent
+  /** 'v1' when FORMAT_VERSION was absent (the file was migrated to v2). */
+  format: 'v1' | 'v2';
+  /** What the v1 → v2 migration changed, one human-readable line each (empty for v2). */
+  migration: string[];
 }
 
 export const newMethodId = (prefix = 'id'): string =>

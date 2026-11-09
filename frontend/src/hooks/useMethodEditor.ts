@@ -21,6 +21,8 @@ import type { ResidueItem } from '../components/methods/ResidueSelector';
 import { useBaselineRoles } from './useBaselineRoles';
 import { useResolvedRoles } from './useResolvedRoles';
 import { useStepTimings } from './useStepTimings';
+import { useLastRunMethod } from './useLastRunMethod';
+import { chemexIssues } from '../lib/resolvedRoles';
 
 
 /** URL segment of the per-analysis ChemEx routes for each family. */
@@ -76,6 +78,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     inputsKey: opts.inputsKey ?? '',
     parameterToml: opts.parameterToml,
   });
+
 
   /** Replace the structured config and keep the TOML mirror in sync. */
   const setMethodConfig = useCallback((next: MethodConfig) => {
@@ -275,14 +278,17 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     () => Array.from(new Set([...FALLBACK_KNOWN_PARAM_NAMES, ...availableParamsMeta.map(p => p.name)])),
     [availableParamsMeta]
   );
-  const validationErrors = useMemo(
+  /** Instant local checks (ChemEx's own verdict is merged in below). */
+  const localValidationErrors = useMemo(
     () => validateMethodConfig(methodConfig, knownParamNames, residueItems.filter(r => r.hasData).length, baselineRoles.catalog),
     [methodConfig, knownParamNames, residueItems, baselineRoles.catalog]
   );
-  const blockingErrors = useMemo(() => validationErrors.filter(e => e.severity === 'error'), [validationErrors]);
 
   // ── Persistence ──
   const effectiveMethodToml = isRawEditMode ? methodToml : configToToml(methodConfig);
+
+  /** method.toml of the last completed run (for the TOML panel's diff view). */
+  const lastRunMethod = useLastRunMethod(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
 
   /** Last run's per-step durations (refreshed when a run ends) for runtime estimates. */
   const runTimings = useStepTimings(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
@@ -298,6 +304,17 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     methodToml: effectiveMethodToml,
     parameterToml: opts.parameterToml,
   });
+
+  /**
+   * All problems: instant local checks + what ChemEx reported for the current method text
+   * (a stale report is ignored — the run pre-flight re-checks with ChemEx anyway).
+   * Every error blocks Run.
+   */
+  const validationErrors = useMemo(() => {
+    const fromChemex = resolvedRoles.stale ? [] : chemexIssues(resolvedRoles.report, methodConfig.steps);
+    return [...localValidationErrors, ...fromChemex];
+  }, [localValidationErrors, resolvedRoles.report, resolvedRoles.stale, methodConfig.steps]);
+  const blockingErrors = useMemo(() => validationErrors.filter(e => e.severity === 'error'), [validationErrors]);
   const methodConfigForSave: MethodConfig & { rawOverride?: string } = isRawEditMode
     ? { ...methodConfig, rawOverride: methodToml }
     : methodConfig;
@@ -360,6 +377,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     resolvedRoles,
     stepTimings,
     runWorkers,
+    lastRunMethod,
     knownParamNames,
     validationErrors,
     blockingErrors,

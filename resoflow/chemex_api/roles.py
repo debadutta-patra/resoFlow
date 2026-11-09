@@ -319,3 +319,54 @@ def resolve_roles(spec: FitJobSpec, method_path: Path, job_dir: Path) -> dict[st
                      "counts": {"fit": 0, "fix": 0, "constrained": 0, "derived": 0}, "error": method_error(exc)}
                 )
     return report
+
+
+def validate_method(
+    spec: FitJobSpec,
+    method_path: Path,
+    job_dir: Path,
+    *,
+    sharing_warnings: bool = False,
+) -> dict[str, Any]:
+    """The single ChemEx-backed method validation: everything a run would reject, with locations.
+
+    1. Parameter / method names removed in ChemEx 2026.9 (checked first: they also make
+       session construction fail, and this message says what to rename).
+    2. Session construction (experiments, model, parameters).
+    3. Method parsing and ChemEx's own plan validation (MethodFormatError with step,
+       field, entry index and character span), plus per-step resolved roles and
+       per-axis search resolution (see ``resolve_roles``).
+    4. Optionally, parameter-sharing warnings (CONDITION_MISMATCH / NEAR_FIELD / ISOLATED).
+    """
+    from .compat import check_version
+    from .session import _check_legacy_names, inspect_parameters
+
+    report: dict[str, Any] = {"valid": True, "format": None, "errors": [], "warnings": [], "steps": []}
+    try:
+        rel = method_path.resolve().relative_to(job_dir.resolve()).as_posix()
+    except ValueError:
+        rel = str(method_path)
+    legacy = _check_legacy_names(job_dir, spec.model_copy(update={"method_files": [rel]}))
+    if legacy:
+        report["valid"] = False
+        report["errors"].extend({**e, "source": {}} for e in legacy)
+
+    try:
+        resolved = resolve_roles(spec, method_path, job_dir)
+        report["format"] = resolved["format"]
+        report["steps"] = resolved["steps"]
+        report["errors"].extend(resolved["errors"])
+        report["valid"] = report["valid"] and resolved["valid"]
+    except (Exception, SystemExit) as exc:
+        report["valid"] = False
+        report["errors"].append({"message": str(exc) or type(exc).__name__, "type": type(exc).__name__, "source": {}})
+
+    if sharing_warnings and report["steps"]:
+        with contextlib.suppress(Exception):
+            inspection = inspect_parameters(spec, job_dir=job_dir, include_warnings=True)
+            if isinstance(inspection, dict):
+                report["warnings"].extend(inspection.get("warnings", []))
+
+    with contextlib.suppress(Exception):
+        report["chemex_version"] = check_version()
+    return report

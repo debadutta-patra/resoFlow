@@ -4,7 +4,7 @@ import { stepRoleActions, stepTomlName } from './methodToml';
 import { axisPointCount } from './searchDefaults';
 import { seedError } from './seed';
 import { rolesFromError, stepNameError } from './methodSteps';
-import { rulesByTargetName } from './resolvedRoles';
+import { rulesByTargetName, type ChemexSource } from './resolvedRoles';
 import { constraintTargetName, parseConstraint, parseSelector, selectorName } from './methodGrammar';
 import type { ParameterCatalog } from './baselineRoles';
 
@@ -14,6 +14,9 @@ export interface ValidationError {
   paramName?: string;
   message: string;
   severity: 'error' | 'warning';
+  /** 'chemex' for problems reported by ChemEx itself (with its location), else instant local checks. */
+  origin?: 'local' | 'chemex';
+  source?: ChemexSource;
 }
 
 export type MethodValidationError = ValidationError;

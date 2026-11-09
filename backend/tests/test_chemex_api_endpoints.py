@@ -325,7 +325,8 @@ def test_validate_without_experiments_reports_error(db_session, test_project, au
 
 
 def _resolve_url(project, analysis_uuid: str) -> str:
-    return f"/api/projects/{project.project_uuid}/analysis/{analysis_uuid}/methods/resolve"
+    """The single ChemEx-backed method validation route (validation + per-step resolution)."""
+    return f"/api/projects/{project.project_uuid}/analysis/{analysis_uuid}/methods/validate"
 
 
 def test_methods_resolve_from_frontend_config(db_session, test_project, auth_headers):
@@ -401,4 +402,56 @@ def test_step_timings_endpoint(db_session, test_project, auth_headers):
     assert refine["evaluations"] == 1
     assert body["workers"] == 4
     assert '"evaluations"' in (run_dir / "step_timings.json").read_text()  # cached
+    assert client.get(url).status_code == 401
+
+
+def test_validation_is_consolidated_on_methods_validate(db_session, test_project, auth_headers):
+    """One implementation: /methods/validate (editor) and /chemex/validate (run pre-flight) agree."""
+    analysis = _make_analysis(db_session, test_project, "analysis-consolidated")
+    bad = 'FORMAT_VERSION = 2\n\n[S]\nROLES = [{ FIX = ["PB"] }, { FIT = ["DW_AB, NUC->13N, NUC->26N"] }]\n'
+    editor = client.post(_resolve_url(test_project, analysis.analysis_uuid), json={"toml": bad}, headers=auth_headers).json()
+    preflight = client.post(_url(test_project, analysis.analysis_uuid, "validate"), json={"method_toml": bad}, headers=auth_headers).json()
+    assert editor["valid"] is False and preflight["valid"] is False
+    assert editor["errors"] == preflight["errors"]
+    assert editor["errors"][0]["source"] == {
+        "step": "S", "field": "ROLES[1].FIT[0]", "index": None, "start": 17, "end": 25,
+        "action_index": 1, "action": "FIT", "entry_index": 0,
+    }
+    assert preflight["chemex_version"] == editor["chemex_version"] and editor["chemex_version"].startswith("2026.9")
+    assert "warnings" in preflight and "steps" in preflight
+
+    # Without a method, pre-flight checks the saved one, else ChemEx's default plan.
+    default = client.post(_url(test_project, analysis.analysis_uuid, "validate"), json={"model": "2st"}, headers=auth_headers).json()
+    assert default["valid"] is True and [s["name"] for s in default["steps"]] == ["DEFAULT"]
+
+    # The Phase-1 /methods/resolve route is gone (folded into /methods/validate).
+    gone = client.post(f"/api/projects/{test_project.project_uuid}/analysis/{analysis.analysis_uuid}/methods/resolve", json={"method_toml": bad}, headers=auth_headers)
+    assert gone.status_code in (404, 405)
+
+
+def test_legacy_names_are_reported_before_session_errors(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-legacy-method")
+    body = client.post(
+        _resolve_url(test_project, analysis.analysis_uuid),
+        json={"method_toml": 'FORMAT_VERSION = 2\n\n[S]\nROLES = [{ FIT = ["DWP_AB"] }]\n'},
+        headers=auth_headers,
+    ).json()
+    assert body["valid"] is False
+    assert body["errors"][0]["type"] == "LegacyParameterError" and "DWP_AB" in body["errors"][0]["message"]
+
+
+def test_last_run_method_endpoint(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-last-run")
+    url = _url(test_project, analysis.analysis_uuid, "last-run-method")
+    assert client.get(url, headers=auth_headers).json() == {"method_toml": None, "completed_at": None}
+    run_dir = Path(test_project.local_directory_path) / "cest_fitting" / analysis.analysis_uuid
+    # Individual fit mode archives per residue: Output/<residue>/run_info/inputs/methods.
+    archived = run_dir / "Output" / "13N" / "run_info" / "inputs" / "methods"
+    archived.mkdir(parents=True)
+    (archived / "method.toml").write_text("FORMAT_VERSION = 2\n\n[A]\n", encoding="utf-8")
+    assert client.get(url, headers=auth_headers).json()["method_toml"] == "FORMAT_VERSION = 2\n\n[A]\n"
+    top = run_dir / "Output" / "run_info" / "inputs" / "methods"
+    top.mkdir(parents=True)
+    (top / "method.toml").write_text("FORMAT_VERSION = 2\n\n[GLOBAL]\n", encoding="utf-8")
+    assert client.get(url, headers=auth_headers).json()["method_toml"] == "FORMAT_VERSION = 2\n\n[GLOBAL]\n"
     assert client.get(url).status_code == 401

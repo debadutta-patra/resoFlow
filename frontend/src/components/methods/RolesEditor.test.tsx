@@ -222,7 +222,7 @@ describe('useResolvedRoles', () => {
       vi.advanceTimersByTime(1);
     });
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post.mock.calls[0][0]).toBe('/api/projects/p/analysis/a-debounce/methods/resolve');
+    expect(post.mock.calls[0][0]).toBe('/api/projects/p/analysis/a-debounce/methods/validate');
     expect(post.mock.calls[0][1]).toMatchObject({ model: '2st', method_toml: 'FORMAT_VERSION = 2\n[ABC]\n' });
     expect(result.current.report?.steps[0].name).toBe('LOCAL_FITS');
     expect(result.current.stale).toBe(false);

@@ -21,6 +21,8 @@ import { estimateStepSeconds, formatDuration, type StepTiming } from '../../lib/
 import { PREFERRED_SEARCH_PARAMS, axisPointCount, axisPoints, createSearchAxis, defaultRange, type ExperimentFamily } from '../../lib/searchDefaults';
 import type { AvailableParamMeta } from './ParameterTable';
 import SelectorBuilder from './SelectorBuilder';
+import ChemexIssueList from './ChemexIssueList';
+import type { ValidationError } from '../../lib/methodValidation';
 
 interface StepSearchSectionProps {
   step: Step;
@@ -39,6 +41,8 @@ interface StepSearchSectionProps {
   timings?: StepTiming[];
   /** Insert a TRF step after this one with ROLES_FROM = this step. */
   onAddRefineStep?: () => void;
+  /** ChemEx problems for this step (SEARCH.* ones are shown here). */
+  chemexIssues?: ValidationError[];
 }
 
 const inputCls =
@@ -126,6 +130,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
   resolvedStale = false,
   timings,
   onAddRefineStep,
+  chemexIssues = [],
 }) => {
   const search: StepSearch = step.search ?? { mode: 'none', axes: [] };
   const [isOpen, setIsOpen] = useState(search.mode !== 'none');
@@ -208,6 +213,10 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
   const evaluations = resolved?.evaluations ?? null;
   const estimate = search.mode === 'grid' && evaluations ? estimateStepSeconds(evaluations, step.name, timings) : null;
   const seedMsg = search.mode === 'de' ? seedError(search.seed, true) : null;
+  const searchIssues = chemexIssues.filter(e => (e.source?.field ?? '').startsWith('SEARCH'));
+  const isAxisIssue = (e: ValidationError) => /\.(AXES|COORDINATES)$/.test(e.source?.field ?? '') && typeof e.source?.index === 'number';
+  const axisIssues = (idx: number) => searchIssues.filter(e => isAxisIssue(e) && e.source?.index === idx);
+  const generalIssues = searchIssues.filter(e => !isAxisIssue(e) || (e.source?.index ?? 0) >= search.axes.length);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
@@ -221,6 +230,11 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           <Grid3x3 className="w-4 h-4 text-amber-500" />
           <span>Deterministic Search (SEARCH.GRID / SEARCH.DE)</span>
+          {searchIssues.length > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 font-bold">
+              {searchIssues.length} ChemEx error{searchIssues.length > 1 ? 's' : ''}
+            </span>
+          )}
           {active && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 font-mono font-bold">
               {search.mode === 'grid'
@@ -253,6 +267,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
       {isOpen && (
         <div className="p-4 space-y-3 text-xs">
           <p className="text-slate-500 dark:text-slate-400 leading-relaxed">{MODE_INFO[search.mode].text}</p>
+          <ChemexIssueList issues={generalIssues} />
 
           {search.mode === 'grid' && (
             <div className="flex flex-wrap items-start gap-2 p-2.5 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/30 text-sky-800 dark:text-sky-200">
@@ -343,10 +358,12 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                               readOnly={readOnly}
                               ariaLabel={`Axis ${idx + 1} target`}
                             />
-                            {status && (
+                            {status ? (
                               <div className="mt-1">
                                 <AxisStatus axis={status} mode={search.mode as 'grid' | 'de'} readOnly={readOnly} onAddFit={() => addFitRule(axis)} />
                               </div>
+                            ) : (
+                              <ChemexIssueList issues={axisIssues(idx)} className="mt-1" />
                             )}
                           </td>
                           <td className="py-2 px-2 w-24">

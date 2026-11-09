@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { within } from '@testing-library/react';
 import { ExchangeAnalysisManager } from './ExchangeAnalysisManager';
 
 vi.mock('../services/api', () => ({
@@ -183,7 +184,7 @@ describe('ExchangeAnalysisManager', () => {
     fireEvent.click(methodsBtn);
     expect(screen.getByText(/ChemEx Method Configuration/i)).toBeDefined();
     expect(screen.getByText(/Templates/i)).toBeDefined();
-    expect(screen.getByText(/Generated method\.toml Preview/i)).toBeDefined();
+    expect(screen.getByRole('region', { name: /Generated method\.toml/i })).toBeDefined();
 
     // Click Logs tab
     const logsBtn = screen.getByRole('button', { name: /^Logs/i });
@@ -402,11 +403,10 @@ describe('ExchangeAnalysisManager', () => {
     expect(useTemplateBtns.length).toBeGreaterThan(0);
     fireEvent.click(useTemplateBtns[0]);
 
-    // Check preview button
-    const previewBtn = screen.getByRole('button', { name: /Generated method\.toml Preview/i });
-    fireEvent.click(previewBtn);
-    expect(screen.getByTitle(/Copy TOML to clipboard/i)).toBeDefined();
-    expect(screen.getByTitle(/Download method\.toml/i)).toBeDefined();
+    // The generated TOML lives in the side panel with copy / download.
+    const panel = screen.getByRole('region', { name: /Generated method\.toml/i });
+    expect(within(panel).getByRole('button', { name: /Copy method\.toml/i })).toBeDefined();
+    expect(within(panel).getByRole('button', { name: /Download method\.toml/i })).toBeDefined();
   });
 
   it('renders Results tab with summary cards, separate CEST and CPMG plots, and forward CPMG axis', async () => {

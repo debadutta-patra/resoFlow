@@ -1,6 +1,6 @@
 /**
- * Types and pure helpers for the ChemEx-resolved per-step roles returned by
- * POST …/methods/resolve (backend: resoflow/chemex_api/roles.py).
+ * Types and pure helpers for ChemEx method validation + per-step resolved roles,
+ * returned by POST …/methods/validate (backend: resoflow/chemex_api/roles.validate_method).
  */
 
 import type { Step } from './methodConfig';
@@ -87,8 +87,11 @@ export interface ResolveReport {
   valid: boolean;
   format: 'v1' | 'v2' | null;
   errors: ChemexError[];
+  /** Parameter-sharing warnings (only when requested). */
+  warnings?: Array<{ code?: string; message: string }>;
   steps: ResolvedStep[];
   method_toml?: string;
+  chemex_version?: string;
 }
 
 export interface StepSummary {
@@ -233,4 +236,60 @@ export function stepBadge(step: Step, resolved: ResolvedStep | undefined): StepB
 export function stepBadgeText(b: StepBadge): string | null {
   if (b.coords === null) return null;
   return `${b.coords} coord${b.coords === 1 ? '' : 's'} · ${b.residues ?? 0} res`;
+}
+
+/** Human-readable ChemEx error location, e.g. "[STEP2] ROLES #2 FIT, entry 1". */
+export function chemexLocation(e: ChemexError): string {
+  const src = e.source || {};
+  let where = src.field ?? '';
+  if (src.action_index !== undefined) where = `ROLES #${src.action_index + 1} ${src.action}, entry ${(src.entry_index ?? 0) + 1}`;
+  else if (src.index !== undefined && src.index !== null) where = `${src.field} #${src.index + 1}`;
+  return [src.step ? `[${src.step}]` : '', where].filter(Boolean).join(' ');
+}
+
+/** A ChemEx problem in the editor's issue shape (see methodValidation.ValidationError). */
+export interface ChemexIssue {
+  stepId: string;
+  stepName: string;
+  message: string;
+  severity: 'error' | 'warning';
+  origin: 'chemex';
+  source: ChemexSource;
+}
+
+/**
+ * Every problem a run would hit, from a current (non-stale) ChemEx report: ChemEx's own
+ * validation errors, per-step errors, and every per-axis search error (ChemEx stops at
+ * the first; per-axis resolution finds all). "Inputs not generated yet" is not a method
+ * problem and is left out; a step with no selected profiles is a warning (ChemEx skips it).
+ */
+export function chemexIssues(report: ResolveReport | null | undefined, steps: Array<Pick<Step, 'id' | 'name'>>): ChemexIssue[] {
+  if (!report) return [];
+  const idOf = (name: string | undefined) => {
+    if (!name) return { stepId: 'global', stepName: 'Method' };
+    const exact = steps.findIndex(s => (s.name || '').trim() === name);
+    const k = exact !== -1 ? exact : steps.findIndex(s => (s.name || '').trim().toUpperCase() === name.toUpperCase());
+    return { stepId: k === -1 ? 'global' : steps[k].id, stepName: name };
+  };
+  const out: ChemexIssue[] = [];
+  const seen = new Set<string>();
+  const add = (e: ChemexError, stepName: string | undefined, severity: 'error' | 'warning' = 'error') => {
+    if (e.type === 'MissingInputs') return;
+    const key = `${stepName ?? ''}|${e.message}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ ...idOf(stepName), message: e.message, severity, origin: 'chemex', source: { ...e.source, step: e.source?.step ?? stepName } });
+  };
+  for (const e of report.errors) add(e, e.source?.step);
+  for (const st of report.steps) {
+    if (st.error) add(st.error, st.name, st.error.type === 'NoData' ? 'warning' : 'error');
+    const search = st.search;
+    if (!search) continue;
+    if (search.error) add(search.error, st.name);
+    const field = search.kind === 'grid' ? 'SEARCH.GRID.AXES' : 'SEARCH.DE.COORDINATES';
+    for (const ax of search.axes) {
+      if (ax.error) add({ ...ax.error, source: { ...ax.error.source, step: st.name, field, index: ax.index } }, st.name);
+    }
+  }
+  return out;
 }

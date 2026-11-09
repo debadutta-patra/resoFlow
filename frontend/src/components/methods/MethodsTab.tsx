@@ -10,6 +10,7 @@ import { Lock, Sparkles, Upload, Workflow } from 'lucide-react';
 import type { StartingProvenance } from '../../lib/parameterConfig';
 import type { MethodEditor } from '../../hooks/useMethodEditor';
 import { METHOD_TEMPLATES } from '../../lib/methodTemplates';
+import { tomlToConfig } from '../../lib/methodToml';
 import ParameterTable from './ParameterTable';
 import ResidueSelector, { type ResidueItem } from './ResidueSelector';
 import StepTabs from './StepTabs';
@@ -17,14 +18,14 @@ import StepStatisticsSection from './StepStatisticsSection';
 import StepSearchSection from './StepSearchSection';
 import StepRolesSection from './StepRolesSection';
 import ResolvedRolesSummary from './ResolvedRolesSummary';
-import { errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName, stepBadge, type StepBadge } from '../../lib/resolvedRoles';
+import { chemexLocation, errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName, stepBadge, type StepBadge } from '../../lib/resolvedRoles';
+import MethodTomlPanel from './MethodTomlPanel';
 import { stepDisplayName } from '../../lib/methodSteps';
 import {
   ChemexModalShell,
   ChemexTabHeader,
   RawModeToggleButton,
   RawTomlEditor,
-  TomlPreviewStrip,
   UnparsedLinesNotice,
   ValidationBanner,
   actionBtnAccent,
@@ -81,14 +82,12 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   const errorCounts = useMemo(() => {
     const out: Record<string, number> = {};
     for (const e of editor.validationErrors) if (e.severity === 'error') out[e.stepId] = (out[e.stepId] ?? 0) + 1;
-    if (!stale) {
-      methodConfig.steps.forEach((s, i) => {
-        const n = errorsForStep(report, stepDisplayName(s, i)).length;
-        if (n) out[s.id] = (out[s.id] ?? 0) + n;
-      });
-    }
     return out;
-  }, [editor.validationErrors, methodConfig.steps, report, stale]);
+  }, [editor.validationErrors]);
+  const activeChemexIssues = useMemo(
+    () => editor.validationErrors.filter(e => e.origin === 'chemex' && e.stepId === activeStep.id),
+    [editor.validationErrors, activeStep.id]
+  );
   const stepsWithResults = useMemo(() => new Set(Object.keys(committedByStep ?? {})), [committedByStep]);
 
   // "Mixed · N rules" → highlight and scroll to the rules targeting that parameter.
@@ -147,7 +146,13 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
         title="Method Validation Issues"
         items={editor.validationErrors.map(err => (
           <>
-            <strong>[{err.stepName}]</strong> {err.message}
+            <strong>[{err.stepName}]</strong>{' '}
+            {err.origin === 'chemex' && err.source && (
+              <span className="font-mono text-[11px] opacity-80">
+                ChemEx · {chemexLocation({ message: err.message, type: '', source: err.source }).replace(/^\[[^\]]*\]\s*/, '') || 'step'}:{' '}
+              </span>
+            )}
+            {err.message}
           </>
         ))}
       />
@@ -157,9 +162,12 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
           count={editor.unparsedTomlLines.length}
           subject="configuration"
           onViewRaw={editor.enterRawMode}
+          lines={editor.unparsedTomlLines}
         />
       )}
 
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)] lg:gap-6 lg:items-start">
+      <div className="min-w-0 space-y-6">
       {editor.isRawEditMode ? (
         <RawTomlEditor
           fileName="method.toml"
@@ -231,6 +239,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             resolvedStale={stale}
             timings={editor.stepTimings}
             onAddRefineStep={() => editor.stepHandlers.onAddRefineStep(editor.activeStepIdx)}
+            chemexIssues={activeChemexIssues}
           />
 
           <ResidueSelector
@@ -248,17 +257,29 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             readOnly={readOnly}
             timings={editor.stepTimings}
             workers={editor.runWorkers}
+            chemexIssues={activeChemexIssues}
           />
         </div>
       )}
+      </div>
 
-      <TomlPreviewStrip
-        fileName="method.toml"
-        downloadName={`method_${analysisUuid}.toml`}
-        toml={editor.effectiveMethodToml}
-        badge={`${methodConfig.steps.length} step${methodConfig.steps.length > 1 ? 's' : ''}`}
-        onCopied={notify}
-      />
+      <aside className="mt-6 lg:mt-0 lg:sticky lg:top-4">
+        <MethodTomlPanel
+          toml={editor.effectiveMethodToml}
+          downloadName={`method_${analysisUuid}.toml`}
+          stepCount={methodConfig.steps.length}
+          lastRunToml={editor.lastRunMethod.toml}
+          lastRunAt={editor.lastRunMethod.completedAt}
+          chemexVersion={report?.chemex_version ?? null}
+          validation={{
+            checking: editor.resolvedRoles.loading,
+            known: !!report && !stale,
+            errors: editor.blockingErrors.length,
+          }}
+          onCopied={notify}
+        />
+      </aside>
+      </div>
 
       {showTemplates && (
         <MethodTemplatesModal
@@ -365,33 +386,40 @@ export const MethodImportModal: React.FC<{
 }> = ({ onClose, onImport }) => {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Preview what the import would do before anything is applied.
+  const preview = useMemo(() => {
+    if (!text.trim()) return null;
+    try {
+      return { result: tomlToConfig(text), error: null as string | null };
+    } catch (err) {
+      return { result: null, error: err instanceof Error ? err.message : String(err) };
+    }
+  }, [text]);
+  const result = preview?.result ?? null;
+  const steps = result?.config.steps ?? [];
   return (
     <ChemexModalShell
       icon={<Upload size={20} />}
       title="Import method.toml"
-      subtitle="Upload a .toml file or paste method configuration text."
+      subtitle="Upload a .toml file or paste a method. Nothing is applied until you confirm."
       onClose={onClose}
       footer={
         <>
           <button type="button" onClick={onClose} className={chemexBtnSecondary}>
             Cancel
           </button>
-          <button
-            type="button"
-            disabled={!text.trim()}
-            onClick={() => setError(onImport(text))}
-            className={chemexBtnPrimary}
-          >
-            Parse & Apply Configuration
+          <button type="button" disabled={!result} onClick={() => setError(onImport(text))} className={chemexBtnPrimary}>
+            {result?.format === 'v1' ? 'Apply migrated v2 method' : 'Apply method'}
           </button>
         </>
       }
     >
-      <div>
-        <label className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-2">Upload file or paste TOML:</label>
+      <div className="space-y-3">
+        <label className="text-xs font-bold text-slate-600 dark:text-slate-400 block">Upload file or paste TOML:</label>
         <input
           type="file"
           accept=".toml,.txt"
+          aria-label="Method file"
           onChange={e => {
             const file = e.target.files?.[0];
             if (!file) return;
@@ -402,16 +430,62 @@ export const MethodImportModal: React.FC<{
             };
             reader.readAsText(file);
           }}
-          className="mb-3 block w-full text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/30 dark:file:text-blue-300"
+          className="block w-full text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/30 dark:file:text-blue-300"
         />
         <textarea
+          aria-label="Method TOML"
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={e => {
+            setText(e.target.value);
+            setError(null);
+          }}
           rows={10}
-          placeholder={`FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { CONSTRAIN = ["[R2_B] = [R2_A]"] },\n  { FIT = ["PB", "KEX_AB", "DW_AB", "CS_A"] },\n]\n\n[STEP1.SEARCH.GRID]\nAXES = ["[PB] = log(0.005, 0.2, 10)"]\n\n(v1 files are migrated to v2 on import)`}
+          placeholder={`FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { CONSTRAIN = ["[R2_B] = [R2_A]"] },\n  { FIT = ["PB", "KEX_AB", "DW_AB", "CS_A"] },\n]\n\n(v1 files are migrated to v2; you will see what changes before applying)`}
           className={`${chemexInputCls} font-mono text-xs`}
         />
-        {error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
+
+        {preview?.error && <p className="text-xs text-red-600 dark:text-red-400">Cannot parse: {preview.error}</p>}
+
+        {result && (
+          <div className="space-y-2 text-xs" aria-label="Import preview">
+            <p className="text-slate-700 dark:text-slate-300">
+              <span className={`mr-2 px-1.5 py-0.5 rounded font-bold text-[10px] ${result.format === 'v1' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+                {result.format === 'v1' ? 'VERSION 1' : 'VERSION 2'}
+              </span>
+              {steps.length} step{steps.length === 1 ? '' : 's'}: <span className="font-mono">{steps.map(s => s.name).join(', ')}</span>
+            </p>
+
+            {result.migration.length > 0 && (
+              <div className="p-2.5 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30">
+                <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Migration to v2 — what changes</p>
+                <ul className="list-disc pl-4 space-y-0.5 text-amber-900 dark:text-amber-200" aria-label="Migration summary">
+                  {result.migration.map((m, i) => (
+                    <li key={i} className="break-words">
+                      {m}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {result.unparsed.length > 0 && (
+              <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {result.unparsed.length} line{result.unparsed.length === 1 ? '' : 's'} will not be in the structured method
+                </p>
+                <ul className="space-y-0.5 font-mono text-[11px] text-slate-600 dark:text-slate-400 max-h-40 overflow-y-auto" aria-label="Not imported">
+                  {result.unparsed.map((l, i) => (
+                    <li key={i} className="break-all">
+                      {l}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-[11px] text-slate-500">They stay listed above the editor after import; use raw mode to keep them verbatim.</p>
+              </div>
+            )}
+          </div>
+        )}
+        {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
       </div>
     </ChemexModalShell>
   );

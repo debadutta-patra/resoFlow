@@ -873,6 +873,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           <button
             onClick={handleRunFitting}
             disabled={isFitting || generatedExperiments.length === 0 || blockingErrors.length > 0}
+            title={blockingErrors.length > 0 ? `Cannot run: ${blockingErrors[0].message}` : undefined}
             className={`${btnPrimary} flex items-center gap-1`}
           >
             {isFitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}

@@ -1,6 +1,7 @@
 /**
- * ChemEx-resolved per-step roles for the method being edited
- * (POST …/methods/resolve), debounced (~500 ms) and cached by method text.
+ * ChemEx validation of the method being edited, with per-step resolved roles
+ * (POST …/methods/validate — the single validation path), debounced (~500 ms)
+ * and cached by method text.
  *
  * The emitted method.toml (what a run would use) is sent rather than the
  * structured config, so ROLES action indices in the answer line up exactly with
@@ -61,10 +62,10 @@ export function useResolvedRoles(opts: {
       const body: Record<string, unknown> = { model, method_toml: methodToml };
       if (paramsRef.current?.trim()) body.parameter_toml = paramsRef.current;
       Promise.resolve()
-        .then(() => api.post(`/api/projects/${projectUuid}/analysis/${analysisUuid}/methods/resolve`, body))
+        .then(() => api.post(`/api/projects/${projectUuid}/analysis/${analysisUuid}/methods/validate`, body))
         .then(res => {
           const report = res?.data as ResolveReport | undefined;
-          if (!report || !Array.isArray(report.steps)) throw new Error('Unexpected response from methods/resolve');
+          if (!report || !Array.isArray(report.steps)) throw new Error('Unexpected response from methods/validate');
           remember(key, report);
           if (!cancelled) setLast({ key, report });
         })

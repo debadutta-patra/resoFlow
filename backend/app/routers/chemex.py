@@ -1,7 +1,11 @@
-"""ChemEx library interaction endpoints: validation, parameter inspection, and model catalog.
+"""ChemEx library interaction endpoints: method validation, parameter inspection, model catalog.
 
-Validation and inspection run ChemEx against an analysis's own run directory, so
-they are project-scoped and ownership-checked through ``deps.get_analysis``.
+Everything runs ChemEx against an analysis's own run directory, so routes are
+project-scoped and ownership-checked through ``deps.get_analysis``.
+
+Method validation has ONE implementation (``validate_method_for_analysis`` →
+``resoflow.chemex_api.roles.validate_method``), served at ``…/methods/validate``;
+``…/chemex/validate`` (run pre-flight) is a thin alias over the same service.
 """
 
 from __future__ import annotations
@@ -18,10 +22,14 @@ from ..routers.analysis import _get_analysis_run_dir
 from ..schemas import MethodConfigSchema
 from ..services.fitting.chemex_workspace import stage_validation_workspace
 from ..services.fitting.method_emitter import MethodConfigModel, emit_method_toml_v2
-from ..services.fitting.method_resolution import missing_inputs_message, resolve_method, step_timings_with_evaluations
+from ..services.fitting.method_resolution import (
+    missing_inputs_message,
+    step_timings_with_evaluations,
+    validate_method_for_analysis,
+)
 from ..services.fitting.run_dirs import load_chemex_config
 from .deps import get_analysis
-from resoflow.chemex_api.session import inspect_parameters, validate_inputs
+from resoflow.chemex_api.session import inspect_parameters
 from resoflow.chemex_api.spec import FitJobSpec
 
 router = APIRouter(tags=["chemex"])
@@ -46,13 +54,21 @@ class ChemexInspectRequest(BaseModel):
     include: Optional[List[str]] = None
 
 
-class MethodResolveRequest(BaseModel):
-    """The method being edited (structured config, or raw TOML) plus optional unsaved parameters."""
+class MethodValidateRequest(BaseModel):
+    """The method being edited (structured config, or TOML) plus optional unsaved parameters."""
 
     model: str = "2st"
     config: Optional[MethodConfigSchema] = None
     method_toml: Optional[str] = None
+    toml: Optional[str] = None  # accepted alias of method_toml
     parameter_toml: Optional[str] = None
+    include: Optional[List[str]] = None
+    exclude: Optional[List[str]] = None
+    #: Also report parameter-sharing warnings (costs a second ChemEx session build).
+    sharing_warnings: bool = False
+
+#: A method with one empty step: ChemEx's default (baseline roles, all profiles).
+DEFAULT_METHOD_TOML = "FORMAT_VERSION = 2\n\n[DEFAULT]\n"
 
 
 def _chemex_version() -> str:
@@ -98,23 +114,26 @@ def validate_chemex_inputs(
     req: ChemexValidateRequest,
     analysis: models.Analysis = Depends(get_analysis),
 ) -> dict[str, Any]:
-    """Validate the analysis inputs and method plan with ChemEx without starting a run."""
-    with tempfile.TemporaryDirectory() as td:
-        spec = stage_validation_workspace(
-            _run_dir(analysis),
-            Path(td),
-            model=req.model,
-            parameter_toml=req.parameter_toml,
-            method_toml=req.method_toml,
-            include=req.include,
-            exclude=req.exclude,
-        )
-        if (missing := _missing_inputs(spec)):
-            return {"valid": False, "errors": [{"message": missing, "type": "MissingInputs"}], "warnings": []}
-        try:
-            return validate_inputs(spec, job_dir=Path(td))
-        except SystemExit as exc:  # argparse inside ChemEx
-            return {"valid": False, "errors": [{"message": f"ChemEx rejected the inputs (exit {exc.code}).", "type": "SystemExit"}], "warnings": []}
+    """Run pre-flight: alias of ``…/methods/validate`` with sharing warnings.
+
+    Without ``method_toml`` the analysis's saved method (or ChemEx's default plan) is checked.
+    """
+    method_toml = req.method_toml or _saved_method_toml(analysis) or DEFAULT_METHOD_TOML
+    return validate_method_for_analysis(
+        _run_dir(analysis),
+        method_toml=method_toml,
+        model=req.model,
+        parameter_toml=req.parameter_toml,
+        include=req.include,
+        exclude=req.exclude,
+        sharing_warnings=True,
+    )
+
+
+def _saved_method_toml(analysis: models.Analysis) -> Optional[str]:
+    methods = _run_dir(analysis) / "Methods"
+    files = sorted(methods.glob("*.toml")) if methods.is_dir() else []
+    return files[0].read_text(encoding="utf-8") if files else None
 
 
 @router.post(f"{ANALYSIS_CHEMEX}/parameters/inspect")
@@ -150,28 +169,53 @@ def inspect_chemex_parameters(
         return {"parameters": res, "warnings": [], "experiments": []}
 
 
-@router.post("/api/projects/{project_uuid}/analysis/{analysis_uuid}/methods/resolve")
-def resolve_method_roles(
-    req: MethodResolveRequest,
+@router.post("/api/projects/{project_uuid}/analysis/{analysis_uuid}/methods/validate")
+def validate_method_endpoint(
+    req: MethodValidateRequest,
     analysis: models.Analysis = Depends(get_analysis),
 ) -> dict[str, Any]:
-    """Per-step effective role of every concrete parameter after ROLES_FROM and all ROLES actions.
+    """Validate a method with ChemEx against the analysis's inputs (the single validation path).
 
-    Resolution is done by ChemEx (same compilation path as a real run), scoped to each
-    step's INCLUDE/EXCLUDE selection. ChemEx validation errors carry the exact step,
-    field, entry index and character span.
+    Returns ``{valid, format, errors, warnings, steps, chemex_version, method_toml}``.
+    Each error carries ChemEx's location (step, field such as ``ROLES[1].FIT[0]`` /
+    ``SEARCH.GRID.AXES`` + index / ``STATISTICS.MC``, and a character span). Each step
+    carries the effective role of every concrete parameter after ROLES_FROM and all
+    ROLES actions, scoped to its INCLUDE/EXCLUDE, and per-axis search resolution.
     """
     if req.config is not None:
         method_toml = emit_method_toml_v2(MethodConfigModel(**req.config.model_dump()))
-    elif req.method_toml is not None:
-        method_toml = req.method_toml
+    elif (req.method_toml or req.toml) is not None:
+        method_toml = req.method_toml if req.method_toml is not None else req.toml
     else:
         raise HTTPException(status_code=422, detail="Provide either config or method_toml.")
-    report = resolve_method(
-        _run_dir(analysis), method_toml=method_toml, model=req.model, parameter_toml=req.parameter_toml
+    report = validate_method_for_analysis(
+        _run_dir(analysis),
+        method_toml=method_toml,
+        model=req.model,
+        parameter_toml=req.parameter_toml,
+        include=req.include,
+        exclude=req.exclude,
+        sharing_warnings=req.sharing_warnings,
     )
     report["method_toml"] = method_toml
     return report
+
+
+@router.get(f"{ANALYSIS_CHEMEX}/last-run-method")
+def get_last_run_method(analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    """method.toml used by the last completed run (archived by ChemEx in Output/run_info)."""
+    output = _run_dir(analysis) / "Output"
+    candidates = [output / "run_info" / "inputs" / "methods"]
+    if output.is_dir():  # individual fit mode: Output/<residue>/run_info
+        candidates += sorted(d / "run_info" / "inputs" / "methods" for d in output.iterdir() if d.is_dir())
+    for methods in candidates:
+        files = sorted(methods.glob("*.toml")) if methods.is_dir() else []
+        if files:
+            return {
+                "method_toml": "\n".join(f.read_text(encoding="utf-8") for f in files),
+                "completed_at": analysis.completed_at.isoformat() if analysis.completed_at else None,
+            }
+    return {"method_toml": None, "completed_at": None}
 
 
 @router.get(f"{ANALYSIS_CHEMEX}/step-timings")

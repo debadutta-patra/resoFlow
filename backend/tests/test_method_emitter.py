@@ -26,7 +26,6 @@ from app.services.fitting.method_emitter import (
     emit_method_toml_v1,
     emit_method_toml_v2,
     parse_method_toml,
-    validate_method_config,
 )
 
 
@@ -346,10 +345,6 @@ SEED = 1234
     assert "[STEP1.STATISTICS.MCMC]\nSTEPS = 5000\nSEED = 1234\n" in v2
     _chemex_plan(v2)
 
-    issues = validate_method_config(config)
-    assert any("v1 inequality" in i["message"] for i in issues)
-    assert any("v1-only controls" in i["message"] for i in issues)
-
 
 def test_v1_legacy_inline_table_grid():
     config = parse_method_toml(
@@ -372,42 +367,6 @@ def test_mcmc_model_validation():
         McmcSettingsModel(steps=100, burn=100)
     with pytest.raises(ValueError, match="retain 0 samples"):
         McmcSettingsModel(steps=100, burn=95, thin=10)
-
-
-def test_validation_v2_rules():
-    config = MethodConfigModel(
-        steps=[
-            MethodStepModel(
-                name="A",
-                roles_from="B",
-                parameters=[ParamSettingModel(name="PB", mode="fix")],
-                search=StepSearchModel(
-                    mode="de",
-                    axes=[
-                        SearchAxisModel(param="PB", fn="log", low=0.001, high=0.2),
-                        SearchAxisModel(param="KEX_AB", fn="values", values=[1, 2]),
-                        SearchAxisModel(param="DW_AB", fn="log", low=-1, high=5),
-                    ],
-                ),
-                role_rules=[RoleRuleModel(action="FIT", entries=["DW_AB, FOO->1"])],
-            ),
-            MethodStepModel(
-                name="B",
-                search=StepSearchModel(mode="grid", axes=[SearchAxisModel(param="PB", fn="lin", low=0.2, high=0.1, count=1)]),
-                statistics=StatisticsModel(mc=100),
-            ),
-        ]
-    )
-    messages = [i["message"] for i in validate_method_config(config)]
-    assert any("ROLES_FROM 'B' must name an earlier step" in m for m in messages)
-    assert any("search targets must be FIT" in m for m in messages)
-    assert any("requires an unsigned 64-bit SEED" in m for m in messages)
-    assert any("DE coordinates must use lin" in m for m in messages)
-    assert any("must be positive" in m for m in messages)
-    assert any("Invalid qualifier" in m for m in messages)
-    assert any("low < high" in m for m in messages)
-    assert any("at least 2 points" in m for m in messages)
-    assert any("The last step uses GRID" in m for m in messages)
 
 
 # ── u64 seeds ────────────────────────────────────────────────────────────

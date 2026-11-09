@@ -10,6 +10,8 @@ import type { McmcConfig, ResamplingConfig, StatisticsConfig, Step } from '../..
 import { compactStatistics } from '../../lib/methodToml';
 import { randomSeed, seedError, toSeed } from '../../lib/seed';
 import { estimateStatistics, formatDuration, type StepTiming } from '../../lib/searchEstimate';
+import type { ValidationError } from '../../lib/methodValidation';
+import ChemexIssueList from './ChemexIssueList';
 
 interface StepStatisticsSectionProps {
   step: Step;
@@ -19,6 +21,8 @@ interface StepStatisticsSectionProps {
   timings?: StepTiming[];
   /** Workers the last run used (ChemEx-resolved). */
   workers?: number | null;
+  /** ChemEx problems for this step (STATISTICS.* ones are shown here). */
+  chemexIssues?: ValidationError[];
 }
 
 type ResamplingKey = 'mc' | 'bs' | 'bsn';
@@ -63,7 +67,8 @@ const SeedField: React.FC<{ id: string; value?: string; onChange: (v: string | u
   );
 };
 
-export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ step, onChange, readOnly = false, timings, workers }) => {
+export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ step, onChange, readOnly = false, timings, workers, chemexIssues = [] }) => {
+  const statIssues = chemexIssues.filter(e => (e.source?.field ?? '').startsWith('STATISTICS'));
   const stats: StatisticsConfig = step.statistics || {};
   const anyActive = !!(stats.mc?.enabled || stats.bs?.enabled || stats.bsn?.enabled || stats.mcmc?.enabled);
   const [isOpen, setIsOpen] = useState(anyActive);
@@ -106,6 +111,11 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           <Activity className="w-4 h-4 text-purple-500" />
           <span>Statistics (MC, BS, BSN, MCMC)</span>
+          {statIssues.length > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 font-bold">
+              {statIssues.length} ChemEx error{statIssues.length > 1 ? 's' : ''}
+            </span>
+          )}
           {anyActive && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono font-bold">
               {[stats.mc?.enabled && 'MC', stats.bs?.enabled && 'BS', stats.bsn?.enabled && 'BSN', stats.mcmc?.enabled && 'MCMC'].filter(Boolean).join(' + ')}
@@ -136,6 +146,8 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
             committed and never change its central values. Walkers and parallelism are ChemEx policy (set workers globally with{' '}
             <code className="font-mono">chemex fit --workers</code>).
           </p>
+
+          <ChemexIssueList issues={statIssues} />
 
           <div className="flex items-start gap-2 p-2.5 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/30 text-sky-800 dark:text-sky-200">
             <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />

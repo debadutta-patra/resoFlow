@@ -6,7 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
-from resoflow.chemex_api.roles import resolve_roles
+from resoflow.chemex_api.compat import check_version
+from resoflow.chemex_api.roles import validate_method
 
 from .chemex_workspace import stage_validation_workspace
 
@@ -20,37 +21,35 @@ def missing_inputs_message(experiment_files: list[str], parameter_files: list[st
     return None
 
 
-def resolve_method(
+def validate_method_for_analysis(
     run_dir: Optional[Path],
     *,
     method_toml: str,
     model: str = "2st",
     parameter_toml: Optional[str] = None,
+    include: Optional[list[str]] = None,
+    exclude: Optional[list[str]] = None,
+    sharing_warnings: bool = False,
 ) -> dict[str, Any]:
-    """Validate ``method_toml`` with ChemEx and return every step's resolved roles.
+    """Validate ``method_toml`` with ChemEx against an analysis's inputs.
 
-    The analysis's saved method file is ignored; ``method_toml`` is the method
-    being edited. ``parameter_toml`` (the unsaved parameters) overrides the saved one.
+    Returns ``{valid, format, errors, warnings, steps, chemex_version}`` where each step
+    carries its resolved roles and search resolution. The analysis's saved method file is
+    ignored (``method_toml`` is the method being checked); ``parameter_toml`` (unsaved
+    parameters) overrides the saved one.
     """
     with tempfile.TemporaryDirectory() as td:
         job_dir = Path(td)
         spec = stage_validation_workspace(
-            run_dir, job_dir, model=model, parameter_toml=parameter_toml, stage_methods=False
+            run_dir, job_dir, model=model, parameter_toml=parameter_toml, include=include, exclude=exclude, stage_methods=False
         )
         missing = missing_inputs_message(spec.experiment_files, spec.parameter_files)
         if missing:
-            return {"valid": False, "format": None, "steps": [], "errors": [{"message": missing, "type": "MissingInputs", "source": {}}]}
-        method_path = job_dir / "Methods" / "resolve_method.toml"
+            return {"valid": False, "format": None, "steps": [], "warnings": [], "chemex_version": check_version(),
+                    "errors": [{"message": missing, "type": "MissingInputs", "source": {}}]}
+        method_path = job_dir / "Methods" / "method.toml"
         method_path.write_text(method_toml, encoding="utf-8")
-        try:
-            return resolve_roles(spec, method_path, job_dir)
-        except (Exception, SystemExit) as exc:  # session construction failed (inputs, model, parameters)
-            return {
-                "valid": False,
-                "format": None,
-                "steps": [],
-                "errors": [{"message": str(exc) or type(exc).__name__, "type": type(exc).__name__, "source": {}}],
-            }
+        return validate_method(spec, method_path, job_dir, sharing_warnings=sharing_warnings)
 
 
 def step_timings_with_evaluations(run_dir: Path, model: str = "2st") -> dict[str, Any]:
@@ -75,7 +74,7 @@ def step_timings_with_evaluations(run_dir: Path, model: str = "2st") -> dict[str
         method_files = sorted((run_dir / "Methods").glob("*.toml")) if (run_dir / "Methods").is_dir() else []
         by_name: dict[str, Any] = {}
         if method_files:
-            report = resolve_method(run_dir, method_toml=method_files[0].read_text(encoding="utf-8"), model=model)
+            report = validate_method_for_analysis(run_dir, method_toml=method_files[0].read_text(encoding="utf-8"), model=model)
             for st in report.get("steps", []):
                 search = st.get("search") or {}
                 if search.get("kind") == "grid":

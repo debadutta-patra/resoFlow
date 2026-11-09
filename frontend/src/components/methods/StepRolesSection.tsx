@@ -148,6 +148,13 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
               )}
             </select>
             {rolesFromMsg && <p className="w-full text-[11px] text-red-600 dark:text-red-400">{rolesFromMsg}</p>}
+            {chemexErrors
+              .filter(e => e.source?.field === 'ROLES_FROM')
+              .map((e, i) => (
+                <p key={`rf-${i}`} className="w-full text-[11px] text-red-600 dark:text-red-400">
+                  ChemEx: {e.message}
+                </p>
+              ))}
             <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xl">
               Copies only roles and constraints — not values, residue selection, search, statistics or seeds. Values always continue from the
               latest committed fit.

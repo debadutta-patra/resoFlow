@@ -463,21 +463,3 @@ class MethodConfigSchema(BaseModel):
     steps: List[MethodStepSchema] = []
     raw_override: Optional[str] = Field(None, validation_alias=AliasChoices("raw_override", "rawOverride"))
 
-class MethodValidationIssue(BaseModel):
-    id: str
-    stepIndex: int
-    stepName: str
-    field: str
-    severity: str  # "error" | "warning"
-    message: str
-
-class MethodValidationRequest(BaseModel):
-    config: Optional[MethodConfigSchema] = None
-    toml: Optional[str] = None
-    available_params: Optional[List[str]] = None
-
-class MethodValidationResponse(BaseModel):
-    valid: bool
-    issues: List[MethodValidationIssue] = []
-    emitted_toml: Optional[str] = None
-

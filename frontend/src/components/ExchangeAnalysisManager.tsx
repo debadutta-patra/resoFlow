@@ -838,7 +838,8 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
 
           <button
             onClick={handleStartFit}
-            disabled={isFitting || status === 'RUNNING' || status === 'PENDING'}
+            disabled={isFitting || status === 'RUNNING' || status === 'PENDING' || methodEditor.blockingErrors.length > 0}
+            title={methodEditor.blockingErrors.length > 0 ? `Cannot run: ${methodEditor.blockingErrors[0].message}` : undefined}
             className={`${btnPrimary} flex items-center gap-1`}
           >
             {isFitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
