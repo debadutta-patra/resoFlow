@@ -5,7 +5,7 @@
  * manager owns the state, this component renders the identical layout everywhere.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Lock, Sparkles, Upload, Workflow } from 'lucide-react';
 import type { StartingProvenance } from '../../lib/parameterConfig';
 import type { MethodEditor } from '../../hooks/useMethodEditor';
@@ -16,6 +16,8 @@ import StepTabs from './StepTabs';
 import StepStatisticsSection from './StepStatisticsSection';
 import StepSearchSection from './StepSearchSection';
 import StepRolesSection from './StepRolesSection';
+import ResolvedRolesSummary from './ResolvedRolesSummary';
+import { errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName } from '../../lib/resolvedRoles';
 import {
   ChemexModalShell,
   ChemexTabHeader,
@@ -60,6 +62,24 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const { methodConfig, activeStep } = editor;
+  const { report, stale } = editor.resolvedRoles;
+  const resolvedStep = report?.steps.find(s => s.name.toUpperCase() === (activeStep.name || '').trim().toUpperCase());
+  const resolvedCounts = useMemo(() => resolvedCountsByName(resolvedStep), [resolvedStep]);
+  // Error locations index ROLES actions, so only map them onto rules for the current method text.
+  const chemexErrors = useMemo(() => (stale ? [] : errorsForStep(report, activeStep.name || '')), [report, stale, activeStep.name]);
+
+  // "Mixed · N rules" → highlight and scroll to the rules targeting that parameter.
+  const [highlighted, setHighlighted] = useState<Set<string>>(() => new Set());
+  const showRules = (name: string) => {
+    const ids = rulesByTargetName(activeStep)[name] ?? [];
+    setHighlighted(new Set(ids));
+    if (ids[0]) requestAnimationFrame(() => document.getElementById(ruleDomId(ids[0]))?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  };
+  useEffect(() => {
+    if (highlighted.size === 0) return;
+    const t = window.setTimeout(() => setHighlighted(new Set()), 2500);
+    return () => window.clearTimeout(t);
+  }, [highlighted]);
   const searchTargets = useMemo(() => {
     const out: Record<string, 'grid' | 'de'> = {};
     const s = activeStep.search;
@@ -148,6 +168,8 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               committedByStep={committedByStep}
               startingProvenance={startingProvenance}
               readOnly={readOnly}
+              resolvedCounts={resolvedCounts}
+              onShowRules={showRules}
             />
           </div>
 
@@ -157,7 +179,13 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             steps={methodConfig.steps}
             onChange={editor.handleStepChange}
             readOnly={readOnly}
+            paramNames={editor.knownParamNames}
+            catalog={editor.baselineRoles.catalog}
+            chemexErrors={chemexErrors}
+            highlightedRuleIds={highlighted}
           />
+
+          <ResolvedRolesSummary state={editor.resolvedRoles} stepName={activeStep.name || ''} />
 
           <StepSearchSection
             step={activeStep}

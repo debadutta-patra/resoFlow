@@ -1,0 +1,179 @@
+/**
+ * Types and pure helpers for the ChemEx-resolved per-step roles returned by
+ * POST …/methods/resolve (backend: resoflow/chemex_api/roles.py).
+ */
+
+import type { Step } from './methodConfig';
+import { stepRoleActions } from './methodToml';
+import { constraintTargetName, selectorName } from './methodGrammar';
+
+export interface ChemexSource {
+  step?: string;
+  /** e.g. "ROLES[1].FIT[0]", "SEARCH.GRID.AXES", "SEARCH.DE.SEED", "STATISTICS.MC", "ROLES_FROM". */
+  field?: string;
+  index?: number | null;
+  start?: number | null;
+  end?: number | null;
+  action_index?: number;
+  action?: string;
+  entry_index?: number;
+}
+
+export interface ChemexError {
+  message: string;
+  type: string;
+  source: ChemexSource;
+}
+
+export interface RuleRef {
+  step: string;
+  action_index: number;
+  entry_index: number;
+  action: 'FIT' | 'FIX' | 'CONSTRAIN';
+  inherited: boolean;
+}
+
+export type ResolvedRole = 'fit' | 'fix' | 'constrained' | 'derived';
+
+export interface ResolvedParameter {
+  id: string;
+  name: string;
+  spin: string;
+  conditions: Record<string, number>;
+  scope: 'global' | 'residue';
+  role: ResolvedRole;
+  expression: string;
+  decided_by: 'rule' | 'baseline' | 'model';
+  rule: RuleRef | null;
+  protected: boolean;
+}
+
+export interface ResolvedStep {
+  name: string;
+  roles_from: string | null;
+  profiles: number | null;
+  parameters: ResolvedParameter[];
+  counts: Record<ResolvedRole, number>;
+  error: ChemexError | null;
+}
+
+export interface ResolveReport {
+  valid: boolean;
+  format: 'v1' | 'v2' | null;
+  errors: ChemexError[];
+  steps: ResolvedStep[];
+  method_toml?: string;
+}
+
+export interface StepSummary {
+  globalFit: number;
+  residueFit: number;
+  constrained: number;
+  fixed: number;
+  derived: number;
+}
+
+export function summarizeResolvedStep(step: ResolvedStep): StepSummary {
+  const s: StepSummary = { globalFit: 0, residueFit: 0, constrained: 0, fixed: 0, derived: 0 };
+  for (const p of step.parameters) {
+    if (p.role === 'fit') {
+      if (p.scope === 'global') s.globalFit++;
+      else s.residueFit++;
+    } else if (p.role === 'fix') s.fixed++;
+    else if (p.role === 'constrained') s.constrained++;
+    else s.derived++;
+  }
+  return s;
+}
+
+/** "2 global FIT · 2 residue FIT · 1 constrained · 260 fixed · 30 model-derived" (zero terms omitted). */
+export function stepSummaryText(s: StepSummary): string {
+  const parts: string[] = [];
+  if (s.globalFit) parts.push(`${s.globalFit} global FIT`);
+  if (s.residueFit) parts.push(`${s.residueFit} residue FIT`);
+  if (s.constrained) parts.push(`${s.constrained} constrained`);
+  parts.push(`${s.fixed} fixed`);
+  if (s.derived) parts.push(`${s.derived} derived`);
+  return parts.join(' · ');
+}
+
+/** Resolved role counts per parameter name (for the table's quick view). */
+export function resolvedCountsByName(step: ResolvedStep | undefined): Record<string, Record<ResolvedRole, number>> {
+  const out: Record<string, Record<ResolvedRole, number>> = {};
+  for (const p of step?.parameters ?? []) {
+    const name = p.name.toUpperCase();
+    const c = (out[name] ??= { fit: 0, fix: 0, constrained: 0, derived: 0 });
+    c[p.role] += 1;
+  }
+  return out;
+}
+
+const ROLE_LABEL: Record<ResolvedRole, string> = { fit: 'Fit', fix: 'Fixed', constrained: 'Constrained', derived: 'Derived' };
+
+export function resolvedCountsLabel(c: Record<ResolvedRole, number> | undefined): string | null {
+  if (!c) return null;
+  const parts = (Object.keys(ROLE_LABEL) as ResolvedRole[]).filter(k => c[k] > 0);
+  if (!parts.length) return null;
+  if (parts.length === 1) return ROLE_LABEL[parts[0]];
+  return parts.map(k => `${ROLE_LABEL[k]} ${c[k]}`).join(' · ');
+}
+
+/**
+ * Where ROLES action `actionIndex` of a step comes from in the editor: one of the
+ * parameter-table actions (emitted first: CONSTRAIN → FIX → FIT), or an ordered rule.
+ * `entryIndex` is translated back to the rule's own entry list (blank lines skipped on emit).
+ */
+export type ActionTarget =
+  | { kind: 'table'; action: 'FIT' | 'FIX' | 'CONSTRAIN'; entry: string | undefined }
+  | { kind: 'rule'; ruleId: string; ruleIndex: number; entryIndex: number };
+
+export function actionTarget(step: Step, actionIndex: number, entryIndex = 0): ActionTarget | null {
+  const actions = stepRoleActions(step);
+  const ruleActions = (step.roleRules ?? []).map((r, i) => ({ r, i })).filter(({ r }) => r.entries.some(e => e.trim()));
+  const tableCount = actions.length - ruleActions.length;
+  if (actionIndex < 0 || actionIndex >= actions.length) return null;
+  if (actionIndex < tableCount) {
+    const a = actions[actionIndex];
+    return { kind: 'table', action: a.action, entry: a.entries[entryIndex] };
+  }
+  const { r, i } = ruleActions[actionIndex - tableCount];
+  let seen = -1;
+  for (let k = 0; k < r.entries.length; k++) {
+    if (r.entries[k].trim()) seen++;
+    if (seen === entryIndex) return { kind: 'rule', ruleId: r.id, ruleIndex: i, entryIndex: k };
+  }
+  return { kind: 'rule', ruleId: r.id, ruleIndex: i, entryIndex: 0 };
+}
+
+/** Number of ROLES actions the parameter table contributes (they precede the rules). */
+export function tableActionCount(step: Step): number {
+  const rules = (step.roleRules ?? []).filter(r => r.entries.some(e => e.trim())).length;
+  return stepRoleActions(step).length - rules;
+}
+
+/** ChemEx errors (top-level and per-step) that belong to the named step. */
+export function errorsForStep(report: ResolveReport | null | undefined, stepName: string): ChemexError[] {
+  if (!report) return [];
+  const upper = stepName.toUpperCase();
+  const own = report.errors.filter(e => (e.source?.step ?? '').toUpperCase() === upper);
+  const stepErr = report.steps.find(s => s.name.toUpperCase() === upper)?.error;
+  return stepErr && !own.some(e => e.message === stepErr.message) ? [...own, stepErr] : own;
+}
+
+/** DOM id of a rule card in the ROLES editor (scroll / highlight target). */
+export const ruleDomId = (ruleId: string) => `role-rule-${ruleId}`;
+
+/** Ids of the step's rules that target each parameter name (FIT/FIX selectors and CONSTRAIN targets). */
+export function rulesByTargetName(step: Step): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const rule of step.roleRules ?? []) {
+    const names = new Set<string>();
+    for (const e of rule.entries) {
+      if (!e.trim()) continue;
+      const name = rule.action === 'CONSTRAIN' ? constraintTargetName(e) : selectorName(e);
+      if (name) names.add(name);
+    }
+    for (const n of names) (out[n] ??= []).push(rule.id);
+  }
+  return out;
+}

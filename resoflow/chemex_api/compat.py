@@ -175,4 +175,34 @@ def verify_hooks() -> bool:
             "Missing execution settings: chemex.runtime.execution.ExecutionSettings not found."
         ) from exc
 
+    # 9. Method-step announcement (wrapped by progress.install_progress_hooks to report the running step)
+    try:
+        from chemex.optimize import method_plan_execution
+    except ImportError as exc:
+        raise ChemExCompatError("Missing module: chemex.optimize.method_plan_execution not found.") from exc
+    if not callable(getattr(method_plan_execution, "print_step_name", None)):
+        raise ChemExCompatError(
+            "Missing hook: chemex.optimize.method_plan_execution.print_step_name not found."
+        )
+    if list(inspect.signature(method_plan_execution.print_step_name).parameters) != ["name", "index", "total"]:
+        raise ChemExCompatError("Hook signature mismatch for print_step_name(name, index, total).")
+
+    # 10. Role resolution (roles.resolve_roles): effective actions, per-step compilation, rule attribution
+    try:
+        from chemex.configuration.method_plan import MethodPlan
+        from chemex.parameters.parameterization import ActiveParameterization, _build_action_rules
+        from chemex.runtime.session import AnalysisSession as _Session
+    except (ImportError, AttributeError) as exc:
+        raise ChemExCompatError(f"Missing role-resolution hook: {exc}") from exc
+    for owner, attr in (
+        (MethodPlan, "effective_role_actions"),
+        (_Session, "compile_parameterization_from_actions"),
+        (ActiveParameterization, "role"),
+        (ActiveParameterization, "scope_ids"),
+    ):
+        if not hasattr(owner, attr):
+            raise ChemExCompatError(f"Missing role-resolution hook: {owner.__name__}.{attr}")
+    if list(inspect.signature(_build_action_rules).parameters) != ["actions", "definitions"]:
+        raise ChemExCompatError("Hook signature mismatch for parameterization._build_action_rules(actions, definitions).")
+
     return True

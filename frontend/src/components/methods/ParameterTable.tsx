@@ -3,11 +3,14 @@ import type { Step, ParamSetting, ParamMode } from '../../lib/methodConfig';
 import type { StartingProvenance } from '../../lib/parameterConfig';
 import { baselineRoleLabel } from '../../lib/baselineRoles';
 import type { BaselineRolesState } from '../../hooks/useBaselineRoles';
+import { resolvedCountsLabel, rulesByTargetName, type ResolvedRole } from '../../lib/resolvedRoles';
+import { checkConstraintRhs, parseConstraint } from '../../lib/methodGrammar';
 import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
   Activity,
+  Lock,
 } from 'lucide-react';
 
 export interface AvailableParamMeta {
@@ -117,7 +120,13 @@ interface ParameterTableProps {
   startingProvenance?: Record<string, StartingProvenance>;
   /** ChemEx-resolved baseline roles: what "Default" means for this analysis. */
   baselineRoles?: BaselineRolesState;
+  /** Resolved role counts per parameter name for this step (ChemEx, all ROLES applied). */
+  resolvedCounts?: Record<string, Record<ResolvedRole, number>>;
+  /** Show and highlight the ordered rules that target this parameter name. */
+  onShowRules?: (name: string) => void;
 }
+
+const MODE_LABELS: Record<ParamMode, string> = { default: 'Default', fit: 'Fit', fix: 'Fix', constrain: 'Constrain', grid: 'Fit' };
 
 const fmtValue = (v: number | string) => {
   const n = typeof v === 'string' ? Number(v) : v;
@@ -197,7 +206,18 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
   committedByStep = {},
   startingProvenance = {},
   baselineRoles,
+  resolvedCounts,
+  onShowRules,
 }) => {
+  const rulesByName = useMemo(() => rulesByTargetName(step), [step]);
+  const [expandedMixed, setExpandedMixed] = useState<Set<string>>(() => new Set());
+  const toggleMixed = (name: string) =>
+    setExpandedMixed(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   const [showAllParams, setShowAllParams] = useState(false);
   const [activeAutocompleteParam, setActiveAutocompleteParam] = useState<string | null>(null);
 
@@ -342,6 +362,10 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
               const uName = setting.name.toUpperCase();
               const committed = previousStepName ? committedByStep[previousStepName.toUpperCase()]?.[uName] : undefined;
               const baseline = baselineRoleLabel(baselineRoles?.roles?.[uName]);
+              const catalogEntry = baselineRoles?.catalog?.[uName];
+              const isProtected = !!catalogEntry?.protected;
+              const mixedRules = rulesByName[uName] ?? [];
+              const resolvedLabel = resolvedCountsLabel(resolvedCounts?.[uName]);
               const valueNote = (label: string) => (
                 <StartingValueNote
                   label={label}
@@ -393,36 +417,88 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                     </div>
                   </td>
 
-                  {/* Treatment (Segmented Control) */}
+                  {/* Treatment: segmented control, or Mixed / Protected */}
                   <td className="py-3.5 px-4 align-top">
-                    <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700/80">
-                      {(['default', 'fit', 'fix', 'constrain'] as ParamMode[]).map(mode => {
-                        const isActive = setting.mode === mode;
-                        const modeLabels: Record<ParamMode, string> = {
-                          default: 'Default',
-                          fit: 'Fit',
-                          fix: 'Fix',
-                          constrain: 'Constrain',
-                          grid: 'Fit',
-                        };
-
+                    {(() => {
+                      const control = (
+                        <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700/80">
+                          {(['default', 'fit', 'fix', 'constrain'] as ParamMode[]).map(mode => {
+                            const isActive = setting.mode === mode;
+                            const fitBlocked = mode === 'fit' && catalogEntry && !catalogEntry.estimable;
+                            return (
+                              <button
+                                key={mode}
+                                type="button"
+                                disabled={readOnly || !!fitBlocked}
+                                title={fitBlocked ? 'ChemEx cannot estimate this parameter' : undefined}
+                                onClick={() => handleModeChange(meta.name, mode)}
+                                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                  isActive
+                                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/80 dark:border-slate-600'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                } disabled:opacity-50`}
+                              >
+                                {MODE_LABELS[mode]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                      if (isProtected) {
                         return (
-                          <button
-                            key={mode}
-                            type="button"
-                            disabled={readOnly}
-                            onClick={() => handleModeChange(meta.name, mode)}
-                            className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                              isActive
-                                ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/80 dark:border-slate-600'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                            } disabled:opacity-50`}
-                          >
-                            {modeLabels[mode]}
-                          </button>
+                          <div className="space-y-1">
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                              title="Model-owned parameter: ChemEx derives it from the kinetic model, so method roles cannot change it."
+                            >
+                              <Lock className="w-3 h-3" /> Model-derived · protected
+                            </span>
+                            {setting.mode !== 'default' && (
+                              <p className="text-[11px] text-red-600 dark:text-red-400">
+                                The table sets {MODE_LABELS[setting.mode]}, which ChemEx rejects.{' '}
+                                {!readOnly && (
+                                  <button type="button" className="underline" onClick={() => handleModeChange(meta.name, 'default')}>
+                                    Reset to Default
+                                  </button>
+                                )}
+                              </p>
+                            )}
+                          </div>
                         );
-                      })}
-                    </div>
+                      }
+                      if (mixedRules.length > 0) {
+                        const open = expandedMixed.has(uName);
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => onShowRules?.(uName)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100"
+                                title="Ordered rules change this parameter for some or all of its copies. Click to show them."
+                              >
+                                Mixed · {mixedRules.length} rule{mixedRules.length > 1 ? 's' : ''}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleMixed(uName)}
+                                aria-expanded={open}
+                                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600 underline-offset-2 hover:underline"
+                              >
+                                table action: {setting.mode === 'default' ? 'none' : MODE_LABELS[setting.mode]} (applied first)
+                              </button>
+                            </div>
+                            {open && control}
+                          </div>
+                        );
+                      }
+                      return control;
+                    })()}
+                    {resolvedLabel && (
+                      <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500" title={`Resolved by ChemEx for step ${step.name} (all ROLES applied)`}>
+                        Resolved: {resolvedLabel}
+                      </div>
+                    )}
                   </td>
 
                   {/* Value / Expression / Grid Column */}
@@ -520,6 +596,16 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                             )}
                           </div>
                         </div>
+                        {(() => {
+                          const expr = (setting.expression || '').trim();
+                          const full = /^\s*\[[^\]]+\]\s*=/.test(expr);
+                          const err = !expr
+                            ? 'Constraint right side cannot be empty'
+                            : full
+                              ? parseConstraint(expr).error?.message
+                              : checkConstraintRhs(expr).error?.message;
+                          return err ? <p className="text-[11px] text-red-600 dark:text-red-400">{err}</p> : null;
+                        })()}
                       </div>
                     )}
 

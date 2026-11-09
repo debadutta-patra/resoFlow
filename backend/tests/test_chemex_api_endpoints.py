@@ -322,3 +322,58 @@ def test_validate_without_experiments_reports_error(db_session, test_project, au
     assert res.status_code == 200
     assert res.json()["valid"] is False
     assert "experiment" in res.json()["errors"][0]["message"].lower()
+
+
+def _resolve_url(project, analysis_uuid: str) -> str:
+    return f"/api/projects/{project.project_uuid}/analysis/{analysis_uuid}/methods/resolve"
+
+
+def test_methods_resolve_from_frontend_config(db_session, test_project, auth_headers):
+    """The frontend's camelCase MethodConfig is emitted to v2 TOML and resolved per step by ChemEx."""
+    analysis = _make_analysis(db_session, test_project, "analysis-resolve-config")
+    config = {
+        "steps": [
+            {"id": "a", "name": "GLOBAL_FIT", "residueMode": "include", "residues": ["13", "26"],
+             "parameters": [{"name": "PB", "mode": "fit"}, {"name": "KEX_AB", "mode": "fit"}, {"name": "DW_AB", "mode": "fix"}]},
+            {"id": "b", "name": "LOCAL_FITS", "residueMode": "include", "residues": [], "rolesFrom": "GLOBAL_FIT",
+             "parameters": [{"name": "PB", "mode": "fix"}, {"name": "KEX_AB", "mode": "fix"}],
+             "roleRules": [{"id": "r", "action": "FIT", "entries": ["DW_AB, NUC->26N"]}]},
+        ]
+    }
+    res = client.post(_resolve_url(test_project, analysis.analysis_uuid), json={"model": "2st", "config": config}, headers=auth_headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["valid"] is True, body["errors"]
+    assert 'ROLES_FROM = "GLOBAL_FIT"' in body["method_toml"]
+    g, local = body["steps"]
+    assert g["counts"]["fit"] >= 2
+    dw26 = next(p for p in local["parameters"] if p["id"] == "__DW_AB_26N")
+    # The rule is the 2nd ROLES action of LOCAL_FITS (after the table's FIX action).
+    assert dw26["role"] == "fit" and dw26["rule"]["action_index"] == 1 and dw26["rule"]["step"] == "LOCAL_FITS"
+
+
+def test_methods_resolve_raw_toml_errors_and_guards(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-resolve-raw")
+    url = _resolve_url(test_project, analysis.analysis_uuid)
+    bad = 'FORMAT_VERSION = 2\n\n[S]\nROLES = [{ FIT = ["PB, FOO->1"] }]\n'
+    body = client.post(url, json={"method_toml": bad}, headers=auth_headers).json()
+    assert body["valid"] is False
+    assert body["errors"][0]["source"]["field"] == "ROLES[0].FIT[0]"
+
+    assert client.post(url, json={}, headers=auth_headers).status_code == 422
+    assert client.post(url, json={"method_toml": bad}).status_code == 401
+
+    empty = Analysis(analysis_uuid="analysis-resolve-empty", name="E", analysis_type="15N-CEST",
+                     project_id=test_project.id, status="PENDING")
+    db_session.add(empty)
+    db_session.commit()
+    body = client.post(_resolve_url(test_project, "analysis-resolve-empty"), json={"method_toml": bad}, headers=auth_headers).json()
+    assert body["errors"][0]["type"] == "MissingInputs"
+
+
+def test_inspect_reports_protected_parameters(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-inspect-protected")
+    rows = client.post(_url(test_project, analysis.analysis_uuid, "parameters/inspect"), json={"model": "2st"}, headers=auth_headers).json()["parameters"]
+    by = {r["name"]: r for r in rows}
+    assert by["KAB"]["protected"] is True
+    assert by["PB"]["protected"] is False and by["PB"]["estimable"] is True

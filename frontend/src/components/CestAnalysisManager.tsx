@@ -392,6 +392,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     exclusionKey: parameterConfig.excludedResidues,
     inputsKey: experimentsFingerprint(generatedExperiments),
     locked: runLocked,
+    parameterToml: parameterEditor.effectiveParameterToml,
     notify,
   });
   const { methodConfig, blockingErrors } = methodEditor;

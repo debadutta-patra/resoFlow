@@ -389,7 +389,7 @@ describe('Method Configuration Validation (v2)', () => {
       known
     );
     expect(errors.some(e => e.message.includes('Unknown parameter "UNKNOWN_PARAM"'))).toBe(true);
-    expect(errors.some(e => e.message.includes('Unmatched brackets'))).toBe(true);
+    expect(errors.some(e => e.message.includes('Unclosed parameter selector'))).toBe(true);
     expect(errors.some(e => e.message.includes('unknown parameter "NON_EXISTENT_PARAM"'))).toBe(true);
     expect(errors.some(e => e.paramName === 'R1_A' && e.severity === 'error')).toBe(true);
   });
@@ -436,7 +436,7 @@ describe('Method Configuration Validation (v2)', () => {
       { steps: [step({ roleRules: [{ id: 'r', action: 'FIT', entries: ['DW_AB, FOO->1'] }] })] },
       known
     ).map(e => e.message);
-    expect(msgs.some(m => m.includes('Invalid qualifier'))).toBe(true);
+    expect(msgs.some(m => m.includes('Unknown or malformed selector qualifier'))).toBe(true);
   });
 });
 
@@ -505,5 +505,32 @@ SEED = 1.5
       steps: [step({ search: { mode: 'de', seed: '18446744073709551616', axes: [{ id: 'a', param: 'PB', fn: 'log', low: 0.001, high: 0.2, count: 0 }] } })],
     });
     expect(errors.some(e => e.severity === 'error' && e.message.includes('SEED must be an integer'))).toBe(true);
+  });
+});
+
+describe('protected parameters (frontend instant check)', () => {
+  const catalog = {
+    KAB: { name: 'KAB', scope: 'global', spins: [], T: [], B0: [], '[P]': [], '[L]': [], D2O: [], protected: true, estimable: true, count: 1 },
+    PB: { name: 'PB', scope: 'global', spins: [], T: [], B0: [], '[P]': [], '[L]': [], D2O: [], protected: false, estimable: true, count: 1 },
+  } as const;
+  it('flags table modes, rules and search axes that target model-derived parameters', () => {
+    const msgs = validateMethodConfig(
+      {
+        steps: [
+          step({
+            parameters: [{ name: 'KAB', mode: 'fit' }, { name: 'PB', mode: 'fit' }],
+            roleRules: [{ id: 'r', action: 'CONSTRAIN', entries: ['[KAB] = 2 * [PB]'] }],
+            search: { mode: 'grid', axes: [{ id: 'a', param: 'KAB', fn: 'lin', low: 1, high: 2, count: 3 }] },
+          }),
+        ],
+      },
+      ['PB', 'KAB'],
+      0,
+      catalog as never
+    )
+      .filter(e => e.severity === 'error')
+      .map(e => e.message);
+    expect(msgs.filter(m => m.includes('KAB is model-derived (protected)')).length).toBe(3);
+    expect(msgs.some(m => m.includes('PB is model-derived'))).toBe(false);
   });
 });

@@ -3,6 +3,8 @@ import { normalizeStep } from './methodConfig';
 import { stepRoleActions, stepTomlName } from './methodToml';
 import { axisPointCount } from './searchDefaults';
 import { seedError } from './seed';
+import { constraintTargetName, parseConstraint, parseSelector, selectorName } from './methodGrammar';
+import type { ParameterCatalog } from './baselineRoles';
 
 export interface ValidationError {
   stepId: string;
@@ -15,44 +17,26 @@ export interface ValidationError {
 export type MethodValidationError = ValidationError;
 
 const STEP_NAME = /^[A-Za-z0-9_-]+$/;
-const SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const QUALIFIER = /^(NUC|T|B0|\[P\]|\[L\]|D2O)\s*->\s*\S.*$/i;
-
-/** Check a v2 selector "NAME[, QUAL->value]..." — returns an error message or null. */
+/** Check a v2 selector "NAME[, QUAL->value]..." with ChemEx's grammar — returns an error message or null. */
 export function selectorError(selector: string, knownUpper?: Set<string>): string | null {
-  const parts = selector.split(',').map(s => s.trim());
-  const name = parts[0];
-  if (!name) return 'Selector is empty.';
-  if (!SELECTOR_NAME.test(name)) return `Invalid parameter name "${name}".`;
-  const seen = new Set<string>();
-  for (const frag of parts.slice(1)) {
-    if (!QUALIFIER.test(frag)) return `Invalid qualifier "${frag}" — use NUC->, T->, B0->, [P]->, [L]-> or D2O->.`;
-    const key = frag.split('->')[0].trim().toUpperCase();
-    if (seen.has(key)) return `Duplicate qualifier ${key}.`;
-    seen.add(key);
-  }
-  if (knownUpper && knownUpper.size > 0 && !knownUpper.has(name.toUpperCase())) {
-    return `Unknown parameter "${name.toUpperCase()}".`;
-  }
+  const { selector: parsed, error } = parseSelector(selector);
+  if (error || !parsed) return `${error?.message ?? 'Invalid selector'}.`;
+  if (knownUpper && knownUpper.size > 0 && !knownUpper.has(parsed.name)) return `Unknown parameter "${parsed.name}".`;
   return null;
 }
 
-/** Validate a constraint equation "[SEL] = expr". Returns an error message or null. */
+/** Validate a constraint equation "[SEL] = expr" with ChemEx's grammar. Returns an error message or null. */
 export function constraintError(eq: string): string | null {
-  if ((eq.match(/=/g) || []).length !== 1) return 'Constraint must contain exactly one "=".';
-  const [lhs, rhs] = eq.split('=');
-  if (!/^\s*\[[^\]]+\]\s*$/.test(lhs)) return 'Constraint left side must be one bracketed selector, e.g. [R2_B].';
-  if (!rhs.trim()) return 'Constraint right side is empty.';
-  if ((rhs.match(/\[/g) || []).length !== (rhs.match(/\]/g) || []).length) return 'Unmatched brackets in constraint.';
-  const stripped = rhs.replace(/\[[^\]]*\]/g, '0');
-  if (/[^0-9eE.+\-*/()\s]/.test(stripped)) return 'Constraint right side may only use numbers, [parameters], ( ), + - * /.';
-  let depth = 0;
-  for (const ch of stripped) {
-    if (ch === '(') depth++;
-    if (ch === ')') depth--;
-    if (depth < 0) return 'Unbalanced parentheses in constraint.';
-  }
-  if (depth !== 0) return 'Unbalanced parentheses in constraint.';
+  const { error } = parseConstraint(eq);
+  return error ? `${error.message}.` : null;
+}
+
+/** Why a method action may not target this parameter name (model-owned / not estimable), or null. */
+export function protectedTargetError(name: string, action: 'FIT' | 'FIX' | 'CONSTRAIN' | 'SEARCH', catalog?: ParameterCatalog | null): string | null {
+  const entry = catalog?.[name.toUpperCase()];
+  if (!entry) return null;
+  if (entry.protected) return `${entry.name} is model-derived (protected); method roles cannot change it.`;
+  if ((action === 'FIT' || action === 'SEARCH') && !entry.estimable) return `${entry.name} cannot be estimated by ChemEx, so it cannot be FIT.`;
   return null;
 }
 
@@ -62,7 +46,9 @@ export function constraintError(eq: string): string | null {
 export function validateMethodConfig(
   config: MethodConfig,
   knownParamNames: string[] = ['PB', 'PC', 'KEX_AB', 'KEX_AC', 'KEX_BC', 'CS_A', 'DW_AB', 'DW_AC', 'R1_A', 'R2_A', 'R1_B', 'R2_B', 'R1_C', 'R2_C', 'TAUC_A'],
-  totalAvailableResiduesCount = 0
+  totalAvailableResiduesCount = 0,
+  /** ChemEx parameter catalog (protection flags); omitted until inspection succeeds. */
+  catalog?: ParameterCatalog | null
 ): ValidationError[] {
   const errors: ValidationError[] = [];
   const knownUpper = new Set(knownParamNames.map(n => n.toUpperCase()));
@@ -99,6 +85,11 @@ export function validateMethodConfig(
       seen.add(uName);
       modeOf.set(uName, param.mode);
 
+      if (param.mode !== 'default') {
+        const action = param.mode === 'fix' ? 'FIX' : param.mode === 'constrain' ? 'CONSTRAIN' : 'FIT';
+        const prot = protectedTargetError(uName, action, catalog);
+        if (prot) push(prot, 'error', uName);
+      }
       if (param.mode !== 'default' && knownUpper.size > 0 && !knownUpper.has(uName)) {
         push(`Unknown parameter "${uName}" for this model. Please check spelling.`, 'warning', uName);
       }
@@ -133,6 +124,9 @@ export function validateMethodConfig(
         continue;
       }
       for (const e of entries) {
+        const target = rule.action === 'CONSTRAIN' ? constraintTargetName(e) : selectorName(e);
+        const prot = target ? protectedTargetError(target, rule.action, catalog) : null;
+        if (prot) push(`Role rule #${ri + 1} (${rule.action}) "${e}": ${prot}`, 'error', target ?? undefined);
         const msg = rule.action === 'CONSTRAIN' ? constraintError(e) : selectorError(e, knownUpper);
         if (msg) push(`Role rule #${ri + 1} (${rule.action}) "${e}": ${msg}`, rule.action === 'CONSTRAIN' ? 'error' : msg.startsWith('Unknown') ? 'warning' : 'error');
       }
@@ -163,6 +157,8 @@ export function validateMethodConfig(
         if (search.mode === 'de' && selectors.has(sel)) push(`DE coordinate "${sel}" is listed twice.`, 'error', axis.param);
         selectors.add(sel);
 
+        const protAxis = protectedTargetError(axis.param, 'SEARCH', catalog);
+        if (protAxis) push(`${label} target: ${protAxis}`, 'error', axis.param);
         const mode = modeOf.get(axis.param.toUpperCase());
         if (mode === 'fix' || mode === 'constrain') {
           push(`${label} target "${axis.param}" is set to ${mode.toUpperCase()} in the table; search targets must be fitted (FIT).`, 'error', axis.param);

@@ -237,8 +237,11 @@ def inspect_parameters(
                     frontier.append(dep)
 
         params = session.parameters.get_parameters(used_by)
+        sealed = session.parameter_factory.sealed_parameter_model
+        declarations = sealed.declarations if sealed is not None else {}
         rows: list[dict[str, Any]] = []
         for pid, setting in params.items():
+            declaration = declarations.get(pid)
             pname = setting.param_name
             status = "fit" if getattr(setting, "vary", False) else ("constrain" if getattr(setting, "expr", "") else "fix")
             rows.append({
@@ -255,6 +258,10 @@ def inspect_parameters(
                 "max": getattr(setting, "max", None),
                 "expr": getattr(setting, "expr", ""),
                 "experiments": sorted(used_by[pid]),
+                # Model-owned (e.g. derived populations, TREF / derived shifts of .tc models):
+                # no method action may change their role.
+                "protected": bool(getattr(declaration, "model_owned", False)),
+                "estimable": bool(getattr(declaration, "supports_estimation", True)),
             })
 
         rows.sort(key=lambda r: (r["selector"], r["name"]))

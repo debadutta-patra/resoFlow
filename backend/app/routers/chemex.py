@@ -10,12 +10,15 @@ import tempfile
 from pathlib import Path
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .. import models, security
 from ..routers.analysis import _get_analysis_run_dir
+from ..schemas import MethodConfigSchema
 from ..services.fitting.chemex_workspace import stage_validation_workspace
+from ..services.fitting.method_emitter import MethodConfigModel, emit_method_toml_v2
+from ..services.fitting.method_resolution import missing_inputs_message, resolve_method
 from .deps import get_analysis
 from resoflow.chemex_api.session import inspect_parameters, validate_inputs
 from resoflow.chemex_api.spec import FitJobSpec
@@ -40,6 +43,15 @@ class ChemexInspectRequest(BaseModel):
     parameter_toml: Optional[str] = None
     method_toml: Optional[str] = None
     include: Optional[List[str]] = None
+
+
+class MethodResolveRequest(BaseModel):
+    """The method being edited (structured config, or raw TOML) plus optional unsaved parameters."""
+
+    model: str = "2st"
+    config: Optional[MethodConfigSchema] = None
+    method_toml: Optional[str] = None
+    parameter_toml: Optional[str] = None
 
 
 def _chemex_version() -> str:
@@ -77,12 +89,7 @@ def _run_dir(analysis: models.Analysis) -> Path:
 
 
 def _missing_inputs(spec: FitJobSpec) -> Optional[str]:
-    """ChemEx's CLI parser exits (SystemExit) without these; report it plainly instead."""
-    if not spec.experiment_files:
-        return "No experiment files for this analysis yet. Generate the experiments first."
-    if not spec.parameter_files:
-        return "No parameters file for this analysis yet."
-    return None
+    return missing_inputs_message(spec.experiment_files, spec.parameter_files)
 
 
 @router.post(f"{ANALYSIS_CHEMEX}/validate")
@@ -140,3 +147,27 @@ def inspect_chemex_parameters(
         if isinstance(res, dict):
             return res
         return {"parameters": res, "warnings": [], "experiments": []}
+
+
+@router.post("/api/projects/{project_uuid}/analysis/{analysis_uuid}/methods/resolve")
+def resolve_method_roles(
+    req: MethodResolveRequest,
+    analysis: models.Analysis = Depends(get_analysis),
+) -> dict[str, Any]:
+    """Per-step effective role of every concrete parameter after ROLES_FROM and all ROLES actions.
+
+    Resolution is done by ChemEx (same compilation path as a real run), scoped to each
+    step's INCLUDE/EXCLUDE selection. ChemEx validation errors carry the exact step,
+    field, entry index and character span.
+    """
+    if req.config is not None:
+        method_toml = emit_method_toml_v2(MethodConfigModel(**req.config.model_dump()))
+    elif req.method_toml is not None:
+        method_toml = req.method_toml
+    else:
+        raise HTTPException(status_code=422, detail="Provide either config or method_toml.")
+    report = resolve_method(
+        _run_dir(analysis), method_toml=method_toml, model=req.model, parameter_toml=req.parameter_toml
+    )
+    report["method_toml"] = method_toml
+    return report

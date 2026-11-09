@@ -308,6 +308,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     exclusionKey: parameterConfig.excludedResidues,
     inputsKey: experimentsFingerprint(generatedExperiments),
     locked: runLocked,
+    parameterToml: parameterEditor.effectiveParameterToml,
     notify,
   });
   const { methodConfig } = methodEditor;

@@ -72,7 +72,7 @@ describe('ParameterTable resolved Default', () => {
         step={{ ...step, parameters: [] }}
         onChange={() => {}}
         availableParams={DEFAULT_PARAM_METAS}
-        baselineRoles={{ loading: false, error: null, roles: { CS_A: { fit: 0, fix: 16, derived: 0 }, R2_B: { fit: 16, fix: 0, derived: 0 } } }}
+        baselineRoles={{ loading: false, error: null, catalog: null, roles: { CS_A: { fit: 0, fix: 16, derived: 0 }, R2_B: { fit: 16, fix: 0, derived: 0 } } }}
       />
     );
     expect(within(row('CS_A')).getByText('Default → Fixed')).toBeDefined();

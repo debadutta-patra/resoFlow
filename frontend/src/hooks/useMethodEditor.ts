@@ -18,6 +18,7 @@ import type { MethodTemplate } from '../lib/methodTemplates';
 import { DEFAULT_PARAM_METAS, type AvailableParamMeta } from '../components/methods/ParameterTable';
 import type { ResidueItem } from '../components/methods/ResidueSelector';
 import { useBaselineRoles } from './useBaselineRoles';
+import { useResolvedRoles } from './useResolvedRoles';
 
 
 /** URL segment of the per-analysis ChemEx routes for each family. */
@@ -49,6 +50,8 @@ export interface UseMethodEditorOptions {
   inputsKey?: string;
   /** While a run is in progress the method is the submitted snapshot: no automatic edits. */
   locked?: boolean;
+  /** Current (possibly unsaved) parameters.toml, used for ChemEx inspection/resolution. */
+  parameterToml?: string;
   notify?: (message: string) => void;
 }
 
@@ -64,7 +67,13 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const [activeStepIdx, setActiveStepIdx] = useState(0);
   const [availableParamsMeta, setAvailableParamsMeta] = useState<AvailableParamMeta[]>(DEFAULT_PARAM_METAS);
   /** Roles ChemEx assigns with no ROLES actions — what "Default" means for this analysis. */
-  const baselineRoles = useBaselineRoles({ projectUuid, analysisUuid, model, inputsKey: opts.inputsKey ?? '' });
+  const baselineRoles = useBaselineRoles({
+    projectUuid,
+    analysisUuid,
+    model,
+    inputsKey: opts.inputsKey ?? '',
+    parameterToml: opts.parameterToml,
+  });
 
   /** Replace the structured config and keep the TOML mirror in sync. */
   const setMethodConfig = useCallback((next: MethodConfig) => {
@@ -225,13 +234,23 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     [availableParamsMeta]
   );
   const validationErrors = useMemo(
-    () => validateMethodConfig(methodConfig, knownParamNames, residueItems.filter(r => r.hasData).length),
-    [methodConfig, knownParamNames, residueItems]
+    () => validateMethodConfig(methodConfig, knownParamNames, residueItems.filter(r => r.hasData).length, baselineRoles.catalog),
+    [methodConfig, knownParamNames, residueItems, baselineRoles.catalog]
   );
   const blockingErrors = useMemo(() => validationErrors.filter(e => e.severity === 'error'), [validationErrors]);
 
   // ── Persistence ──
   const effectiveMethodToml = isRawEditMode ? methodToml : configToToml(methodConfig);
+
+  /** Per-step effective roles of every concrete parameter, resolved by ChemEx (debounced). */
+  const resolvedRoles = useResolvedRoles({
+    projectUuid,
+    analysisUuid,
+    model,
+    inputsKey: opts.inputsKey ?? '',
+    methodToml: effectiveMethodToml,
+    parameterToml: opts.parameterToml,
+  });
   const methodConfigForSave: MethodConfig & { rawOverride?: string } = isRawEditMode
     ? { ...methodConfig, rawOverride: methodToml }
     : methodConfig;
@@ -290,6 +309,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     importToml,
     availableParamsMeta,
     baselineRoles,
+    resolvedRoles,
     knownParamNames,
     validationErrors,
     blockingErrors,
