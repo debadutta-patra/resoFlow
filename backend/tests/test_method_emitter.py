@@ -432,3 +432,17 @@ def test_compact_statistics_form_matches_docs_and_chemex():
     st = plan.steps[0].statistics
     assert (st.mc.replicates, st.bs.replicates, st.bsn.replicates, st.mcmc.steps, st.mcmc.burn) == (100, 100, 100, 5000, None)
     assert emit_method_toml_v2(parse_method_toml(toml)) == toml
+
+
+def test_parse_keeps_roles_order_when_an_earlier_bucket_comes_later():
+    """A plain CONSTRAIN after FIT must not be pulled into the table (which emits CONSTRAIN first)."""
+    toml = (
+        'FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n'
+        '  { FIX = ["R1_A", "R2_A"] },\n'
+        '  { FIT = ["PB", "R2_B"] },\n'
+        '  { CONSTRAIN = ["[R2_B] = [R2_A]"] },\n'
+        '  { FIX = ["KEX_AB"] },\n]\n'
+    )
+    assert emit_method_toml_v2(parse_method_toml(toml)) == toml
+    # Same final roles as ChemEx reads them: R2_B ends up constrained (last action wins).
+    assert _chemex_plan(emit_method_toml_v2(parse_method_toml(toml))).render() == _chemex_plan(toml).render()

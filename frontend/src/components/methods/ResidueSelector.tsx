@@ -6,7 +6,9 @@ import {
   Square,
   RotateCcw,
   AlertTriangle,
-  Layers
+  Layers,
+  Copy,
+  Globe,
 } from 'lucide-react';
 
 import { resolveNumericRange } from '../../lib/spinSystem';
@@ -14,13 +16,18 @@ import { residueChipLabel, residueMatches, sortResidueItems, type ResidueItem } 
 
 export type { ResidueItem } from '../../lib/residueSelection';
 
+export type SelectionMode = 'all' | 'include' | 'exclude';
+
 interface ResidueSelectorProps {
   residues: ResidueItem[];
-  mode: 'include' | 'exclude';
+  mode: SelectionMode;
   selectedIds: string[];
-  onModeChange: (mode: 'include' | 'exclude') => void;
+  onModeChange: (mode: SelectionMode) => void;
   onSelectionChange: (selectedIds: string[]) => void;
   readOnly?: boolean;
+  /** Copy the previous step's selection (mode + residues); absent on the first step. */
+  onCopyFromPrevious?: () => void;
+  previousStepName?: string;
 }
 
 export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
@@ -30,8 +37,13 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
   onModeChange,
   onSelectionChange,
   readOnly = false,
+  onCopyFromPrevious,
+  previousStepName,
 }) => {
   const [filterText, setFilterText] = useState('');
+  const [onlyMinor, setOnlyMinor] = useState(false);
+  /** Pick data (a picked minor-state shift) exists for at least one residue. */
+  const hasMinorData = residues.some(r => r.hasMinorPick !== undefined);
   const [rangeInput, setRangeInput] = useState('');
   const [rangeError, setRangeError] = useState('');
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
@@ -41,9 +53,11 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
   // Natural residue order ("3N" before "39N"), then the search filter.
   const sortedResidues = useMemo(() => sortResidueItems(residues), [residues]);
   const visibleResidues = useMemo(
-    () => (filterText.trim() ? sortedResidues.filter(r => residueMatches(r, filterText)) : sortedResidues),
-    [sortedResidues, filterText]
+    () =>
+      sortedResidues.filter(r => (!filterText.trim() || residueMatches(r, filterText)) && (!onlyMinor || r.hasMinorPick)),
+    [sortedResidues, filterText, onlyMinor]
   );
+  const filtering = !!filterText.trim() || onlyMinor;
 
   // Valid selectable residues (having data)
   const availableResidues = useMemo(() => sortedResidues.filter(r => r.hasData), [sortedResidues]);
@@ -92,7 +106,9 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
   // Bulk Actions
   const handleSelectAll = () => {
     if (readOnly) return;
-    emitSelection(availableResidues.map(r => r.id));
+    // With a filter active, "All" adds what is shown (e.g. only residues with a picked dip).
+    const targets = filtering ? visibleResidues.filter(r => r.hasData) : availableResidues;
+    emitSelection(new Set([...selectedSet, ...targets.map(r => r.id)]));
   };
 
   const handleSelectNone = () => {
@@ -141,47 +157,59 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
               Residue Selection for this Step
             </h4>
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              {selectedIds.length} of {availableResidues.length} selected
+              {mode === 'all' ? `All ${availableResidues.length} profiles` : `${selectedIds.length} of ${availableResidues.length} ${mode === 'include' ? 'included' : 'excluded'}`}
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {mode === 'include'
-              ? 'Only selected residues will be fitted in this step (INCLUDE key).'
-              : 'Selected residues will be excluded from this step (EXCLUDE key).'}
+            {mode === 'all'
+              ? 'No INCLUDE/EXCLUDE: every profile is fitted in this step. Selection is never inherited from other steps.'
+              : mode === 'include'
+                ? 'Only the selected residues are fitted in this step (INCLUDE).'
+                : 'The selected residues are left out of this step (EXCLUDE).'}
           </p>
+          {mode === 'include' && selectedIds.length === 0 && (
+            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">INCLUDE is empty: no profiles would be fitted. Select residues or choose "All profiles".</p>
+          )}
         </div>
 
-        {/* Segmented Mode Control */}
-        <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
-          <button
-            type="button"
-            disabled={readOnly}
-            onClick={() => onModeChange('include')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
-              mode === 'include'
-                ? 'bg-emerald-500 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Include only these</span>
-          </button>
-          <button
-            type="button"
-            disabled={readOnly}
-            onClick={() => onModeChange('exclude')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
-              mode === 'exclude'
-                ? 'bg-red-500 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Exclude these</span>
-          </button>
+        <div className="flex flex-col items-end gap-1.5">
+          {/* Segmented Mode Control */}
+          <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700" role="radiogroup" aria-label="Profile selection">
+            {([
+              { m: 'all', label: 'All profiles', icon: Globe, on: 'bg-blue-500 text-white shadow-sm' },
+              { m: 'include', label: 'Include only these', icon: Layers, on: 'bg-emerald-500 text-white shadow-sm' },
+              { m: 'exclude', label: 'Exclude these', icon: AlertTriangle, on: 'bg-red-500 text-white shadow-sm' },
+            ] as const).map(({ m, label, icon: Icon, on }) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                disabled={readOnly}
+                onClick={() => onModeChange(m)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                  mode === m ? on : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+          {onCopyFromPrevious && !readOnly && (
+            <button
+              type="button"
+              onClick={onCopyFromPrevious}
+              className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600"
+              title="Selection is step-local in ChemEx v2; this copies the previous step's INCLUDE/EXCLUDE once"
+            >
+              <Copy className="w-3 h-3" /> Copy from previous step{previousStepName ? ` (${previousStepName})` : ''}
+            </button>
+          )}
         </div>
       </div>
 
+      {mode !== 'all' && (<>
       {/* Toolbar: Search, Range Quick-Select, Bulk Buttons */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
         {/* Search Input */}
@@ -194,6 +222,12 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             placeholder="Search residues (e.g. 14, G14, Gly)..."
             className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
           />
+          {hasMinorData && (
+            <label className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 cursor-pointer" title="Residues where a minor-state (B) shift was picked in Pick CEST">
+              <input type="checkbox" checked={onlyMinor} onChange={e => setOnlyMinor(e.target.checked)} />
+              Only residues with a picked minor-state dip
+            </label>
+          )}
         </div>
 
         {/* Range Input Form */}
@@ -222,7 +256,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             disabled={readOnly}
             onClick={handleSelectAll}
             className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700"
-            title="Select All Available"
+            title={filtering ? "Add the residues shown by the filter" : "Select all residues with data"}
           >
             <CheckSquare className="w-3.5 h-3.5" />
             <span>All</span>
@@ -301,6 +335,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
           })
         )}
       </div>
+      </>)}
     </div>
   );
 };

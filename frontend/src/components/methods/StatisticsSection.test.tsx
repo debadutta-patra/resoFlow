@@ -14,7 +14,7 @@ import { isValidSeed } from '../../lib/seed';
 
 afterEach(cleanup);
 
-const base: Step = { id: 's', name: 'LOCAL', residueMode: 'include', residues: [], parameters: [{ name: 'PB', mode: 'fit' }] };
+const base: Step = { id: 's', name: 'LOCAL', residueMode: 'all', residues: [], parameters: [{ name: 'PB', mode: 'fit' }] };
 
 function Harness({ initial = base }: { initial?: Step }) {
   const [step, setStep] = useState<Step>(initial);

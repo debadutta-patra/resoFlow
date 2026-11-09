@@ -1,0 +1,15 @@
+# Docs fragment (ROLES only), wrapped in FORMAT_VERSION / [STEP].
+FORMAT_VERSION = 2
+
+[STEP]
+ROLES = [
+  { FIT = [
+    "R2_A, NUC->G23N, B0->800.13MHz, T->23C",
+    "R1_A, B0->800.13MHz",
+    "DW_AB, NUC->N",
+  ] },
+  { CONSTRAIN = [
+    "[R1_B] = 0.5 * [R1_A]",
+    "[R2_B, NUC->N] = [R2_A, NUC->N]",
+  ] },
+]

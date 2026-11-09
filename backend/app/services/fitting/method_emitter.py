@@ -287,8 +287,9 @@ class MethodStepModel(BaseModel):
     id: Optional[str] = None
     name: str = "STEP1"
     parameters: List[ParamSettingModel] = Field(default_factory=list)
-    residue_mode: Literal["include", "exclude"] = Field(
-        default="include", validation_alias=AliasChoices("residue_mode", "residueMode")
+    # "all": no INCLUDE/EXCLUDE. "include"/"exclude" are always written (an empty INCLUDE stays visible).
+    residue_mode: Literal["all", "include", "exclude"] = Field(
+        default="all", validation_alias=AliasChoices("residue_mode", "residueMode")
     )
     residues: List[Union[int, str]] = Field(default_factory=list)
     # ROLES_FROM target by step id (authoritative) and its last known name (legacy / dangling fallback).
@@ -301,6 +302,13 @@ class MethodStepModel(BaseModel):
     )
     search: Optional[StepSearchModel] = None
     statistics: Optional[StatisticsModel] = None
+
+    @model_validator(mode="after")
+    def _default_mode_for_given_residues(self) -> "MethodStepModel":
+        # Python callers that pass residues without a mode mean INCLUDE (the pre-"all" default).
+        if "residue_mode" not in self.model_fields_set and self.residues:
+            self.residue_mode = "include"
+        return self
 
 
 class MethodConfigModel(BaseModel):
@@ -633,7 +641,7 @@ def emit_method_toml_v2(config: MethodConfigModel) -> str:
         lines += ["", f"[{name}]"]
 
         residues = [str(r).strip() for r in step.residues if str(r).strip()]
-        if residues:
+        if step.residue_mode != "all":
             key = "EXCLUDE" if step.residue_mode == "exclude" else "INCLUDE"
             is_all = len(residues) == 1 and residues[0].upper() in ("ALL", "*")
             value = '"ALL"' if is_all else "[" + ", ".join(_format_residue(r) for r in residues) + "]"
@@ -782,6 +790,10 @@ def _parse_roles(roles: Any) -> Tuple[List[ParamSettingModel], List[RoleRuleMode
     rules: List[RoleRuleModel] = []
     assigned: set[str] = set()
     in_table = True
+    # The table always emits CONSTRAIN → FIX → FIT; an action of an earlier bucket that comes
+    # after a later one must stay an ordered rule, or re-emitting would reorder ROLES.
+    bucket = {"CONSTRAIN": 0, "FIX": 1, "FIT": 2}
+    last_bucket = -1
     for action_table in roles if isinstance(roles, list) else []:
         if not isinstance(action_table, dict) or len(action_table) != 1:
             continue
@@ -791,6 +803,8 @@ def _parse_roles(roles: Any) -> Tuple[List[ParamSettingModel], List[RoleRuleMode
             continue
         entries = [e.strip() for e in _str_list(raw_val) if e.strip()]
         names: Optional[List[str]] = None
+        if in_table and bucket[action] < last_bucket:
+            in_table = False
         if in_table:
             if action == "CONSTRAIN":
                 ms = [_PLAIN_CONSTRAINT.match(e) for e in entries]
@@ -812,6 +826,7 @@ def _parse_roles(roles: Any) -> Tuple[List[ParamSettingModel], List[RoleRuleMode
             if names and (any(n in assigned for n in names) or len(set(names)) != len(names)):
                 names = None
         if in_table and names:
+            last_bucket = bucket[action]
             for n, e in zip(names, entries):
                 assigned.add(n)
                 if action == "CONSTRAIN":
@@ -850,11 +865,11 @@ def _parse_statistics(stat_data: Any) -> Optional[StatisticsModel]:
     return None if stats.is_empty() else stats
 
 
-def _parse_selection(section: dict) -> Tuple[Literal["include", "exclude"], List[Union[int, str]]]:
+def _parse_selection(section: dict) -> Tuple[Literal["all", "include", "exclude"], List[Union[int, str]]]:
     inc, exc = _get(section, "INCLUDE"), _get(section, "EXCLUDE")
-    raw, mode = (inc, "include") if inc is not None else (exc, "exclude") if exc is not None else (None, "include")
+    raw, mode = (inc, "include") if inc is not None else (exc, "exclude") if exc is not None else (None, "all")
     if raw is None:
-        return "include", []
+        return "all", []
     residues: List[Union[int, str]] = []
     for r in raw if isinstance(raw, list) else [raw]:
         s = str(r).strip()
@@ -954,7 +969,7 @@ def parse_method_toml(toml_str: str) -> MethodConfigModel:
         for i in range(1, len(steps)):
             steps[i].roles_from = steps[i - 1].name
             steps[i].roles_from_step_id = steps[i - 1].id
-            if not steps[i].residues and steps[i - 1].residues:
+            if steps[i].residue_mode == "all" and steps[i - 1].residue_mode != "all":
                 steps[i].residue_mode = steps[i - 1].residue_mode
                 steps[i].residues = list(steps[i - 1].residues)
 

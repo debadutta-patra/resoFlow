@@ -157,9 +157,9 @@ export function configToToml(config: MethodConfig): string {
     const name = tomlKey(stepTomlName(step, idx));
     lines.push('', `[${name}]`);
 
-    // Selection (step-local; omitted = all profiles)
+    // Selection (step-local). 'all' writes nothing; INCLUDE / EXCLUDE are written even when empty.
     const residues = (step.residues || []).map(r => String(r).trim()).filter(Boolean);
-    if (residues.length) {
+    if (step.residueMode !== 'all') {
       const key = step.residueMode === 'exclude' ? 'EXCLUDE' : 'INCLUDE';
       const isAll = residues.length === 1 && ['ALL', '*'].includes(residues[0].toUpperCase());
       lines.push(`${key} = ${isAll ? '"ALL"' : `[${residues.map(formatResidue).join(', ')}]`}`);
@@ -522,6 +522,10 @@ function parseRoles(step: Step, roles: TomlValue, unparsed: string[]) {
   }
   const assigned = new Set<string>();
   let inTable = true;
+  // The table always emits CONSTRAIN → FIX → FIT; an action of an earlier bucket that
+  // comes after a later one must stay an ordered rule, or re-emitting would reorder ROLES.
+  const BUCKET: Record<RoleAction, number> = { CONSTRAIN: 0, FIX: 1, FIT: 2 };
+  let lastBucket = -1;
   const rules: RoleRule[] = [];
   for (const actionTable of roles) {
     if (!isTable(actionTable) || Object.keys(actionTable).length !== 1) {
@@ -539,6 +543,7 @@ function parseRoles(step: Step, roles: TomlValue, unparsed: string[]) {
     // Plain-name actions on not-yet-assigned parameters map onto the table;
     // anything selector-qualified or overriding switches to ordered rules.
     let names: string[] | null = null;
+    if (inTable && BUCKET[action] < lastBucket) inTable = false;
     if (inTable) {
       if (action === 'CONSTRAIN') {
         const targets = entries.map(e => PLAIN_CONSTRAINT.exec(e)?.[1]?.toUpperCase() ?? null);
@@ -563,6 +568,7 @@ function parseRoles(step: Step, roles: TomlValue, unparsed: string[]) {
       if (names && (names.some(n => assigned.has(n)) || new Set(names).size !== names.length)) names = null;
     }
     if (inTable && names) {
+      lastBucket = BUCKET[action];
       names.forEach((n, idx) => {
         assigned.add(n);
         if (action === 'CONSTRAIN') {
@@ -693,7 +699,7 @@ function parseSelection(step: Step, sec: TomlTable) {
 }
 
 function parseV2Step(name: string, sec: TomlTable, unparsed: string[]): Step {
-  const step: Step = { id: newMethodId('step'), name, parameters: [], residueMode: 'include', residues: [], roleRules: [] };
+  const step: Step = { id: newMethodId('step'), name, parameters: [], residueMode: 'all', residues: [], roleRules: [] };
   parseSelection(step, sec);
   const rf = get(sec, 'ROLES_FROM');
   if (typeof rf === 'string') step.rolesFrom = rf;
@@ -725,7 +731,7 @@ function parseV2Step(name: string, sec: TomlTable, unparsed: string[]): Step {
 }
 
 function parseV1Step(name: string, sec: TomlTable, unparsed: string[]): Step {
-  const step: Step = { id: newMethodId('step'), name, parameters: [], residueMode: 'include', residues: [], roleRules: [] };
+  const step: Step = { id: newMethodId('step'), name, parameters: [], residueMode: 'all', residues: [], roleRules: [] };
   parseSelection(step, sec);
 
   // v1 applies buckets CONSTRAINTS → FIX → FIT; FIT wins on overlap.
@@ -840,7 +846,7 @@ export function tomlToConfig(toml: string): ParseResult {
       steps[i].rolesFrom = steps[i - 1].name;
       steps[i].rolesFromStepId = steps[i - 1].id;
       migration.push(`[${steps[i].name}] implicit role carry-over → ROLES_FROM = "${steps[i - 1].name}"`);
-      if (steps[i].residues.length === 0 && steps[i - 1].residues.length > 0) {
+      if (steps[i].residueMode === 'all' && steps[i - 1].residueMode !== 'all') {
         steps[i].residueMode = steps[i - 1].residueMode;
         steps[i].residues = [...steps[i - 1].residues];
         migration.push(

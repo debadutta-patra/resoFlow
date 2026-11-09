@@ -32,7 +32,7 @@ const names = ['PB', 'KAB', 'DW_AB', 'R2_A'];
 const baseStep: Step = {
   id: 's',
   name: 'STEP',
-  residueMode: 'include',
+  residueMode: 'all',
   residues: [],
   parameters: [{ name: 'DW_AB', mode: 'fix' }],
   roleRules: [

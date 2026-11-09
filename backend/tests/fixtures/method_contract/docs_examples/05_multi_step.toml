@@ -1,0 +1,13 @@
+FORMAT_VERSION = 2
+
+[GLOBAL_FIT]
+INCLUDE = [15, 31, 33, 34, 37]
+ROLES = [{ FIT = ["PB", "KEX_AB"] }]
+
+[LOCAL_FITS]
+INCLUDE = "ALL"
+ROLES_FROM = "GLOBAL_FIT"
+ROLES = [
+  { FIX = ["PB", "KEX_AB"] },
+  { FIT = ["DW_AB"] },
+]

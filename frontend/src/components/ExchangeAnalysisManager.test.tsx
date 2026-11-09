@@ -396,7 +396,7 @@ describe('ExchangeAnalysisManager', () => {
     const templatesBtn = screen.getByRole('button', { name: /Templates/i });
     fireEvent.click(templatesBtn);
     // Same Templates dialog as the CEST and CPMG pages
-    expect(screen.getByText(/Method Strategy Templates/i)).toBeDefined();
+    expect(screen.getByText(/^Method Templates$/i)).toBeDefined();
 
     // Apply template
     const useTemplateBtns = screen.getAllByRole('button', { name: /Use Template/i });
@@ -568,9 +568,9 @@ describe('ExchangeAnalysisManager', () => {
     const templatesBtn = screen.getByRole('button', { name: /Templates/i });
     fireEvent.click(templatesBtn);
 
-    expect(screen.getByText(/Method Strategy Templates/i)).toBeDefined();
-    expect(screen.getByText(/2-State Combined Exchange \(CEST \+ CPMG\)/i)).toBeDefined();
-    expect(screen.getByText(/Grid Search → Refinement \(Exchange\)/i)).toBeDefined();
+    expect(screen.getByText(/^Method Templates$/i)).toBeDefined();
+    expect(screen.getByText(/^2-state CEST \+ CPMG$/i)).toBeDefined();
+    expect(screen.getByText(/GRID → TRF refine \(CEST \+ CPMG\)/i)).toBeDefined();
   });
 });
 

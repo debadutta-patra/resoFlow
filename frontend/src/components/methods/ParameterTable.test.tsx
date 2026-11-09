@@ -11,7 +11,7 @@ afterEach(cleanup);
 const step: Step = {
   id: 's2',
   name: 'LOCAL_FITS',
-  residueMode: 'include',
+  residueMode: 'all',
   residues: [],
   parameters: [
     { name: 'PB', mode: 'fit' },

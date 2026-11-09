@@ -145,7 +145,7 @@ describe('restoring a config saved before search targets stopped being auto-fitt
     const saved: Step = {
       id: 's',
       name: 'OLD',
-      residueMode: 'include',
+      residueMode: 'all',
       residues: [],
       parameters: [{ name: 'DW_AB', mode: 'fit' }],
       search: { mode: 'grid', axes: [{ id: 'a', param: 'KEX_AB', fn: 'log', low: 20, high: 2000, count: 5 }, { id: 'b', param: 'R2_A', qualifier: 'NUC->3N', fn: 'lin', low: 1, high: 9, count: 3 }] },

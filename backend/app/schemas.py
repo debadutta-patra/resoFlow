@@ -449,7 +449,7 @@ class MethodStepSchema(BaseModel):
     id: Optional[str] = None
     name: str = "STEP1"
     parameters: List[ParamSettingSchema] = []
-    residue_mode: str = Field("include", validation_alias=AliasChoices("residue_mode", "residueMode"))
+    residue_mode: str = Field("all", validation_alias=AliasChoices("residue_mode", "residueMode"))
     residues: List[int | str] = []
     roles_from_step_id: Optional[str] = Field(None, validation_alias=AliasChoices("roles_from_step_id", "rolesFromStepId"))
     roles_from: Optional[str] = Field(None, validation_alias=AliasChoices("roles_from", "rolesFrom"))

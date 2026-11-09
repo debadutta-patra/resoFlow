@@ -1,0 +1,7 @@
+FORMAT_VERSION = 2
+
+[STEP]
+ROLES = [
+  { FIX = ["PB", "KEX_AB"] },
+  { FIT = ["DW_AB"] },
+]

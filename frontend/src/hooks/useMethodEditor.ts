@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
 import type { ChemexEndpointFamily } from '../lib/experimentPlugin';
 import type { MethodConfig, Step } from '../lib/methodConfig';
-import { createDefaultMethodConfig, createDefaultStep, materializeLegacySearchFits, newMethodId, normalizeMethodConfig } from '../lib/methodConfig';
+import { createDefaultMethodConfig, createDefaultStep, migrateSavedConfig, newMethodId, normalizeMethodConfig } from '../lib/methodConfig';
 import { setRolesFrom, stepDisplayName, uniqueStepName } from '../lib/methodSteps';
 import { configToToml, tomlToConfig } from '../lib/methodToml';
 import { validateMethodConfig } from '../lib/methodValidation';
@@ -246,8 +246,16 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   };
 
   // ── Templates & import ──
+  /** 'method' templates replace the method; 'addition' templates change the current one. */
   const applyTemplate = (template: MethodTemplate) => {
-    setMethodConfig(materializeLegacySearchFits(normalizeMethodConfig(JSON.parse(JSON.stringify(template.config)))));
+    if (template.kind === 'addition') {
+      const next = template.apply(methodConfig, activeStepIdx);
+      setMethodConfig(next.config);
+      setActiveStepIdx(next.activeStepIdx);
+      notify?.(`Added: ${template.name}`);
+      return;
+    }
+    setMethodConfig(migrateSavedConfig(JSON.parse(JSON.stringify(template.config))));
     setActiveStepIdx(0);
     setUnparsedTomlLines([]);
     setIsRawEditMode(false);
@@ -324,8 +332,8 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     const cfg = saved.method_config;
     if (cfg && Array.isArray(cfg.steps) && cfg.steps.length > 0) {
       const { rawOverride, ...rest } = cfg;
-      // Saved before search targets stopped being auto-fitted: make that FIT explicit (same roles).
-      const structured = materializeLegacySearchFits(normalizeMethodConfig(rest as MethodConfig));
+      // Configs saved by older versions: explicit search FITs and "All profiles" (same meaning).
+      const structured = migrateSavedConfig(rest as MethodConfig);
       setMethodConfigState(structured);
       if (rawOverride && rawOverride.trim()) {
         setMethodToml(rawOverride);

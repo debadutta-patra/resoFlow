@@ -336,7 +336,7 @@ def test_methods_resolve_from_frontend_config(db_session, test_project, auth_hea
         "steps": [
             {"id": "a", "name": "GLOBAL_FIT", "residueMode": "include", "residues": ["13", "26"],
              "parameters": [{"name": "PB", "mode": "fit"}, {"name": "KEX_AB", "mode": "fit"}, {"name": "DW_AB", "mode": "fix"}]},
-            {"id": "b", "name": "LOCAL_FITS", "residueMode": "include", "residues": [], "rolesFrom": "GLOBAL_FIT",
+            {"id": "b", "name": "LOCAL_FITS", "residueMode": "all", "residues": [], "rolesFrom": "GLOBAL_FIT",
              "parameters": [{"name": "PB", "mode": "fix"}, {"name": "KEX_AB", "mode": "fix"}],
              "roleRules": [{"id": "r", "action": "FIT", "entries": ["DW_AB, NUC->26N"]}]},
         ]

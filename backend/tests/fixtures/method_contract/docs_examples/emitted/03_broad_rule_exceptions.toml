@@ -1,0 +1,8 @@
+FORMAT_VERSION = 2
+
+[STEP]
+ROLES = [
+  { FIX = ["DW_AB"] },
+  { FIT = ["DW_AB, NUC->G24N-H"] },
+  { CONSTRAIN = ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"] },
+]

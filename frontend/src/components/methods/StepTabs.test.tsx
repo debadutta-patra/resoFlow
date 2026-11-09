@@ -19,7 +19,7 @@ vi.mock('../../services/api', () => ({
 
 afterEach(cleanup);
 
-const mk = (id: string, name: string): Step => ({ id, name, parameters: [{ name: 'PB', mode: 'fit' }], residueMode: 'include', residues: [] });
+const mk = (id: string, name: string): Step => ({ id, name, parameters: [{ name: 'PB', mode: 'fit' }], residueMode: 'all', residues: [] });
 
 let editorRef: MethodEditor | null = null;
 function Harness({ committed }: { committed?: Record<string, Record<string, number>> }) {

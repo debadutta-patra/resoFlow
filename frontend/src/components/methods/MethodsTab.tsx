@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Lock, Sparkles, Upload, Workflow } from 'lucide-react';
 import type { StartingProvenance } from '../../lib/parameterConfig';
 import type { MethodEditor } from '../../hooks/useMethodEditor';
-import { METHOD_TEMPLATES } from '../../lib/methodTemplates';
+import { METHOD_TEMPLATES, additionTarget, type MethodAdditionTemplate, type MethodTemplate } from '../../lib/methodTemplates';
 import { tomlToConfig } from '../../lib/methodToml';
 import ParameterTable from './ParameterTable';
 import ResidueSelector, { type ResidueItem } from './ResidueSelector';
@@ -244,11 +244,20 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
 
           <ResidueSelector
             residues={residueItems}
-            mode={activeStep.residueMode || 'include'}
+            mode={activeStep.residueMode || 'all'}
             selectedIds={activeStep.residues || []}
             onModeChange={residueMode => editor.handleStepChange({ ...activeStep, residueMode })}
             onSelectionChange={residues => editor.handleStepChange({ ...activeStep, residues })}
             readOnly={readOnly}
+            onCopyFromPrevious={
+              editor.activeStepIdx > 0
+                ? () => {
+                    const prev = methodConfig.steps[editor.activeStepIdx - 1];
+                    editor.handleStepChange({ ...activeStep, residueMode: prev.residueMode, residues: [...(prev.residues || [])] });
+                  }
+                : undefined
+            }
+            previousStepName={editor.activeStepIdx > 0 ? methodConfig.steps[editor.activeStepIdx - 1]?.name : undefined}
           />
 
           <StepStatisticsSection
@@ -289,6 +298,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             editor.applyTemplate(tmpl);
             setShowTemplates(false);
           }}
+          additionTarget={t => additionTarget(t, methodConfig, editor.activeStepIdx)}
         />
       )}
       {showImport && (
@@ -310,72 +320,84 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
 export const MethodTemplatesModal: React.FC<{
   family?: string;
   onClose: () => void;
-  onApply: (template: (typeof METHOD_TEMPLATES)[number]) => void;
-}> = ({ family, onClose, onApply }) => (
-  <ChemexModalShell
-    icon={<Sparkles size={20} />}
-    title="Method Strategy Templates"
-    subtitle="Select a predefined fitting strategy for your ChemEx analysis."
-    onClose={onClose}
-    footer={
-      <button type="button" onClick={onClose} className={chemexBtnSecondary}>
-        Cancel
-      </button>
-    }
-  >
-    {[...METHOD_TEMPLATES]
-      // Templates aimed at this experiment (or generic ones) first.
-      .sort((a, b) => Number(!!b.families?.includes(family ?? '') || !b.families) - Number(!!a.families?.includes(family ?? '') || !a.families))
-      .map(tmpl => {
-      const stepCount = tmpl.config.steps.length;
-      const searchModes = Array.from(new Set(tmpl.config.steps.map(s => s.search?.mode).filter(m => m && m !== 'none'))) as string[];
-      const fitParams = Array.from(
-        new Set(tmpl.config.steps.flatMap(s => (s.parameters || []).filter(p => p.mode === 'fit').map(p => p.name)))
-      );
-      return (
-        <div
-          key={tmpl.id}
-          className="p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/40 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
-        >
-          <div className="space-y-1.5 flex-grow">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                {tmpl.name}
-              </h4>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-bold">
-                {stepCount} Step{stepCount > 1 ? 's' : ''}
-              </span>
-              {searchModes.map(m => (
-                <span key={m} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-bold uppercase">
-                  {m}
-                </span>
-              ))}
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">{tmpl.description}</p>
-            <div className="flex flex-wrap items-center gap-1 pt-1">
-              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">Fitted:</span>
-              {fitParams.map(p => (
-                <span
-                  key={p}
-                  className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[10px] font-bold"
+  onApply: (template: MethodTemplate) => void;
+  /** For addition templates: where they will be added (e.g. "to STEP2"). */
+  additionTarget?: (template: MethodAdditionTemplate) => string;
+}> = ({ family, onClose, onApply, additionTarget }) => {
+  const forFamily = (t: MethodTemplate) => !t.families || t.families.includes((family ?? '') as never);
+  const ordered = [...METHOD_TEMPLATES].sort((a, b) => Number(forFamily(b)) - Number(forFamily(a)));
+  const sections: Array<{ title: string; items: MethodTemplate[] }> = [
+    { title: 'Replace the method', items: ordered.filter(t => t.kind === 'method') },
+    { title: 'Add to the current method', items: ordered.filter(t => t.kind === 'addition') },
+  ];
+  return (
+    <ChemexModalShell
+      icon={<Sparkles size={20} />}
+      title="Method Templates"
+      subtitle="Start from a ChemEx v2 strategy, or add a common piece to the current method."
+      onClose={onClose}
+      footer={
+        <button type="button" onClick={onClose} className={chemexBtnSecondary}>
+          Cancel
+        </button>
+      }
+    >
+      {sections.map(section => (
+        <div key={section.title} className="space-y-2">
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{section.title}</h4>
+          {section.items.map(tmpl => {
+            const steps = tmpl.kind === 'method' ? tmpl.config.steps : [];
+            const searchModes = Array.from(new Set(steps.map(s => s.search?.mode).filter(m => m && m !== 'none'))) as string[];
+            const fitParams = Array.from(new Set(steps.flatMap(s => (s.parameters || []).filter(p => p.mode === 'fit').map(p => p.name))));
+            return (
+              <div
+                key={tmpl.id}
+                className="p-4 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/40 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+              >
+                <div className="space-y-1.5 flex-grow">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{tmpl.name}</h4>
+                    {tmpl.kind === 'method' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-bold">
+                        {steps.length} step{steps.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {searchModes.map(m => (
+                      <span key={m} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-bold uppercase">
+                        {m}
+                      </span>
+                    ))}
+                    {tmpl.model && tmpl.model !== '2st' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 font-bold">model {tmpl.model}</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">{tmpl.description}</p>
+                  {fitParams.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 pt-1">
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">Fitted:</span>
+                      {fitParams.map(p => (
+                        <span key={p} className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[10px] font-bold">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onApply(tmpl)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm whitespace-nowrap transition-colors flex-shrink-0"
                 >
-                  {p}
-                </span>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onApply(tmpl)}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm whitespace-nowrap transition-colors flex-shrink-0"
-          >
-            Use Template
-          </button>
+                  {tmpl.kind === 'addition' ? `Add ${additionTarget ? additionTarget(tmpl) : ''}`.trim() : 'Use template'}
+                </button>
+              </div>
+            );
+          })}
         </div>
-      );
-    })}
-  </ChemexModalShell>
-);
+      ))}
+    </ChemexModalShell>
+  );
+};
 
 // ── Import modal ────────────────────────────────────────────────────────
 

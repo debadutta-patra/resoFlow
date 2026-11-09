@@ -115,7 +115,7 @@ describe.each([cestPlugin, cpmgPlugin, exchangePlugin])('Methods tab on $id', pl
     render(<Harness />);
     expect(screen.getByText('ChemEx Method Configuration')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /Templates/i }));
-    expect(screen.getByText('Method Strategy Templates')).toBeDefined();
+    expect(screen.getByText('Method Templates')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /Edit Raw TOML/i }));

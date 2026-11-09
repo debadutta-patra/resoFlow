@@ -1,0 +1,7 @@
+FORMAT_VERSION = 2
+
+[SELECTED]
+INCLUDE = ["G2", "A4", "C5", "H6"]
+
+[OTHERS]
+EXCLUDE = [12, 18]

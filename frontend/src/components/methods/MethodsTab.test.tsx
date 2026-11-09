@@ -48,19 +48,24 @@ describe('MethodsTab run-state honesty', () => {
     expect((screen.getByRole('button', { name: /Import TOML/ }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: /Edit Raw TOML/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: /Add Step/ })).toBeNull();
-    const chip = screen.getByRole('button', { name: /G3N/ }) as HTMLButtonElement;
-    expect(chip.disabled).toBe(true);
-    fireEvent.click(chip);
-    expect(screen.getByText(/0 of 2 selected/)).toBeDefined();
+    // Selection mode cannot change while locked (chips are hidden in "All profiles").
+    const include = screen.getByRole('radio', { name: /Include only these/ }) as HTMLButtonElement;
+    expect(include.disabled).toBe(true);
+    fireEvent.click(include);
+    expect(screen.getByText(/All 2 profiles/)).toBeDefined();
   });
 
   it('is editable when no run is active, with residue chips in natural order', () => {
     render(<Harness locked={false} />);
     expect(screen.queryByText(/Showing the method snapshot/)).toBeNull();
     expect(screen.getByRole('button', { name: /Add Step/ })).toBeDefined();
+    expect(screen.getByText(/All 2 profiles/)).toBeDefined();
+    fireEvent.click(screen.getByRole('radio', { name: /Include only these/ }));
+    expect(screen.getByText(/INCLUDE is empty/)).toBeDefined();
     const chips = screen.getAllByRole('button').map(b => b.textContent).filter(t => t === 'G3N' || t === 'A39N');
     expect(chips).toEqual(['G3N', 'A39N']);
+    fireEvent.click(screen.getByRole('radio', { name: /Include only these/ }));
     fireEvent.click(screen.getByRole('button', { name: /G3N/ }));
-    expect(screen.getByText(/1 of 2 selected/)).toBeDefined();
+    expect(screen.getByText(/1 of 2 included/)).toBeDefined();
   });
 });

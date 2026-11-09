@@ -9,7 +9,7 @@ const step = (id: string, name: string, extra: Partial<Step> = {}): Step => ({
   id,
   name,
   parameters: [{ name: 'PB', mode: 'fit' }],
-  residueMode: 'include',
+  residueMode: 'all',
   residues: [],
   ...extra,
 });

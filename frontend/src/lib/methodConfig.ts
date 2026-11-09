@@ -137,8 +137,12 @@ export interface Step {
   id: string;               // UUID or unique ID
   name: string;             // TOML section name, e.g. "STEP1"
   parameters: ParamSetting[];
-  residueMode: 'include' | 'exclude';
-  residues: string[];       // profile/spin-system names or residue numbers; empty = all profiles
+  /**
+   * 'all': no INCLUDE/EXCLUDE (every profile). 'include' / 'exclude': INCLUDE / EXCLUDE
+   * `residues` — always written, so an empty INCLUDE (no profiles) stays visible as an error.
+   */
+  residueMode: 'all' | 'include' | 'exclude';
+  residues: string[];       // profile/spin-system names or residue numbers
   /**
    * ROLES_FROM target, by step id (authoritative; survives renames and reordering).
    * Serialised as that step's current name.
@@ -191,7 +195,7 @@ export const createDefaultStep = (name = 'STEP1', id?: string): Step => ({
     { name: 'R1_A', mode: 'default' },
     { name: 'R1_B', mode: 'default' },
   ],
-  residueMode: 'include',
+  residueMode: 'all',
   residues: [],
 });
 
@@ -250,7 +254,7 @@ export function normalizeStep(step: Step): Step {
   return {
     ...step,
     parameters,
-    residueMode: step.residueMode || 'include',
+    residueMode: step.residueMode || 'all',
     residues: step.residues || [],
     roleRules,
     search,
@@ -304,4 +308,21 @@ export function materializeLegacySearchFits(config: MethodConfig): MethodConfig 
     return { ...step, parameters, roleRules };
   });
   return changed ? { ...config, steps } : config;
+}
+
+/**
+ * Configs saved before the explicit "All profiles" mode stored it as an empty INCLUDE
+ * (`'include'` + no residues, which emitted nothing). Restored configs only.
+ */
+export function migrateLegacySelection(config: MethodConfig): MethodConfig {
+  if (!config.steps.some(s => s.residueMode === 'include' && (!s.residues || s.residues.length === 0))) return config;
+  return {
+    ...config,
+    steps: config.steps.map(s => (s.residueMode === 'include' && (!s.residues || s.residues.length === 0) ? { ...s, residueMode: 'all' as const, residues: [] } : s)),
+  };
+}
+
+/** Every one-time migration for configs saved by older resoFlow versions (restore / templates; never TOML import). */
+export function migrateSavedConfig(config: MethodConfig): MethodConfig {
+  return materializeLegacySearchFits(migrateLegacySelection(normalizeMethodConfig(config)));
 }

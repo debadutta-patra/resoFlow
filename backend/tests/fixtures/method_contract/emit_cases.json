@@ -8,7 +8,7 @@
           {
             "id": "s1",
             "name": "STEP1",
-            "residueMode": "include",
+            "residueMode": "all",
             "residues": [],
             "parameters": [
               {
@@ -148,7 +148,7 @@
           {
             "id": "s",
             "name": "GRID_STEP",
-            "residueMode": "include",
+            "residueMode": "all",
             "residues": [],
             "parameters": [
               {
@@ -177,7 +177,7 @@
                   "values": [
                     0.005,
                     0.30000000000000004,
-                    1e-7,
+                    1e-07,
                     2
                   ]
                 },
@@ -269,7 +269,7 @@
           {
             "id": "x",
             "name": "my step",
-            "residueMode": "include",
+            "residueMode": "all",
             "residues": [],
             "parameters": [
               {
@@ -281,7 +281,7 @@
           {
             "id": "y",
             "name": "AFTER",
-            "residueMode": "include",
+            "residueMode": "all",
             "residues": [],
             "rolesFromStepId": "deleted-id",
             "rolesFrom": "GONE",
@@ -290,7 +290,7 @@
           {
             "id": "z",
             "name": "LEGACY",
-            "residueMode": "include",
+            "residueMode": "all",
             "residues": [],
             "rolesFrom": "my step",
             "parameters": []
@@ -306,7 +306,7 @@
           {
             "id": "c",
             "name": "STEP",
-            "residueMode": "include",
+            "residueMode": "all",
             "residues": [],
             "parameters": [
               {

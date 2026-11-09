@@ -10,7 +10,7 @@ const step = (over: Partial<Step>): Step => ({
   id: 's',
   name: 'STEP1',
   parameters: [],
-  residueMode: 'include',
+  residueMode: 'all',
   residues: [],
   ...over,
 });
@@ -124,9 +124,10 @@ describe('ChemEx v2 method.toml emitter', () => {
   it('emits ROLES_FROM, role rules after the table, selection and expanded statistics', () => {
     const toml = configToToml({
       steps: [
-        step({ name: 'GLOBAL_FIT', residues: ['15', '31', 'G24N-H'], parameters: [{ name: 'PB', mode: 'fit' }] }),
+        step({ name: 'GLOBAL_FIT', residueMode: 'include', residues: ['15', '31', 'G24N-H'], parameters: [{ name: 'PB', mode: 'fit' }] }),
         step({
           name: 'LOCAL_FITS',
+          residueMode: 'include',
           residues: ['ALL'],
           rolesFrom: 'GLOBAL_FIT',
           parameters: [{ name: 'DW_AB', mode: 'fix' }],
@@ -379,10 +380,16 @@ describe('Physically relevant search defaults', () => {
 describe('Method Configuration Validation (v2)', () => {
   const known = ['PB', 'KEX_AB', 'CS_A', 'DW_AB', 'R2_A', 'R2_B', 'R1_A', 'R1_B'];
 
-  it('validates starter templates without blocking errors', () => {
-    for (const tmpl of METHOD_TEMPLATES) {
-      const blocking = validateMethodConfig(normalizeMethodConfig(tmpl.config)).filter(e => e.severity === 'error');
-      expect(blocking, tmpl.id).toEqual([]);
+  it('validates starter templates without blocking errors (additions applied to every method template)', () => {
+    const methods = METHOD_TEMPLATES.filter(t => t.kind === 'method');
+    const additions = METHOD_TEMPLATES.filter(t => t.kind === 'addition');
+    for (const tmpl of methods) {
+      const cfg = normalizeMethodConfig(tmpl.config);
+      expect(validateMethodConfig(cfg).filter(e => e.severity === 'error'), tmpl.id).toEqual([]);
+      for (const add of additions) {
+        const next = add.apply(cfg, cfg.steps.length - 1).config;
+        expect(validateMethodConfig(next).filter(e => e.severity === 'error'), `${tmpl.id} + ${add.id}`).toEqual([]);
+      }
     }
   });
 
@@ -603,5 +610,33 @@ SEED = 7
 `);
     expect(unparsed).toEqual([]);
     expect(config.steps[0].statistics).toMatchObject({ mc: { replicates: 20 }, mcmc: { steps: 300, seed: '7', burn: 'auto' } });
+  });
+});
+
+describe('explicit profile selection', () => {
+  it('distinguishes "All profiles" (no key) from an empty INCLUDE (an error)', () => {
+    const all = configToToml({ steps: [step({ residueMode: 'all', residues: [] })] });
+    expect(all).not.toMatch(/INCLUDE|EXCLUDE/);
+    const empty: MethodConfig = { steps: [step({ residueMode: 'include', residues: [] })] };
+    expect(configToToml(empty)).toContain('[STEP1]\nINCLUDE = []\n');
+    expect(validateMethodConfig(empty).some(e => e.severity === 'error' && e.message.includes('INCLUDE selects no profiles'))).toBe(true);
+    expect(tomlToConfig('FORMAT_VERSION = 2\n[A]\n').config.steps[0].residueMode).toBe('all');
+    expect(tomlToConfig('FORMAT_VERSION = 2\n[A]\nINCLUDE = []\n').config.steps[0]).toMatchObject({ residueMode: 'include', residues: [] });
+  });
+
+  it('migrates configs saved before the explicit "All profiles" mode', async () => {
+    const { migrateSavedConfig } = await import('./methodConfig');
+    const legacy = { steps: [step({ residueMode: 'include', residues: [] }), step({ id: 't', name: 'B', residueMode: 'include', residues: ['13'] })] };
+    const m = migrateSavedConfig(legacy);
+    expect(m.steps.map(s => s.residueMode)).toEqual(['all', 'include']);
+    expect(configToToml(m)).not.toContain('INCLUDE = []');
+  });
+});
+
+describe('ROLES order on parse', () => {
+  it('keeps a plain CONSTRAIN that comes after FIT as an ordered rule (no reordering on re-emit)', () => {
+    const toml =
+      'FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { FIX = ["R1_A", "R2_A"] },\n  { FIT = ["PB", "R2_B"] },\n  { CONSTRAIN = ["[R2_B] = [R2_A]"] },\n  { FIX = ["KEX_AB"] },\n]\n';
+    expect(configToToml(tomlToConfig(toml).config)).toBe(toml);
   });
 });

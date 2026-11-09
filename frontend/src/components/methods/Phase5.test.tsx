@@ -23,8 +23,8 @@ vi.mock('../../services/api', () => ({ default: { get: vi.fn().mockResolvedValue
 afterEach(cleanup);
 
 const steps: Step[] = [
-  { id: 'a', name: 'GRID', residueMode: 'include', residues: [], parameters: [] },
-  { id: 'b', name: 'REFINE', residueMode: 'include', residues: [], parameters: [] },
+  { id: 'a', name: 'GRID', residueMode: 'all', residues: [], parameters: [] },
+  { id: 'b', name: 'REFINE', residueMode: 'all', residues: [], parameters: [] },
 ];
 
 const report: ResolveReport = {
@@ -166,7 +166,7 @@ describe('ChemEx errors inline per section', () => {
     stepId: 's', stepName: 'S', message, severity: 'error', origin: 'chemex', source: { step: 'S', field, index },
   });
   const step: Step = {
-    id: 's', name: 'S', residueMode: 'include', residues: [], parameters: [],
+    id: 's', name: 'S', residueMode: 'all', residues: [], parameters: [],
     search: { mode: 'grid', axes: [{ id: 'x', param: 'PB', fn: 'lin', low: 0.1, high: 0.2, count: 3 }] },
     statistics: { mc: { enabled: true, replicates: 0 } },
   };

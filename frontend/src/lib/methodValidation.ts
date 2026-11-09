@@ -233,6 +233,9 @@ export function validateMethodConfig(
     }
 
     // ── Residue selection ──
+    if (step.residueMode === 'include' && (!step.residues || step.residues.length === 0)) {
+      push('INCLUDE selects no profiles, so ChemEx would skip this step. Choose residues, or "All profiles".');
+    }
     if (step.residues && step.residues.length > 0 && totalAvailableResiduesCount > 0) {
       if (step.residueMode === 'exclude' && step.residues.length >= totalAvailableResiduesCount) {
         push(`Step "${stepName}" excludes all residues, leaving no data to fit.`);

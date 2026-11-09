@@ -11,6 +11,11 @@ export interface ResidueItem {
   number: number; // e.g. 13
   label: string; // e.g. "SER13N", "S13N", "G2N-HN", "L3CD1-HD1"
   hasData: boolean;
+  /**
+   * A minor-state (B) shift was picked for this residue in the pick step (CEST dips).
+   * Undefined when the experiment has no such picks (filter hidden).
+   */
+  hasMinorPick?: boolean;
 }
 
 /** The most informative parse of an item: the label usually carries the residue type, the id may not. */
@@ -55,4 +60,16 @@ export function residueMatches(item: ResidueItem, query: string): boolean {
     if (three) haystack.push(three, `${three}${key.resNum}`);
   }
   return haystack.some(h => h.toLowerCase().includes(q));
+}
+
+type MinorPick = { cs_b?: number | null; cs_c?: number | null; cs_d?: number | null; cs_e?: number | null; cs_f?: number | null } | null | undefined;
+
+/**
+ * Whether a minor-state (B–F) shift was picked for `residue` in Pick CEST; undefined when
+ * no residue has picks at all (the "picked dip" filter is then hidden).
+ */
+export function minorPickFlag(picks: Record<string, MinorPick> | null | undefined, residue: string): boolean | undefined {
+  if (!picks || Object.keys(picks).length === 0) return undefined;
+  const p = picks[residue];
+  return !!p && [p.cs_b, p.cs_c, p.cs_d, p.cs_e, p.cs_f].some(v => typeof v === 'number' && Number.isFinite(v));
 }

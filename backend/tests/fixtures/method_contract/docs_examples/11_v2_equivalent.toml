@@ -1,0 +1,8 @@
+FORMAT_VERSION = 2
+
+[STEP]
+ROLES = [
+  { CONSTRAIN = ["[R2_B] = [R2_A]"] },
+  { FIX = ["PB"] },
+  { FIT = ["KEX_AB"] },
+]

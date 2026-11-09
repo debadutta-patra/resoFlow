@@ -5,7 +5,7 @@ import { actionTarget, rulesByTargetName, stepBadge, stepBadgeText, tableActionC
 const step: Step = {
   id: 's',
   name: 'S',
-  residueMode: 'include',
+  residueMode: 'all',
   residues: [],
   parameters: [
     { name: 'R2_B', mode: 'constrain', expression: '[R2_A]' },

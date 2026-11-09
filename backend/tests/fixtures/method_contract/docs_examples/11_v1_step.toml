@@ -1,0 +1,4 @@
+[STEP]
+CONSTRAINTS = ["[R2_B] = [R2_A]"]
+FIX = ["PB"]
+FIT = ["KEX_AB"]

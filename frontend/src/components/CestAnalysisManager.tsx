@@ -19,6 +19,7 @@ import { ParametersTab } from './parameters/ParametersTab';
 import { ConfigChangedBadge, FitModeHelp, LastCommittedBadge, LineageBadge, LiveRunBadge, StaleStartingValuesBadge } from './chemex/RunStatusBadges';
 import { FIT_MODE_HELP } from '../lib/runProgress';
 import { committedGlobalsByStep, lastCommittedStep } from '../lib/committedResults';
+import { minorPickFlag } from '../lib/residueSelection';
 import { chemexConfigHash, experimentsFingerprint, findLineage, isRunActive, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from '../lib/chemexRun';
 import { useMethodEditor } from '../hooks/useMethodEditor';
 import { useParameterEditor } from '../hooks/useParameterEditor';
@@ -377,8 +378,9 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
           number: parseInt(p.residue.replace(/\D/g, ''), 10) || 0,
           label: p.full_residue || p.residue,
           hasData: !!(p.experiments && p.experiments.length > 0 && !p.experiments[0].error),
+          hasMinorPick: minorPickFlag(picks, p.residue),
         })),
-    [profiles, parameterConfig]
+    [profiles, parameterConfig, picks]
   );
 
   const runLocked = isRunActive(status, isRunning);

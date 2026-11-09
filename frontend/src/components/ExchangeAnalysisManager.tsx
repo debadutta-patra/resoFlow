@@ -20,6 +20,7 @@ import { ParametersTab } from './parameters/ParametersTab';
 import { ConfigChangedBadge, LastCommittedBadge, LineageBadge, LiveRunBadge, StaleStartingValuesBadge } from './chemex/RunStatusBadges';
 import type { RunProgress } from '../lib/runProgress';
 import { committedGlobalsByStep, lastCommittedStep } from '../lib/committedResults';
+import { minorPickFlag } from '../lib/residueSelection';
 import type { ProfileRef } from '../lib/parameterConfig';
 import {
   computePickHash,
@@ -294,8 +295,9 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         number: parseInt(k.replace(/\D/g, ''), 10) || 0,
         label: residueMapping[k] || k,
         hasData: withData.has(k),
+        hasMinorPick: minorPickFlag(picks, k),
       }));
-  }, [parameterConfig, cestProfiles, cpmgProfiles, combinedProfiles, residueMapping]);
+  }, [parameterConfig, cestProfiles, cpmgProfiles, combinedProfiles, residueMapping, picks]);
 
   const runLocked = isRunActive(status, isFitting);
   const methodEditor = useMethodEditor({

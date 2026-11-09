@@ -1,0 +1,57 @@
+[
+  {
+    "id": "2st_standard",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { FIX = [\"R1_A\", \"R2_A\"] },\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\", \"CS_A\"] },\n  { CONSTRAIN = [\"[R2_B] = [R2_A]\", \"[R1_B] = [R1_A]\"] },\n]\n"
+  },
+  {
+    "id": "2st_standard_cpmg",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { CONSTRAIN = [\"[R2_B] = [R2_A]\"] },\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\", \"R2_A\"] },\n]\n"
+  },
+  {
+    "id": "2st_standard_exchange",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\", \"CS_A\"] },\n  { CONSTRAIN = [\"[R2_B] = [R2_A]\", \"[R1_B] = [R1_A]\"] },\n]\n"
+  },
+  {
+    "id": "two_step_global_local",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[GLOBAL_FIT]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\"] },\n]\n\n[LOCAL_FITS]\nROLES_FROM = \"GLOBAL_FIT\"\nROLES = [\n  { FIX = [\"PB\", \"KEX_AB\"] },\n  { FIT = [\"DW_AB\"] },\n]\n"
+  },
+  {
+    "id": "grid_and_refine_cest",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[GRID_SEARCH]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\", \"CS_A\"] },\n]\n\n[GRID_SEARCH.SEARCH.GRID]\nAXES = [\n  \"[PB] = log(0.005, 0.2, 10)\",\n  \"[KEX_AB] = log(20, 2000, 12)\",\n]\n\n[REFINE]\nROLES_FROM = \"GRID_SEARCH\"\n"
+  },
+  {
+    "id": "grid_and_refine_cpmg",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[GRID_SEARCH]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\", \"R2_A\"] },\n]\n\n[GRID_SEARCH.SEARCH.GRID]\nAXES = [\n  \"[PB] = log(0.005, 0.2, 10)\",\n  \"[KEX_AB] = log(100, 10000, 12)\",\n]\n\n[REFINE]\nROLES_FROM = \"GRID_SEARCH\"\n"
+  },
+  {
+    "id": "grid_and_refine_exchange",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[GRID_SEARCH]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\", \"CS_A\"] },\n]\n\n[GRID_SEARCH.SEARCH.GRID]\nAXES = [\n  \"[PB] = log(0.005, 0.2, 10)\",\n  \"[KEX_AB] = log(20, 10000, 14)\",\n]\n\n[REFINE]\nROLES_FROM = \"GRID_SEARCH\"\n"
+  },
+  {
+    "id": "de_seeding",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[DE]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\", \"CS_A\"] },\n]\n\n[DE.SEARCH.DE]\nSEED = 597\nCOORDINATES = [\n  \"[PB] = log(0.001, 0.2)\",\n  \"[KEX_AB] = log(10, 5000)\",\n]\n"
+  },
+  {
+    "id": "3st_standard",
+    "model": "3st",
+    "toml": "FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { FIX = [\"R1_A\", \"R2_A\"] },\n  { FIT = [\"PB\", \"PC\", \"KEX_AB\", \"KEX_AC\", \"CS_A\", \"DW_AB\", \"DW_AC\"] },\n  { CONSTRAIN = [\"[R2_B] = [R2_A]\", \"[R1_B] = [R1_A]\", \"[R2_C] = [R2_A]\", \"[R1_C] = [R1_A]\"] },\n]\n"
+  },
+  {
+    "id": "two_step_global_local+tie_b_relaxation",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[GLOBAL_FIT]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\"] },\n  { CONSTRAIN = [\"[R2_B] = [R2_A]\", \"[R1_B] = [R1_A]\"] },\n]\n\n[LOCAL_FITS]\nROLES_FROM = \"GLOBAL_FIT\"\nROLES = [\n  { FIX = [\"PB\", \"KEX_AB\"] },\n  { FIT = [\"DW_AB\"] },\n]\n"
+  },
+  {
+    "id": "two_step_global_local+final_statistics",
+    "model": "2st",
+    "toml": "FORMAT_VERSION = 2\n\n[GLOBAL_FIT]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\", \"DW_AB\"] },\n]\n\n[LOCAL_FITS]\nROLES_FROM = \"GLOBAL_FIT\"\nROLES = [\n  { FIX = [\"PB\", \"KEX_AB\"] },\n  { FIT = [\"DW_AB\"] },\n]\n\n[FINAL_STATISTICS]\nROLES_FROM = \"LOCAL_FITS\"\nSTATISTICS = { MC = 100, BS = 100 }\n"
+  }
+]

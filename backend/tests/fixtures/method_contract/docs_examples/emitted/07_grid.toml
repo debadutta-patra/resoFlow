@@ -1,0 +1,13 @@
+FORMAT_VERSION = 2
+
+[STEP]
+ROLES = [
+  { FIT = ["PB", "KEX_AB", "DW_AB"] },
+]
+
+[STEP.SEARCH.GRID]
+AXES = [
+  "[PB] = values(0.01, 0.02, 0.05, 0.1, 0.2)",
+  "[KEX_AB] = log(100, 5000, 12)",
+  "[DW_AB] = lin(0, 10, 5)",
+]
