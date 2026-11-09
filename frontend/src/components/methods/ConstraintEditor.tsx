@@ -180,10 +180,21 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
         </button>
       </div>
       {rhsError && parts.rhs && (
-        <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400">
-          {rhsError.message}
-          {rhsError.end > rhsError.start && (
-            <span className="font-mono text-red-500/80"> — at “{parts.rhs.slice(rhsError.start, rhsError.end)}”</span>
+        <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400 flex flex-wrap items-center gap-1.5">
+          <span>
+            {rhsError.message}
+            {!rhsError.suggestion && rhsError.end > rhsError.start && (
+              <span className="font-mono text-red-500/80"> — at “{parts.rhs.slice(rhsError.start, rhsError.end)}”</span>
+            )}
+          </span>
+          {rhsError.suggestion && !readOnly && (
+            <button
+              type="button"
+              onClick={() => set(parts.target, parts.rhs.slice(0, rhsError.start) + rhsError.suggestion + parts.rhs.slice(rhsError.end))}
+              className="px-1.5 rounded border border-red-300 dark:border-red-700 font-mono hover:bg-red-50 dark:hover:bg-red-900/30"
+            >
+              Use {rhsError.suggestion}
+            </button>
           )}
         </p>
       )}

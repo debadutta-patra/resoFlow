@@ -1,41 +1,147 @@
 {
   "_comment": "Shared by frontend/src/lib/methodGrammar.contract.test.ts (TS mirror) and backend/tests/test_method_grammar_contract.py (ChemEx). Both must agree with `valid`.",
   "selectors": [
-    {"text": "DW_AB", "valid": true},
-    {"text": "R2_A, NUC->G23N, B0->800.13MHz, T->23C", "valid": true},
-    {"text": "R1_A, B0->800.13MHz", "valid": true},
-    {"text": "DW_AB, NUC->N", "valid": true},
-    {"text": "R1_A, [P]->0.001M, D2O->0.1", "valid": true},
-    {"text": "R1_A, T->25", "valid": true},
-    {"text": "pb", "valid": true},
-    {"text": "DW_AB, NUC->26N, NUC->28N", "valid": false},
-    {"text": "DW_AB, FOO->1", "valid": false},
-    {"text": "DW_AB,", "valid": false},
-    {"text": "DW_AB, NUC->26N extra", "valid": false},
-    {"text": "R1_A, D2O->1.5", "valid": false},
-    {"text": "R1_A, B0->-5MHz", "valid": false},
-    {"text": "R1_A, T->25K", "valid": false},
-    {"text": "2DW", "valid": false},
-    {"text": "", "valid": false}
+    {
+      "text": "DW_AB",
+      "valid": true
+    },
+    {
+      "text": "R2_A, NUC->G23N, B0->800.13MHz, T->23C",
+      "valid": true
+    },
+    {
+      "text": "R1_A, B0->800.13MHz",
+      "valid": true
+    },
+    {
+      "text": "DW_AB, NUC->N",
+      "valid": true
+    },
+    {
+      "text": "R1_A, [P]->0.001M, D2O->0.1",
+      "valid": true
+    },
+    {
+      "text": "R1_A, T->25",
+      "valid": true
+    },
+    {
+      "text": "pb",
+      "valid": true
+    },
+    {
+      "text": "DW_AB, NUC->26N, NUC->28N",
+      "valid": false
+    },
+    {
+      "text": "DW_AB, FOO->1",
+      "valid": false
+    },
+    {
+      "text": "DW_AB,",
+      "valid": false
+    },
+    {
+      "text": "DW_AB, NUC->26N extra",
+      "valid": false
+    },
+    {
+      "text": "R1_A, D2O->1.5",
+      "valid": false
+    },
+    {
+      "text": "R1_A, B0->-5MHz",
+      "valid": false
+    },
+    {
+      "text": "R1_A, T->25K",
+      "valid": false
+    },
+    {
+      "text": "2DW",
+      "valid": false
+    },
+    {
+      "text": "",
+      "valid": false
+    }
   ],
   "constraints": [
-    {"text": "[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]", "valid": true},
-    {"text": "[R1_B] = 0.5 * [R1_A]", "valid": true},
-    {"text": "[R2_B, NUC->N] = [R2_A, NUC->N]", "valid": true},
-    {"text": "[R2_B] = 0.5 * ([R2_A] + 1.0)", "valid": true},
-    {"text": "[R2_B] = -[R2_A] / 2e-1", "valid": true},
-    {"text": "[R1_B, [P]->0.1M] = [R1_A, [P]->0.1M]", "valid": true},
-    {"text": "[R2_B] = [R2_A] ** 2", "valid": false},
-    {"text": "[R2_B] = sqrt([R2_A])", "valid": false},
-    {"text": "[R2_B] = 2[R2_A]", "valid": false},
-    {"text": "[R2_B] = ([R2_A]", "valid": false},
-    {"text": "[R2_B] = [R2_A", "valid": false},
-    {"text": "[R2_B] = [R2_A, FOO->1]", "valid": false},
-    {"text": "R2_B = [R2_A]", "valid": false},
-    {"text": "[R2_B] = [R2_A] = 1", "valid": false},
-    {"text": "[R2_B] =", "valid": false},
-    {"text": "[R2_B] = [R2_A] +", "valid": false},
-    {"text": "[R2_B] = [R2_A] ^ 2", "valid": false},
-    {"text": "[R2_B] = 1_000", "valid": false}
+    {
+      "text": "[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]",
+      "valid": true
+    },
+    {
+      "text": "[R1_B] = 0.5 * [R1_A]",
+      "valid": true
+    },
+    {
+      "text": "[R2_B, NUC->N] = [R2_A, NUC->N]",
+      "valid": true
+    },
+    {
+      "text": "[R2_B] = 0.5 * ([R2_A] + 1.0)",
+      "valid": true
+    },
+    {
+      "text": "[R2_B] = -[R2_A] / 2e-1",
+      "valid": true
+    },
+    {
+      "text": "[R1_B, [P]->0.1M] = [R1_A, [P]->0.1M]",
+      "valid": true
+    },
+    {
+      "text": "[R2_B] = [R2_A] ** 2",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = sqrt([R2_A])",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = 2[R2_A]",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = ([R2_A]",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = [R2_A",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = [R2_A, FOO->1]",
+      "valid": false
+    },
+    {
+      "text": "R2_B = [R2_A]",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = [R2_A] = 1",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] =",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = [R2_A] +",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = [R2_A] ^ 2",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = 1_000",
+      "valid": false
+    },
+    {
+      "text": "[R2_B] = 0.5 * R2_A",
+      "valid": false
+    }
   ]
 }

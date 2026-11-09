@@ -61,3 +61,15 @@ describe('v2 constraint grammar (mirror of ChemEx parse_constraint)', () => {
     expect('[R1_A] ^ 2'.slice(bad.error!.start, bad.error!.end)).toBe('^');
   });
 });
+
+describe('bare parameter names on a right-hand side', () => {
+  it('says to bracket them and suggests the fix', () => {
+    const rhs = '0.5 * R2_A';
+    const { error } = checkConstraintRhs(rhs);
+    expect(error?.message).toBe('Parameter references go in brackets: write [R2_A] instead of R2_A');
+    expect(rhs.slice(error!.start, error!.end)).toBe('R2_A');
+    expect(error?.suggestion).toBe('[R2_A]');
+    expect(checkConstraintRhs(rhs.slice(0, error!.start) + error!.suggestion + rhs.slice(error!.end)).error).toBeUndefined();
+    expect(checkConstraintRhs('sqrt([R2_A])').error?.message).toContain("unsupported token 'sqrt'");
+  });
+});

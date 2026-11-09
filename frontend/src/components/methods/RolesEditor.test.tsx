@@ -228,3 +228,23 @@ describe('useResolvedRoles', () => {
     expect(result.current.stale).toBe(false);
   });
 });
+
+describe('constraint editor quick fix', () => {
+  it('offers to bracket a bare parameter name', async () => {
+    const { default: ConstraintEditor } = await import('./ConstraintEditor');
+    function H() {
+      const [v, setV] = useState('[R2_B] = 0.5 * R2_A');
+      return (
+        <>
+          <ConstraintEditor value={v} onChange={setV} paramNames={names} catalog={catalog} />
+          <output data-testid="eq">{v}</output>
+        </>
+      );
+    }
+    render(<H />);
+    expect(screen.getByText(/Parameter references go in brackets: write \[R2_A\]/)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Use [R2_A]' }));
+    expect(screen.getByTestId('eq').textContent).toBe('[R2_B] = 0.5 * [R2_A]');
+    expect(screen.queryByText(/Parameter references go in brackets/)).toBeNull();
+  });
+});

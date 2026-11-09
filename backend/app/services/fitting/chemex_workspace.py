@@ -87,6 +87,33 @@ def _stage_data(run_dir: Path, target: Path) -> None:
         _alias(dest_upper, "data")
 
 
+def _stage_configured_experiments(run_dir: Path, target: Path, experiments: list) -> Path:
+    """Write exactly the experiments a run would use (the saved config's generatedExperiments).
+
+    The run task clears Experiments/ and writes these, so stale files left in the run
+    directory by earlier generations must not be validated. Only base file names are used,
+    and a saved ``path`` is read only if it lies inside the run directory.
+    """
+    dest = target / "Experiments"
+    dest.mkdir(parents=True, exist_ok=True)
+    _alias(target / "experiments", "Experiments")
+    root = run_dir.resolve()
+    for i, entry in enumerate(experiments):
+        if isinstance(entry, dict):
+            name = Path(str(entry.get("filename") or f"exp_{i}.toml")).name
+            text = entry.get("toml_content") or ""
+            if not text and entry.get("path"):
+                src = Path(str(entry["path"]))
+                src = (src if src.is_absolute() else run_dir / src).resolve()
+                if src.is_file() and (src == root or root in src.parents):
+                    text = src.read_text(encoding="utf-8")
+        else:
+            name, text = f"exp_{i}.toml", str(entry)
+        if text.strip():
+            (dest / name).write_text(text, encoding="utf-8")
+    return dest
+
+
 def stage_validation_workspace(
     run_dir: Optional[Path],
     target: Path,
@@ -97,18 +124,24 @@ def stage_validation_workspace(
     include: Optional[list[str]] = None,
     exclude: Optional[list[str]] = None,
     stage_methods: bool = True,
+    experiments: Optional[list] = None,
 ) -> FitJobSpec:
     """Populate ``target`` from ``run_dir`` and return a spec for ChemEx validation/inspection.
 
     A missing run directory yields an empty workspace (ChemEx then reports
     "no data"); nothing outside the run directory is ever read. With
     ``stage_methods=False`` the saved method files are ignored (baseline roles).
+    ``experiments`` (the saved config's generatedExperiments) selects exactly the
+    experiment files a run would use; without it, the run directory's are staged.
     """
     src = run_dir if run_dir is not None and run_dir.is_dir() else None
 
     if src is not None:
         _stage_data(src, target)
-    exp_dir = _stage_toml_dir(src, target, ("Experiments", "experiments"), "Experiments", copy=False) if src else _mkdirs(target, "Experiments")
+    if src and experiments:
+        exp_dir = _stage_configured_experiments(src, target, experiments)
+    else:
+        exp_dir = _stage_toml_dir(src, target, ("Experiments", "experiments"), "Experiments", copy=False) if src else _mkdirs(target, "Experiments")
     param_dir = _stage_toml_dir(src, target, ("Parameters", "parameters"), "Parameters", copy=True) if src else _mkdirs(target, "Parameters")
     method_dir = (
         _stage_toml_dir(src, target, ("Methods", "methods"), "Methods", copy=True)

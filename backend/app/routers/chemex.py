@@ -105,6 +105,13 @@ def _run_dir(analysis: models.Analysis) -> Path:
     return Path(_get_analysis_run_dir(analysis))
 
 
+def _configured_experiments(analysis: models.Analysis) -> Optional[list]:
+    """The experiments a run of this analysis would use (saved config), if recorded."""
+    cfg = load_chemex_config(analysis) or {}
+    exps = cfg.get("generatedExperiments") or cfg.get("experiments")
+    return exps if isinstance(exps, list) and exps else None
+
+
 def _missing_inputs(spec: FitJobSpec) -> Optional[str]:
     return missing_inputs_message(spec.experiment_files, spec.parameter_files)
 
@@ -127,6 +134,7 @@ def validate_chemex_inputs(
         include=req.include,
         exclude=req.exclude,
         sharing_warnings=True,
+        experiments=_configured_experiments(analysis),
     )
 
 
@@ -155,6 +163,7 @@ def inspect_chemex_parameters(
             method_toml=req.method_toml,
             include=req.include,
             stage_methods=req.method_toml is not None,
+            experiments=_configured_experiments(analysis),
         )
         if (missing := _missing_inputs(spec)):
             return {"parameters": [], "warnings": [], "experiments": [], "error": missing}
@@ -196,6 +205,7 @@ def validate_method_endpoint(
         include=req.include,
         exclude=req.exclude,
         sharing_warnings=req.sharing_warnings,
+        experiments=_configured_experiments(analysis),
     )
     report["method_toml"] = method_toml
     return report
@@ -223,4 +233,4 @@ def get_step_timings(analysis: models.Analysis = Depends(get_analysis)) -> dict[
     """Per-step wall-clock durations of the analysis's last ChemEx run, with the number of
     fits each step performed (for runtime / cost estimates of the next run)."""
     model = (load_chemex_config(analysis) or {}).get("model") or "2st"
-    return step_timings_with_evaluations(_run_dir(analysis), model=model)
+    return step_timings_with_evaluations(_run_dir(analysis), model=model, experiments=_configured_experiments(analysis))

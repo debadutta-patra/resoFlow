@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
 import re
 import sys
+import threading
 from argparse import Namespace
 from collections import defaultdict
 from pathlib import Path
@@ -36,6 +38,28 @@ from .spec import FitJobSpec
 
 _CONDITION_KEYS = ("temperature", "h_larmor_frq", "p_total", "l_total", "d2o")
 
+# ChemEx resolves experiment / data paths against the working directory, so these entry
+# points chdir into a job workspace. The working directory is process-wide: in a threaded
+# server (FastAPI runs sync routes in a thread pool) two concurrent calls would chdir under
+# each other, and one could delete its temporary workspace while another is inside it
+# ("[Errno 2] No such file or directory"). In-process ChemEx work is therefore serialized.
+_CHEMEX_CWD_LOCK = threading.RLock()
+
+
+def serialized_cwd(fn):
+    """Run ``fn`` holding the process-wide ChemEx working-directory lock (re-entrant)."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _CHEMEX_CWD_LOCK:
+            try:
+                os.getcwd()
+            except FileNotFoundError:  # left in a deleted directory by an earlier caller
+                os.chdir(os.path.expanduser("~") if os.path.isdir(os.path.expanduser("~")) else "/")
+            return fn(*args, **kwargs)
+
+    return wrapper
+
 
 def _conditions(param_name: Any) -> dict[str, float]:
     cond = getattr(param_name, "conditions", None)
@@ -44,6 +68,7 @@ def _conditions(param_name: Any) -> dict[str, float]:
     return {k: getattr(cond, k) for k in _CONDITION_KEYS if getattr(cond, k, None) is not None}
 
 
+@serialized_cwd
 def build_session(
     spec: FitJobSpec,
     job_dir: Path | None = None,
@@ -204,6 +229,7 @@ def _check_legacy_names(base_dir: Path, spec: FitJobSpec) -> list[dict[str, str]
     return errors
 
 
+@serialized_cwd
 def inspect_parameters(
     spec: FitJobSpec,
     job_dir: Path | None = None,
@@ -311,6 +337,7 @@ def inspect_parameters(
         }
 
 
+@serialized_cwd
 def validate_inputs(spec: FitJobSpec, job_dir: Path | None = None) -> dict[str, Any]:
     """Run steps 1-9 dry build plus method plan validation and return a structured report."""
     base_dir = Path(job_dir).resolve() if job_dir is not None else Path.cwd().resolve()

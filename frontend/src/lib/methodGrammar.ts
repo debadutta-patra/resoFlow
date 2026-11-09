@@ -37,6 +37,8 @@ export interface GrammarError {
   message: string;
   start: number;
   end: number;
+  /** Replacement for text[start, end) that fixes the error, when obvious (e.g. "[R2_A]"). */
+  suggestion?: string;
 }
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -171,7 +173,12 @@ function tokenizeRhs(rhs: string, offset: number): { tokens: Token[]; refs: Pars
       continue;
     }
     const word = /^[^\s[\]+\-*/()]+/.exec(rhs.slice(i))?.[0] ?? c;
-    return { tokens, refs, error: { message: `Constraint contains unsupported token '${word}'`, start: offset + i, end: offset + i + word.length } };
+    const span = { start: offset + i, end: offset + i + word.length };
+    if (NAME.test(word) && rhs[i + word.length] !== '(') {
+      // A bare parameter name: ChemEx only accepts bracketed references.
+      return { tokens, refs, error: { message: `Parameter references go in brackets: write [${word}] instead of ${word}`, ...span, suggestion: `[${word}]` } };
+    }
+    return { tokens, refs, error: { message: `Constraint contains unsupported token '${word}'`, ...span } };
   }
   return { tokens, refs };
 }

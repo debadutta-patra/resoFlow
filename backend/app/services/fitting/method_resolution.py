@@ -30,6 +30,7 @@ def validate_method_for_analysis(
     include: Optional[list[str]] = None,
     exclude: Optional[list[str]] = None,
     sharing_warnings: bool = False,
+    experiments: Optional[list] = None,
 ) -> dict[str, Any]:
     """Validate ``method_toml`` with ChemEx against an analysis's inputs.
 
@@ -41,7 +42,8 @@ def validate_method_for_analysis(
     with tempfile.TemporaryDirectory() as td:
         job_dir = Path(td)
         spec = stage_validation_workspace(
-            run_dir, job_dir, model=model, parameter_toml=parameter_toml, include=include, exclude=exclude, stage_methods=False
+            run_dir, job_dir, model=model, parameter_toml=parameter_toml, include=include, exclude=exclude,
+            stage_methods=False, experiments=experiments,
         )
         missing = missing_inputs_message(spec.experiment_files, spec.parameter_files)
         if missing:
@@ -52,7 +54,7 @@ def validate_method_for_analysis(
         return validate_method(spec, method_path, job_dir, sharing_warnings=sharing_warnings)
 
 
-def step_timings_with_evaluations(run_dir: Path, model: str = "2st") -> dict[str, Any]:
+def step_timings_with_evaluations(run_dir: Path, model: str = "2st", experiments: Optional[list] = None) -> dict[str, Any]:
     """Last run's per-step durations plus how many fits each step performed.
 
     ``evaluations`` is 1 for a plain TRF step and the profiled GRID evaluation count
@@ -74,7 +76,9 @@ def step_timings_with_evaluations(run_dir: Path, model: str = "2st") -> dict[str
         method_files = sorted((run_dir / "Methods").glob("*.toml")) if (run_dir / "Methods").is_dir() else []
         by_name: dict[str, Any] = {}
         if method_files:
-            report = validate_method_for_analysis(run_dir, method_toml=method_files[0].read_text(encoding="utf-8"), model=model)
+            report = validate_method_for_analysis(
+                run_dir, method_toml=method_files[0].read_text(encoding="utf-8"), model=model, experiments=experiments
+            )
             for st in report.get("steps", []):
                 search = st.get("search") or {}
                 if search.get("kind") == "grid":

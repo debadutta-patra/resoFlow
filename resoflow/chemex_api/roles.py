@@ -38,7 +38,7 @@ from chemex.configuration.method_validation import resolve_de_coordinates, resol
 from chemex.configuration.methods import read_method_plan
 from chemex.parameters.parameterization import ParameterRole
 
-from .session import _conditions, build_session
+from .session import _conditions, build_session, serialized_cwd
 from .spec import FitJobSpec
 
 
@@ -284,6 +284,7 @@ def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, c
     return out
 
 
+@serialized_cwd
 def resolve_roles(spec: FitJobSpec, method_path: Path, job_dir: Path) -> dict[str, Any]:
     """Validate ``method_path`` with ChemEx and resolve every step's effective roles.
 
@@ -321,6 +322,7 @@ def resolve_roles(spec: FitJobSpec, method_path: Path, job_dir: Path) -> dict[st
     return report
 
 
+@serialized_cwd
 def validate_method(
     spec: FitJobSpec,
     method_path: Path,
