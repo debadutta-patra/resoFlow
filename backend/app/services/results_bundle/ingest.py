@@ -362,16 +362,15 @@ def ingest_results(
                             v2_1d = load_v2_1d_profiles(grid_d)
                             for prof in v2_1d:
                                 p_id = prof.get("parameter", "")
-                                for pt in prof.get("points", []):
+                                # Loader returns parallel arrays, not point dicts.
+                                for xv, cv, dv in zip(
+                                    prof.get("x", []),
+                                    prof.get("chisqr", []),
+                                    prof.get("delta_chisqr", []),
+                                ):
                                     cur.execute(
                                         "INSERT INTO grid_1d VALUES (?, ?, ?, ?, ?)",
-                                        (
-                                            step_key,
-                                            p_id,
-                                            float(pt.get("value", 0.0)),
-                                            float(pt.get("chisqr", 0.0)),
-                                            float(pt.get("delta_chisqr", 0.0)),
-                                        ),
+                                        (step_key, p_id, float(xv), float(cv), float(dv)),
                                     )
                     except Exception as g_exc:
                         logger.warning("Could not ingest grid_1d for step %s: %s", sname, g_exc)

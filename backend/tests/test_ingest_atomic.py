@@ -69,3 +69,21 @@ def test_ingest_atomic_failure_preserves_existing_bundle(tmp_path: Path) -> None
     assert not (test_run_dir / "results.tmp").exists()
     assert not (test_run_dir / "results.old").exists()
     assert (test_run_dir / "results" / "manifest.json").read_text() == manifest_before
+
+
+def test_ingest_stores_grid_1d_profiles(tmp_path: Path) -> None:
+    """GRID 1D profile points land in the bundle's grid_1d table."""
+    import sqlite3
+
+    test_run_dir = tmp_path / "run"
+    shutil.copytree(FIXTURE_PATH, test_run_dir)
+
+    ingest_results(test_run_dir, analysis_uuid="grid-1d")
+
+    conn = sqlite3.connect(test_run_dir / "results" / "results.sqlite")
+    try:
+        rows = conn.execute("SELECT param_id, COUNT(*) FROM grid_1d GROUP BY param_id").fetchall()
+    finally:
+        conn.close()
+    assert rows, "expected grid_1d rows from Grid/Profiles/1D"
+    assert all(n > 1 for _, n in rows)

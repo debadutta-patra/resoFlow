@@ -80,3 +80,21 @@ def test_locate_synthetic_v2026_9():
         assert len(locate.data_files(root, "STEP1")) == 1
         assert locate.grid_dir(root, "STEP1") == step1 / "Grid"
         assert locate.statistics_dir(root, "mc", "STEP1") == step1 / "Statistics" / "MonteCarlo"
+
+
+def test_named_step_resolves_to_root_in_single_step_layout(tmp_path: Path):
+    """A single-step run's lone step (e.g. STEP1) maps to the flat root layout."""
+    (tmp_path / "Parameters").mkdir()
+    (tmp_path / "Grid" / "Profiles" / "1D").mkdir(parents=True)
+
+    assert locate.step_dir(tmp_path, "STEP1") == tmp_path
+    assert locate.grid_dir(tmp_path, "STEP1") == tmp_path / "Grid"
+
+
+def test_unknown_step_in_multi_step_layout_does_not_fall_back(tmp_path: Path):
+    (tmp_path / "STEP1" / "Grid").mkdir(parents=True)
+    (tmp_path / "STEP1" / "Parameters").mkdir()
+
+    assert locate.step_dir(tmp_path, "STEP9") == tmp_path / "STEP9"
+    assert locate.grid_dir(tmp_path, "STEP9") is None
+    assert locate.grid_dir(tmp_path, "STEP1") == tmp_path / "STEP1" / "Grid"

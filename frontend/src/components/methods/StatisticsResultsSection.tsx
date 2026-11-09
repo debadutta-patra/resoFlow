@@ -226,7 +226,28 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
   const availableMethods = Object.keys(methods).filter(k => !!methods[k]);
 
   if (availableMethods.length === 0) {
-    return null;
+    const covStatus = uncertaintyStatistics.covariance_status;
+    const reason: string | undefined = covStatus?.reason;
+    if (!reason) return null;
+    const isGridWithheld = /grid/i.test(reason);
+    return (
+      <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 flex gap-3 text-xs">
+        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <div className="font-bold text-amber-800 dark:text-amber-300">
+            No uncertainty estimates for this step
+          </div>
+          <div className="text-amber-700 dark:text-amber-400">
+            Covariance errors {covStatus?.terminal === 'withheld' ? 'were withheld' : 'are unavailable'}: {reason.replace(/^withheld:\s*/i, '')}.
+          </div>
+          {isGridWithheld && (
+            <div className="text-amber-700/80 dark:text-amber-400/80">
+              Add a refinement step after the grid search (Methods → template "Grid → Refine", with ROLES_FROM the grid step) to obtain covariance errors, or attach Monte Carlo / Bootstrap / MCMC statistics to that step.
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   const [activeTab, setActiveTab] = useState<string>(availableMethods[0]);

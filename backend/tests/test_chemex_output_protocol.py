@@ -44,6 +44,28 @@ def test_protocol_1_1_single_step_layout(fixtures_root: Path):
     assert res.primary_step.statistics.chisqr is not None
 
 
+def test_protocol_1_1_single_step_with_v2_method_header(tmp_path: Path):
+    """A v2 method file's top-level FORMAT_VERSION scalar is not a step."""
+    path = tmp_path / "single_step"
+    shutil.copytree(FIXTURES_ROOT_2026_9 / "single_step", path)
+    methods_dir = path / "run_info" / "inputs" / "methods"
+    methods_dir.mkdir(parents=True, exist_ok=True)
+    for old in methods_dir.glob("*.toml"):
+        old.unlink()
+    (methods_dir / "method.toml").write_text(
+        'FORMAT_VERSION = 2\n\n[STEP1]\nROLES = [\n  { FIT = ["PB", "KEX_AB"] },\n]\n',
+        encoding="utf-8",
+    )
+
+    res = parse_output_tree(path)
+
+    assert res.is_multi_step is False
+    assert "FORMAT_VERSION" not in res.steps
+    assert res.primary_step is not None
+    assert res.primary_step.parameters is not None
+    assert "KEX_AB" in res.primary_step.parameters.get_global_parameters()
+
+
 @pytest.mark.parametrize("fixtures_root", ALL_FIXTURE_ROOTS, ids=lambda p: p.name)
 def test_protocol_1_1_multi_step_layout(fixtures_root: Path):
     """Verify multi-step fit produces subdirectories matching declared steps."""
@@ -238,6 +260,28 @@ PB     = 7.02971e-02 # ±1.14784e-03
     assert kex.stderr is None
     assert kex.has_stderr is False
     assert kex.error_reason == "NOT_CALCULATED"
+
+
+def test_protocol_1_5_grid_withheld_errors(tmp_path: Path):
+    """ChemEx 2026.9 GRID-withheld errors are a reason, not a constraint expression."""
+    why = "withheld: GRID coordinates were selected on a discrete profiled surface"
+    fitted = tmp_path / "fitted.toml"
+    fitted.write_text(f"[GLOBAL]\nKEX_AB = 4.00000e+02 # (error unavailable: {why})\n")
+    constrained = tmp_path / "constrained.toml"
+    constrained.write_text(f"[GLOBAL]\nPA = 9.95466e-01 # error unavailable: {why}; (1.0 - [PB])\n")
+
+    warnings = []
+    kex = parse_parameter_file(fitted, "fitted", warnings)["GLOBAL"]["KEX_AB"]
+    assert kex.value == 400.0
+    assert kex.stderr is None
+    assert kex.expression is None
+    assert kex.is_constrained is False
+    assert kex.error_reason == f"WITHHELD: {why}"
+
+    pa = parse_parameter_file(constrained, "constrained", warnings)["GLOBAL"]["PA"]
+    assert pa.is_constrained is True
+    assert pa.expression == "1.0 - [PB]"
+    assert pa.error_reason == f"WITHHELD: {why}"
 
 
 # ==========================================

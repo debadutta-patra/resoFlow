@@ -773,7 +773,10 @@ def _extract_step_names_from_methods(
     for method_file in sorted(methods_dir.glob("*.toml")):
         try:
             data = tomllib.loads(method_file.read_text(encoding="utf-8"))
-            for section in data.keys():
+            # Only tables are steps; v2 top-level scalars (FORMAT_VERSION) are not.
+            for section, body in data.items():
+                if not isinstance(body, dict):
+                    continue
                 if section and section not in step_names:
                     step_names.append(section)
         except Exception as exc:

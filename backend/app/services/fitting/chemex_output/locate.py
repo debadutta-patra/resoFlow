@@ -95,6 +95,11 @@ def step_dir(run_dir: Path | str, step_name: Optional[str] = None) -> Path:
         if c.is_dir() and c.name.lower() == step_name.lower():
             return c
 
+    # Single-step runs write outputs at the root, not under <STEP>/; the UI
+    # still addresses that lone step by its method name (e.g. STEP1).
+    if any((root / d).is_dir() for d in ("Parameters", "Grid", "Data")):
+        return root
+
     return root / step_name
 
 

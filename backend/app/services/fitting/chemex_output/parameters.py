@@ -26,6 +26,12 @@ RE_STDERR = re.compile(r"^[±\+\-]\s*(?P<stderr>[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[
 RE_EXPR_ONLY = re.compile(r"^\s*\((?P<expr>.*)\)\s*$")
 RE_FIXED = re.compile(r"^\s*\(fixed\)\s*$", re.IGNORECASE)
 RE_NOT_CALCULATED = re.compile(r"^\s*\(error\s+not\s+calculated\)\s*$", re.IGNORECASE)
+# ChemEx 2026.9: "(error unavailable: withheld: <why>)" in fitted.toml, or
+# "error unavailable: <why>; (<expr>)" in constrained.toml.
+RE_UNAVAILABLE = re.compile(
+    r"^\s*\(?\s*error\s+unavailable\s*:\s*(?P<reason>[^;()]*?)\s*\)?\s*(?:;\s*\((?P<expr>.*)\))?\s*$",
+    re.IGNORECASE,
+)
 
 
 def _clean_token(token: str) -> str:
@@ -52,6 +58,13 @@ def _parse_comment(
 
     if RE_NOT_CALCULATED.match(comment):
         return (None, False, "NOT_CALCULATED", None)
+
+    m_unavail = RE_UNAVAILABLE.match(comment)
+    if m_unavail:
+        reason = m_unavail.group("reason").strip()
+        code = "WITHHELD" if reason.lower().startswith("withheld") else "UNAVAILABLE"
+        expr = m_unavail.group("expr")
+        return (None, False, f"{code}: {reason}" if reason else code, expr.strip() if expr else None)
 
     m_err = RE_STDERR.match(comment)
     if m_err:
