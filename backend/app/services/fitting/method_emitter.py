@@ -540,10 +540,12 @@ def _constraint_entry(p: ParamSettingModel) -> Optional[str]:
 
 
 def step_role_actions(step: MethodStepModel) -> List[Tuple[str, List[str]]]:
-    """Ordered ROLES actions for a step: table (CONSTRAIN → FIX → FIT), then explicit rules."""
+    """Ordered ROLES actions for a step: table (CONSTRAIN → FIX → FIT), then explicit rules.
+
+    Search targets are never added to FIT implicitly (GRID/DE do not change roles).
+    """
     step = normalize_step(step)
     actions: List[Tuple[str, List[str]]] = []
-    mode_of = {p.name.upper(): p.mode for p in step.parameters}
 
     constrain = [e for e in (_constraint_entry(p) for p in step.parameters if p.mode == "constrain") if e]
     if constrain:
@@ -552,17 +554,6 @@ def step_role_actions(step: MethodStepModel) -> List[Tuple[str, List[str]]]:
     if fix:
         actions.append(("FIX", fix))
     fit = [p.name.upper() for p in step.parameters if p.mode in ("fit", "grid")]
-    # Search targets must be final FIT coordinates: auto-fit baseline ones.
-    rule_fit = {e.strip().upper() for r in step.role_rules if r.action == "FIT" for e in r.entries}
-    if step.search and step.search.mode != "none":
-        for axis in step.search.axes:
-            sel = axis_selector(axis)
-            if (
-                mode_of.get(axis.param.upper(), "default") == "default"
-                and sel not in fit
-                and sel.upper() not in rule_fit
-            ):
-                fit.append(sel)
     if fit:
         actions.append(("FIT", fit))
     for rule in step.role_rules:
@@ -856,13 +847,6 @@ def _parse_v2_step(name: str, section: dict) -> MethodStepModel:
                 axes=_parse_axes(_get(de, "COORDINATES"), legacy=False),
                 seed=seed if isinstance(seed, int) and not isinstance(seed, bool) else None,
             )
-    # Keep parse → emit a fixed point: a leading FIT rule made only of search selectors
-    # on baseline parameters is exactly what the emitter auto-adds to the table FIT.
-    if search and search.mode != "none" and rules and rules[0].action == "FIT":
-        mode_of = {p.name.upper(): p.mode for p in params}
-        auto = {axis_selector(a).upper() for a in search.axes if mode_of.get(a.param.upper(), "default") == "default"}
-        if rules[0].entries and all(e.strip().upper() in auto for e in rules[0].entries):
-            rules = rules[1:]
     rf = _get(section, "ROLES_FROM")
     return MethodStepModel(
         name=name,

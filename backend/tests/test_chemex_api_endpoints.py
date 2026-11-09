@@ -377,3 +377,27 @@ def test_inspect_reports_protected_parameters(db_session, test_project, auth_hea
     by = {r["name"]: r for r in rows}
     assert by["KAB"]["protected"] is True
     assert by["PB"]["protected"] is False and by["PB"]["estimable"] is True
+
+
+def test_step_timings_endpoint(db_session, test_project, auth_headers):
+    """Durations come back with each step's fit count, recomputed once from the run's method snapshot."""
+    analysis = _make_analysis(db_session, test_project, "analysis-timings")
+    url = _url(test_project, analysis.analysis_uuid, "step-timings")
+    assert client.get(url, headers=auth_headers).json() == {"state": None, "steps": []}
+    run_dir = Path(test_project.local_directory_path) / "cest_fitting" / analysis.analysis_uuid
+    (run_dir / "Methods").mkdir()
+    (run_dir / "Methods" / "method.toml").write_text(
+        'FORMAT_VERSION = 2\n\n[GRID]\nINCLUDE = [13, 26]\nROLES = [{ FIT = ["PB", "DW_AB"] }]\n\n'
+        '[GRID.SEARCH.GRID]\nAXES = ["[PB] = values(0.01, 0.02, 0.03)", "[DW_AB] = lin(-5.0, 5.0, 4)"]\n\n[REFINE]\nROLES_FROM = "GRID"\n',
+        encoding="utf-8",
+    )
+    (run_dir / "step_timings.json").write_text(
+        '{"state": "DONE", "steps": [{"name": "GRID", "index": 1, "seconds": 48.0}, {"name": "REFINE", "index": 2, "seconds": 2.5}]}',
+        encoding="utf-8",
+    )
+    body = client.get(url, headers=auth_headers).json()
+    grid, refine = body["steps"]
+    assert grid["evaluations"] == 3 * (4 + 4)  # 3 global points × (4 local points for each of 2 residues)
+    assert refine["evaluations"] == 1
+    assert '"evaluations"' in (run_dir / "step_timings.json").read_text()  # cached
+    assert client.get(url).status_code == 401

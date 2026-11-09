@@ -64,11 +64,15 @@ function constraintEntry(p: ParamSetting): string | null {
   return `[${p.name.toUpperCase()}] = ${expr}`;
 }
 
-/** The ordered ROLES actions a step emits (table first, then explicit rules). */
+/**
+ * The ordered ROLES actions a step emits: the table's plain-name actions
+ * (CONSTRAIN → FIX → FIT), then the explicit rules. Search targets are NOT added
+ * to FIT implicitly — GRID/DE never change roles; an axis whose target is not a
+ * final FIT coordinate is reported (see `materializeLegacySearchFits` for old configs).
+ */
 export function stepRoleActions(step: Step): Array<{ action: RoleAction; entries: string[] }> {
   const actions: Array<{ action: RoleAction; entries: string[] }> = [];
   const params = step.parameters || [];
-  const modeOf = new Map(params.map(p => [p.name.toUpperCase(), p.mode]));
 
   const constrain = params.filter(p => p.mode === 'constrain').map(constraintEntry).filter((e): e is string => !!e);
   if (constrain.length) actions.push({ action: 'CONSTRAIN', entries: constrain });
@@ -77,20 +81,6 @@ export function stepRoleActions(step: Step): Array<{ action: RoleAction; entries
   if (fix.length) actions.push({ action: 'FIX', entries: fix });
 
   const fit = params.filter(p => p.mode === 'fit' || p.mode === 'grid').map(p => p.name.toUpperCase());
-  // Search targets must be final FIT coordinates: auto-fit any axis whose
-  // parameter is left at its baseline role in the table.
-  const ruleFit = new Set(
-    (step.roleRules ?? []).filter(r => r.action === 'FIT').flatMap(r => r.entries.map(e => e.trim().toUpperCase()))
-  );
-  const search = step.search;
-  if (search && search.mode !== 'none') {
-    for (const axis of search.axes) {
-      const base = axis.param.toUpperCase();
-      const mode = modeOf.get(base) ?? 'default';
-      const sel = axisSelector(axis);
-      if (mode === 'default' && !fit.includes(sel) && !ruleFit.has(sel.toUpperCase())) fit.push(sel);
-    }
-  }
   if (fit.length) actions.push({ action: 'FIT', entries: fit });
 
   for (const rule of step.roleRules ?? []) {
@@ -678,22 +668,6 @@ function parseSelection(step: Step, sec: TomlTable) {
   }
 }
 
-/**
- * The emitter auto-adds search selectors (whose parameter is at baseline) to
- * the table's FIT action. If the first ordered rule is a FIT made only of such
- * selectors, it sits in the adjacent position, so drop it to keep
- * parse → emit a fixed point.
- */
-function absorbAutoFitRule(step: Step) {
-  const first = step.roleRules?.[0];
-  if (!first || first.action !== 'FIT' || !step.search || step.search.mode === 'none') return;
-  const modeOf = new Map(step.parameters.map(p => [p.name.toUpperCase(), p.mode]));
-  const auto = new Set(
-    step.search.axes.filter(a => (modeOf.get(a.param.toUpperCase()) ?? 'default') === 'default').map(a => axisSelector(a).toUpperCase())
-  );
-  if (first.entries.length && first.entries.every(e => auto.has(e.trim().toUpperCase()))) step.roleRules = step.roleRules!.slice(1);
-}
-
 function parseV2Step(name: string, sec: TomlTable, unparsed: string[]): Step {
   const step: Step = { id: newMethodId('step'), name, parameters: [], residueMode: 'include', residues: [], roleRules: [] };
   parseSelection(step, sec);
@@ -717,7 +691,6 @@ function parseV2Step(name: string, sec: TomlTable, unparsed: string[]): Step {
       };
     }
   }
-  absorbAutoFitRule(step);
   const stats = parseStatistics(get(sec, 'STATISTICS'), unparsed, name);
   if (stats) step.statistics = stats;
 

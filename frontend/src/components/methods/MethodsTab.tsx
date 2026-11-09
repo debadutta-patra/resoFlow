@@ -226,6 +226,11 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             availableParams={editor.availableParamsMeta}
             startingValues={startingValues}
             readOnly={readOnly}
+            catalog={editor.baselineRoles.catalog}
+            resolvedSearch={resolvedStep?.search ?? null}
+            resolvedStale={stale}
+            timings={editor.stepTimings}
+            onAddRefineStep={() => editor.stepHandlers.onAddRefineStep(editor.activeStepIdx)}
           />
 
           <ResidueSelector

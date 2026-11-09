@@ -155,3 +155,76 @@ def test_protected_parameters_are_flagged_and_rejected(resolve):
     ok = resolve('FORMAT_VERSION = 2\n\n[STEP]\nROLES = [{ FIT = ["PB"] }]\n')
     kab = _by_id(ok["steps"][0])["__KAB"]
     assert kab["protected"] is True and kab["role"] == "derived" and kab["decided_by"] == "model"
+
+
+def _axes(step: dict) -> list[dict]:
+    return step["search"]["axes"]
+
+
+def test_grid_axes_later_specific_replaces_broad_and_counts_points(resolve):
+    report = resolve(
+        """FORMAT_VERSION = 2
+
+[STEP]
+INCLUDE = [13, 26, 28]
+ROLES = [{ FIT = ["PB", "DW_AB"] }]
+
+[STEP.SEARCH.GRID]
+AXES = [
+  "[PB] = values(0.01, 0.02)",
+  "[DW_AB] = lin(-5.0, 5.0, 3)",
+  "[DW_AB, NUC->26N] = values(1.0, 2.0)",
+]
+"""
+    )
+    assert report["valid"], report["errors"]
+    search = report["steps"][0]["search"]
+    pb, broad, specific = search["axes"]
+    assert pb["coordinates"] == ["__PB"] and pb["owned"] == 1 and pb["points"] == 2
+    assert len(broad["coordinates"]) == 3 and broad["owned"] == 2  # 26N taken over by the later axis
+    assert specific["coordinates"] == ["__DW_AB_26N"] and specific["owned"] == 1
+    assert search["global_points"] == 2
+    assert search["local_points"] == {"13N": 3, "26N": 2, "28N": 3}
+    assert search["evaluations"] == 2 * (3 + 2 + 3)
+
+
+def test_role_change_flags_only_the_invalidated_grid_axis(resolve):
+    report = resolve(
+        """FORMAT_VERSION = 2
+
+[STEP]
+INCLUDE = [13]
+ROLES = [{ FIT = ["PB"] }, { FIX = ["DW_AB"] }]
+
+[STEP.SEARCH.GRID]
+AXES = ["[PB] = values(0.01, 0.02)", "[DW_AB] = lin(-5.0, 5.0, 3)"]
+"""
+    )
+    pb, dw = _axes(report["steps"][0])
+    assert pb["error"] is None
+    assert "no active final independent FIT coordinate" in dw["error"]["message"]
+    assert report["valid"] is False  # ChemEx's own validation agrees
+
+
+def test_de_coordinates_must_resolve_to_one_fit_coordinate_within_bounds(resolve):
+    report = resolve(
+        """FORMAT_VERSION = 2
+
+[STEP]
+ROLES = [{ FIT = ["PB", "DW_AB"] }, { FIX = ["KEX_AB"] }]
+
+[STEP.SEARCH.DE]
+SEED = 18446744073709551615
+COORDINATES = [
+  "[DW_AB] = lin(-5.0, 5.0)",
+  "[DW_AB, NUC->26N] = lin(-5.0, 5.0)",
+  "[KEX_AB] = log(10.0, 500.0)",
+  "[PB] = log(0.01, 5.0)",
+]
+"""
+    )
+    broad, single, fixed, wide = _axes(report["steps"][0])
+    assert "exactly one" in broad["error"]["message"]
+    assert single["error"] is None and single["coordinates"] == ["__DW_AB_26N"]
+    assert "not a final independent FIT coordinate" in fixed["error"]["message"]
+    assert "outside physical bounds" in wide["error"]["message"]

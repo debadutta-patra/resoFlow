@@ -464,6 +464,7 @@ def test_wait_for_job_tracks_current_step():
             '{"kind": "step", "name": "GLOBAL_FIT", "index": 1, "total": 2, "t": 100.0}\n'
             '{"kind": "fit", "iteration": 3, "chisqr": 10.0, "redchi": 1.1}\n'
             '{"kind": "step", "name": "LOCAL_FITS", "index": 2, "total": 2, "t": 200.0}\n'
+            '{"kind": "grid", "done": 3, "total": 12}\n'
             '{"kind": "fit", "iteration": 7, "chisqr": 9.0, "redchi": 1.05}\n'
         )
         log_file = job_dir / "chemex.log"
@@ -493,5 +494,12 @@ def test_wait_for_job_tracks_current_step():
         assert snapshots[-1]["kind"] == "completed"
         log_text = log_file.read_text()
         assert "Step 1/2: GLOBAL_FIT" in log_text and "Step 2/2: LOCAL_FITS" in log_text
+
+        # Per-step wall-clock durations for the next run's estimates.
+        timings = json.loads((job_dir / "step_timings.json").read_text())
+        assert timings["state"] == "DONE"
+        g, l = timings["steps"]
+        assert (g["name"], g["seconds"], g["grid_points"]) == ("GLOBAL_FIT", 100.0, None)
+        assert l["name"] == "LOCAL_FITS" and l["grid_points"] == 12 and l["seconds"] is not None and not l.get("incomplete")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

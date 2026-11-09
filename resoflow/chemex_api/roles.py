@@ -25,12 +25,16 @@ from typing import Any
 
 from chemex.configuration.method_plan import (
     ConstrainAction,
+    DeSearch,
     FitAction,
     FixAction,
+    GridSearch,
+    GridValues,
     MethodFormatError,
     MethodPlan,
     SourceRef,
 )
+from chemex.configuration.method_validation import resolve_de_coordinates, resolve_grid_axes
 from chemex.configuration.methods import read_method_plan
 from chemex.parameters.parameterization import ParameterRole
 
@@ -127,6 +131,87 @@ def _origin_dict(origin: RuleOrigin | None, current_step: str) -> dict[str, Any]
     }
 
 
+def _axis_points(axis: Any) -> int:
+    spacing = axis.spacing
+    return len(spacing.values) if isinstance(spacing, GridValues) else int(spacing.count)
+
+
+def _search_report(step: Any, parameterization: Any, model: Any, spin_of: dict[str, str]) -> dict[str, Any] | None:
+    """Per-axis resolution of SEARCH.GRID / SEARCH.DE against this step's final roles.
+
+    ChemEx's own validator stops at the first bad axis; resolving each axis on its
+    own lets the editor flag every affected axis (e.g. after a role change).
+    """
+    search = step.search
+    if search is None:
+        return None
+    scope = tuple(parameterization.scope_ids)
+    in_scope = set(scope)
+    fit_ids = tuple(pid for pid in scope if parameterization.role(pid) is ParameterRole.FIT)
+    fit_set = set(fit_ids)
+
+    if isinstance(search, GridSearch):
+        axes: list[dict[str, Any]] = []
+        for i, axis in enumerate(search.axes):
+            entry: dict[str, Any] = {
+                "index": i, "selector": axis.selector.render(), "points": _axis_points(axis),
+                "coordinates": [], "owned": 0, "error": None,
+            }
+            try:
+                resolved = resolve_grid_axes(GridSearch((axis,)), model, active_scope_ids=scope, final_fit_ids=fit_ids)
+                entry["coordinates"] = [r.param_id for r in resolved]
+            except Exception as exc:
+                entry["error"] = method_error(exc)
+            axes.append(entry)
+        out: dict[str, Any] = {"kind": "grid", "axes": axes, "global_points": None, "local_points": {}, "evaluations": None}
+        if not any(a["error"] for a in axes):
+            # Later axes replace earlier broad ones for the same concrete coordinate.
+            final = resolve_grid_axes(search, model, active_scope_ids=scope, final_fit_ids=fit_ids)
+            global_points, local = 1, {}
+            for r in final:
+                axes[r.declaration_ordinal]["owned"] += 1
+                spin = spin_of.get(r.param_id, "")
+                if spin:
+                    local[spin] = local.get(spin, 1) * len(r.values)
+                else:
+                    global_points *= len(r.values)
+            out["global_points"] = global_points
+            out["local_points"] = local
+            # Exact factorisation: each global point profiles every residue factor's local grid.
+            out["evaluations"] = global_points * (sum(local.values()) if local else 1)
+        return out
+
+    if isinstance(search, DeSearch):
+        coords: list[dict[str, Any]] = []
+        for i, coordinate in enumerate(search.coordinates):
+            entry = {"index": i, "selector": coordinate.selector.render(), "coordinates": [], "error": None}
+            try:
+                param_id = resolve_de_coordinates(DeSearch(search.seed, (coordinate,)), model)[0].param_id
+                entry["coordinates"] = [param_id]
+                if param_id not in in_scope:
+                    raise MethodFormatError(f"DE target {param_id} is not in this step's selected profiles", coordinate.source)
+                if param_id not in fit_set:
+                    raise MethodFormatError(f"DE target {param_id} is not a final independent FIT coordinate", coordinate.source)
+                cfg = model.configuration[param_id]
+                rng = coordinate.range
+                if rng.low < cfg.lower_bound or rng.high > cfg.upper_bound:
+                    raise MethodFormatError(
+                        f"Search range for {param_id} lies outside physical bounds [{cfg.lower_bound}, {cfg.upper_bound}]",
+                        coordinate.source,
+                    )
+            except Exception as exc:
+                entry["error"] = method_error(exc)
+            coords.append(entry)
+        seen: dict[str, int] = {}
+        for c in coords:
+            for pid in c["coordinates"]:
+                if pid in seen and c["error"] is None:
+                    c["error"] = {"message": f"Duplicate DE coordinate {pid} (also coordinate {seen[pid] + 1})", "type": "MethodFormatError", "source": {}}
+                seen.setdefault(pid, c["index"])
+        return {"kind": "de", "axes": coords}
+    return None
+
+
 def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, chain: list[RuleOrigin]) -> dict[str, Any]:
     model = session.parameter_factory.sealed_parameter_model
     experiments.select_profiles(step.selection)
@@ -137,6 +222,7 @@ def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, c
         "profiles": len(experiments),
         "parameters": [],
         "counts": {"fit": 0, "fix": 0, "constrained": 0, "derived": 0},
+        "search": None,
         "error": None,
     }
     if not required:
@@ -190,6 +276,11 @@ def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, c
                 "protected": bool(getattr(declaration, "model_owned", False)),
             }
         )
+    spin_of = {p["id"]: p["spin"] for p in out["parameters"]}
+    try:
+        out["search"] = _search_report(step, parameterization, model, spin_of)
+    except Exception as exc:  # never let the search preview hide the roles
+        out["search"] = {"kind": "grid" if isinstance(step.search, GridSearch) else "de", "axes": [], "error": method_error(exc)}
     return out
 
 

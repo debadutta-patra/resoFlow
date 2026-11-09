@@ -257,3 +257,47 @@ export function normalizeStep(step: Step): Step {
 export function normalizeMethodConfig(config: MethodConfig): MethodConfig {
   return linkRolesFrom({ ...config, steps: (config.steps || []).map(normalizeStep) });
 }
+
+/**
+ * One-off migration for configs saved before search targets stopped being
+ * auto-added to FIT: makes that implicit FIT explicit, at the same position the
+ * old emitter put it (unqualified targets → table FIT; qualified selectors → a FIT
+ * rule directly after the table actions), so the method's roles are unchanged.
+ * Applied to restored configs and templates only — never to imported TOML, whose
+ * meaning is exactly what ChemEx reads.
+ */
+export function materializeLegacySearchFits(config: MethodConfig): MethodConfig {
+  let changed = false;
+  const steps = config.steps.map(raw => {
+    const step = normalizeStep(raw);
+    const search = step.search;
+    if (!search || search.mode === 'none' || search.axes.length === 0) return step;
+    const modeOf = new Map(step.parameters.map(p => [p.name.toUpperCase(), p.mode]));
+    const ruleFit = new Set(
+      (step.roleRules ?? []).filter(r => r.action === 'FIT').flatMap(r => r.entries.map(e => e.trim().toUpperCase()))
+    );
+    const parameters = [...step.parameters];
+    const qualified: string[] = [];
+    for (const axis of search.axes) {
+      const name = axis.param.trim().toUpperCase();
+      const qual = (axis.qualifier || '').trim().replace(/^,\s*/, '');
+      const selector = qual ? `${name}, ${qual}` : name;
+      if ((modeOf.get(name) ?? 'default') !== 'default' || ruleFit.has(selector.toUpperCase())) continue;
+      if (qual) {
+        if (!qualified.includes(selector)) qualified.push(selector);
+      } else {
+        const k = parameters.findIndex(p => p.name.toUpperCase() === name);
+        if (k === -1) parameters.push({ name, mode: 'fit' });
+        else parameters[k] = { ...parameters[k], mode: 'fit' };
+        modeOf.set(name, 'fit');
+      }
+    }
+    if (parameters.length === step.parameters.length && parameters.every((p, i) => p === step.parameters[i]) && qualified.length === 0) return step;
+    changed = true;
+    const roleRules = qualified.length
+      ? [{ id: newMethodId('rule'), action: 'FIT' as const, entries: qualified }, ...(step.roleRules ?? [])]
+      : step.roleRules;
+    return { ...step, parameters, roleRules };
+  });
+  return changed ? { ...config, steps } : config;
+}

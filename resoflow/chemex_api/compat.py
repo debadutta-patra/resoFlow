@@ -202,6 +202,14 @@ def verify_hooks() -> bool:
     ):
         if not hasattr(owner, attr):
             raise ChemExCompatError(f"Missing role-resolution hook: {owner.__name__}.{attr}")
+    try:
+        from chemex.configuration.method_validation import resolve_de_coordinates, resolve_grid_axes
+    except (ImportError, AttributeError) as exc:
+        raise ChemExCompatError(f"Missing search-resolution hook: {exc}") from exc
+    if not {"active_scope_ids", "final_fit_ids"} <= set(inspect.signature(resolve_grid_axes).parameters):
+        raise ChemExCompatError("Hook signature mismatch for resolve_grid_axes(search, model, *, active_scope_ids, final_fit_ids).")
+    if list(inspect.signature(resolve_de_coordinates).parameters) != ["search", "model"]:
+        raise ChemExCompatError("Hook signature mismatch for resolve_de_coordinates(search, model).")
     if list(inspect.signature(_build_action_rules).parameters) != ["actions", "definitions"]:
         raise ChemExCompatError("Hook signature mismatch for parameterization._build_action_rules(actions, definitions).")
 

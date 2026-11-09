@@ -41,7 +41,10 @@ function gridThenRefine(family: ExperimentFamily, id: string, name: string, desc
     families: [family],
     config: {
       steps: [
-        step(`${id}_grid`, 'GRID_SEARCH', base, { search: search('grid', family, ['PB', 'KEX_AB']) }),
+        // GRID never changes roles: its axes must be FIT explicitly.
+        step(`${id}_grid`, 'GRID_SEARCH', [{ name: 'PB', mode: 'fit' }, { name: 'KEX_AB', mode: 'fit' }, ...base], {
+          search: search('grid', family, ['PB', 'KEX_AB']),
+        }),
         step(`${id}_refine`, 'REFINE', [
           { name: 'PB', mode: 'fit' },
           { name: 'KEX_AB', mode: 'fit' },

@@ -404,7 +404,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                           {searchKind && (
                             <span
                               className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                              title={searchKind === 'grid' ? 'Scanned by this step\'s GRID search (must be FIT)' : 'DE coordinate in this step (must be FIT)'}
+                              title={searchKind === 'grid' ? 'Scanned by this step\'s GRID search (must already be FIT)' : 'DE coordinate in this step (must already be FIT)'}
                             >
                               {searchKind === 'grid' ? 'Grid' : 'DE'}
                             </span>
@@ -519,7 +519,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                           Default → {baseline ?? (baselineRoles?.loading ? '…' : 'unresolved')}
                         </span>
                         <span className="italic">
-                          {searchKind ? '· auto-added to FIT because it is a search target' : '· omitted from ROLES'}
+                          {searchKind ? '· search target: must resolve to FIT (see the search section)' : '· omitted from ROLES'}
                         </span>
                       </div>
                     )}

@@ -4,6 +4,7 @@ import { stepRoleActions, stepTomlName } from './methodToml';
 import { axisPointCount } from './searchDefaults';
 import { seedError } from './seed';
 import { rolesFromError, stepNameError } from './methodSteps';
+import { rulesByTargetName } from './resolvedRoles';
 import { constraintTargetName, parseConstraint, parseSelector, selectorName } from './methodGrammar';
 import type { ParameterCatalog } from './baselineRoles';
 
@@ -29,6 +30,36 @@ export function selectorError(selector: string, knownUpper?: Set<string>): strin
 export function constraintError(eq: string): string | null {
   const { error } = parseConstraint(eq);
   return error ? `${error.message}.` : null;
+}
+
+/**
+ * Instant check that a DE coordinate can resolve to exactly one fitted coordinate:
+ * every dimension along which ChemEx instantiated several copies of the parameter
+ * (residues, fields, temperatures, concentrations) must be pinned by a qualifier.
+ * ChemEx's resolution remains authoritative (it also sees the step's selection).
+ */
+export function deBreadthError(param: string, qualifier: string | undefined, catalog?: ParameterCatalog | null): string | null {
+  const entry = catalog?.[param.trim().toUpperCase()];
+  if (!entry) return null;
+  const used = new Set(
+    (qualifier || '')
+      .split(',')
+      .map(f => f.split('->')[0].trim().toUpperCase())
+      .filter(Boolean)
+  );
+  const dims: Array<[string, number, string]> = [
+    ['NUC', entry.spins.length, 'residues'],
+    ['B0', entry.B0.length, 'B0 fields'],
+    ['T', entry.T.length, 'temperatures'],
+    ['[P]', entry['[P]'].length, 'protein concentrations'],
+    ['[L]', entry['[L]'].length, 'ligand concentrations'],
+    ['D2O', entry.D2O.length, 'D2O fractions'],
+  ];
+  const open = dims.filter(([key, n]) => n > 1 && !used.has(key));
+  if (!open.length) return null;
+  return `matches copies for ${open.map(([, n, what]) => `${n} ${what}`).join(' and ')}; each DE coordinate must resolve to exactly one FIT coordinate — add ${open
+    .map(([key]) => `${key}->`)
+    .join(', ')}.`;
 }
 
 /** Why a method action may not target this parameter name (model-owned / not estimable), or null. */
@@ -145,6 +176,7 @@ export function validateMethodConfig(
         if (msg) push(`DE search: ${msg}`);
       }
       const selectors = new Set<string>();
+      const ruleTargets = new Set(Object.keys(rulesByTargetName(step)));
       let globalProduct = 1;
       for (const axis of search.axes) {
         const sel = [axis.param.toUpperCase(), (axis.qualifier || '').trim()].filter(Boolean).join(', ');
@@ -156,8 +188,13 @@ export function validateMethodConfig(
         const protAxis = protectedTargetError(axis.param, 'SEARCH', catalog);
         if (protAxis) push(`${label} target: ${protAxis}`, 'error', axis.param);
         const mode = modeOf.get(axis.param.toUpperCase());
-        if (mode === 'fix' || mode === 'constrain') {
-          push(`${label} target "${axis.param}" is set to ${mode.toUpperCase()} in the table; search targets must be fitted (FIT).`, 'error', axis.param);
+        // A later rule may still make it FIT; then ChemEx's resolution is the judge.
+        if ((mode === 'fix' || mode === 'constrain') && !ruleTargets.has(axis.param.toUpperCase())) {
+          push(`${label} target "${axis.param}" is set to ${mode.toUpperCase()} in the table; search targets must be final FIT coordinates.`, 'error', axis.param);
+        }
+        if (search.mode === 'de') {
+          const broad = deBreadthError(axis.param, axis.qualifier, catalog);
+          if (broad) push(`DE coordinate "${sel}": ${broad}`, 'error', axis.param);
         }
 
         if (axis.fn === 'values') {

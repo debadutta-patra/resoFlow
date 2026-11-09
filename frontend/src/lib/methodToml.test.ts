@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { configToToml, parseTomlDocument, tomlToConfig } from './methodToml';
 import type { MethodConfig, Step } from './methodConfig';
-import { normalizeMethodConfig } from './methodConfig';
+import { materializeLegacySearchFits, normalizeMethodConfig } from './methodConfig';
 import { validateMethodConfig } from './methodValidation';
 import { METHOD_TEMPLATES } from './methodTemplates';
 import { axisPoints, createSearchAxis, defaultRange } from './searchDefaults';
@@ -67,8 +67,8 @@ describe('ChemEx v2 method.toml emitter', () => {
     expect(toml).toContain('[STEP1.STATISTICS.MCMC]\nSTEPS = 5000\n');
   });
 
-  it('auto-fits search targets left at baseline and supports values() and qualifiers', () => {
-    const toml = configToToml({
+  it('never adds search targets to FIT implicitly (GRID/DE do not change roles)', () => {
+    const cfg: MethodConfig = {
       steps: [
         step({
           parameters: [{ name: 'DW_AB', mode: 'fit' }],
@@ -77,15 +77,28 @@ describe('ChemEx v2 method.toml emitter', () => {
             axes: [
               { id: 'a', param: 'PB', fn: 'values', low: 0.01, high: 0.1, count: 3, values: [0.01, 0.05, 0.1] },
               { id: 'b', param: 'KEX_AB', fn: 'log', low: 20, high: 2000, count: 12 },
-              { id: 'c', param: 'DW_AB', qualifier: 'NUC->G24N-H', fn: 'lin', low: -10, high: 10, count: 21 },
+              { id: 'c', param: 'R2_A', qualifier: 'NUC->G24N-H', fn: 'lin', low: 1, high: 30, count: 5 },
             ],
           },
         }),
       ],
-    });
-    expect(toml).toContain('{ FIT = ["DW_AB", "PB", "KEX_AB"] }');
+    };
+    const toml = configToToml(cfg);
+    expect(toml).toContain('ROLES = [\n  { FIT = ["DW_AB"] },\n]');
     expect(toml).toContain('"[PB] = values(0.01, 0.05, 0.1)"');
-    expect(toml).toContain('"[DW_AB, NUC->G24N-H] = lin(-10, 10, 21)"');
+    expect(toml).toContain('"[R2_A, NUC->G24N-H] = lin(1, 30, 5)"');
+
+    // Configs saved under the old behaviour are migrated to the same roles, explicitly.
+    const migrated = materializeLegacySearchFits(cfg);
+    expect(configToToml(migrated)).toContain(
+      'ROLES = [\n  { FIT = ["DW_AB", "PB", "KEX_AB"] },\n  { FIT = ["R2_A, NUC->G24N-H"] },\n]'
+    );
+    expect(materializeLegacySearchFits(migrated)).toBe(migrated); // idempotent
+    // Targets already decided by the table or a FIT rule are left alone.
+    const decided = materializeLegacySearchFits({
+      steps: [step({ parameters: [{ name: 'PB', mode: 'fix' }], roleRules: [{ id: 'r', action: 'FIT', entries: ['R2_A, NUC->G24N-H'] }], search: cfg.steps[0].search })],
+    });
+    expect(configToToml(decided)).toContain('ROLES = [\n  { FIX = ["PB"] },\n  { FIT = ["KEX_AB"] },\n  { FIT = ["R2_A, NUC->G24N-H"] },\n]');
   });
 
   it('emits SEARCH.DE with SEED and two-argument coordinates', () => {
@@ -419,7 +432,7 @@ describe('Method Configuration Validation (v2)', () => {
     };
     const msgs = validateMethodConfig(cfg, known).map(e => e.message);
     expect(msgs.some(m => m.includes('ROLES_FROM "B" is step 2, after this one; it must name an earlier step'))).toBe(true);
-    expect(msgs.some(m => m.includes('search targets must be fitted'))).toBe(true);
+    expect(msgs.some(m => m.includes('search targets must be final FIT coordinates'))).toBe(true);
     expect(msgs.some(m => m.includes('DE search: SEED is required'))).toBe(true);
     expect(msgs.some(m => m.includes('must use lin(low, high) or log(low, high)'))).toBe(true);
     expect(msgs.some(m => m.includes('must be strictly positive'))).toBe(true);
@@ -532,5 +545,25 @@ describe('protected parameters (frontend instant check)', () => {
       .map(e => e.message);
     expect(msgs.filter(m => m.includes('KAB is model-derived (protected)')).length).toBe(3);
     expect(msgs.some(m => m.includes('PB is model-derived'))).toBe(false);
+  });
+});
+
+describe('DE breadth (instant check; ChemEx is authoritative)', () => {
+  it('requires pinning every dimension with several copies', async () => {
+    const { deBreadthError } = await import('./methodValidation');
+    const { buildParameterCatalog } = await import('./baselineRoles');
+    const cat = buildParameterCatalog([
+      { id: '1', name: 'PB', status: 'fit' },
+      { id: '2', name: 'DW_AB', status: 'fit', spin: '26N' },
+      { id: '3', name: 'DW_AB', status: 'fit', spin: '28N' },
+      { id: '4', name: 'R2_A', status: 'fit', spin: '26N', conditions: { h_larmor_frq: 600.1 } },
+      { id: '5', name: 'R2_A', status: 'fit', spin: '26N', conditions: { h_larmor_frq: 800.1 } },
+    ]);
+    expect(deBreadthError('PB', undefined, cat)).toBeNull();
+    expect(deBreadthError('DW_AB', undefined, cat)).toContain('matches copies for 2 residues');
+    expect(deBreadthError('DW_AB', 'NUC->26N', cat)).toBeNull();
+    expect(deBreadthError('R2_A', 'NUC->26N', cat)).toContain('2 B0 fields');
+    expect(deBreadthError('R2_A', 'NUC->26N, B0->800.1MHz', cat)).toBeNull();
+    expect(deBreadthError('DW_AB', undefined, null)).toBeNull();
   });
 });

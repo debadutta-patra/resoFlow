@@ -221,18 +221,19 @@ def test_frontend_camelcase_payload_and_ts_parity():
             {"id": "c", "name": "EXC", "residues": ["12", "18"], "residueMode": "exclude", "parameters": []},
         ]
     }
-    # Output of frontend/src/lib/methodToml.ts configToToml() for the same payload.
+    # Expected emission for the same payload (search targets are not auto-added to FIT;
+    # byte parity with methodToml.ts is pinned by tests/test_method_emit_contract.py).
     ts_output = (
         'FORMAT_VERSION = 2\n\n[GLOBAL_FIT]\nINCLUDE = [15, 31, "G24N-H"]\nROLES = [\n'
         '  { CONSTRAIN = ["[R2_B] = 0.5 * ([R2_A] + 1.0)"] },\n'
-        '  { FIT = ["PB", "KEX_AB", "DW_AB, NUC->G24N-H, B0->800.13MHz, T->25C"] },\n]\n\n'
+        '  { FIT = ["PB"] },\n]\n\n'
         '[GLOBAL_FIT.SEARCH.GRID]\nAXES = [\n  "[PB] = values(0.01, 0.05, 0.1)",\n'
         '  "[KEX_AB] = log(20, 2000, 12)",\n'
         '  "[DW_AB, NUC->G24N-H, B0->800.13MHz, T->25C] = lin(-10, 10, 21)",\n]\n\n'
         '[GLOBAL_FIT.STATISTICS.MC]\nREPLICATES = 5\nSEED = 1\n\n'
         '[GLOBAL_FIT.STATISTICS.MCMC]\nSTEPS = 100\nBURN = 10\nSEED = 3\n\n'
         '[LOCAL]\nINCLUDE = "ALL"\nROLES_FROM = "GLOBAL_FIT"\nROLES = [\n'
-        '  { FIX = ["PB"] },\n  { FIT = ["KEX_AB"] },\n'
+        '  { FIX = ["PB"] },\n'
         '  { CONSTRAIN = ["[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]"] },\n'
         '  { FIX = ["R1_A, [P]->0.001M, D2O->0.1"] },\n]\n\n'
         '[LOCAL.SEARCH.DE]\nSEED = 18446744073709\nCOORDINATES = [\n  "[KEX_AB] = log(10, 5000)",\n]\n\n'

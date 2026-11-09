@@ -48,12 +48,38 @@ export interface ResolvedParameter {
   protected: boolean;
 }
 
+/** One GRID axis / DE coordinate resolved against the step's final roles. */
+export interface ResolvedAxis {
+  index: number;
+  selector: string;
+  /** Concrete parameter ids the declaration matches in this step. */
+  coordinates: string[];
+  /** GRID: values on this axis. */
+  points?: number;
+  /** GRID: coordinates this axis finally owns (later specific axes replace earlier broad ones). */
+  owned?: number;
+  error: ChemexError | null;
+}
+
+export interface ResolvedSearch {
+  kind: 'grid' | 'de';
+  axes: ResolvedAxis[];
+  /** GRID: product of global-axis points. */
+  global_points?: number | null;
+  /** GRID: per residue, product of its local-axis points. */
+  local_points?: Record<string, number>;
+  /** GRID: profiled evaluations after exact factorisation (global × Σ local). */
+  evaluations?: number | null;
+  error?: ChemexError | null;
+}
+
 export interface ResolvedStep {
   name: string;
   roles_from: string | null;
   profiles: number | null;
   parameters: ResolvedParameter[];
   counts: Record<ResolvedRole, number>;
+  search?: ResolvedSearch | null;
   error: ChemexError | null;
 }
 

@@ -142,7 +142,7 @@
       "toml": "FORMAT_VERSION = 2\n\n[Global_Fit]\nINCLUDE = [15, 31, 33, 34, 37]\nROLES = [\n  { FIT = [\"PB\", \"KEX_AB\"] },\n]\n\n[LOCAL_FITS]\nINCLUDE = \"ALL\"\nROLES_FROM = \"Global_Fit\"\nROLES = [\n  { FIX = [\"PB\", \"KEX_AB\"] },\n  { FIT = [\"DW_AB\"] },\n  { FIX = [\"DW_AB, NUC->G31N-H\"] },\n  { CONSTRAIN = [\"[DW_AB, NUC->G31N-H] = [DW_AB, NUC->G24N-H]\"] },\n]\n\n[LOCAL_FITS.STATISTICS.MC]\nREPLICATES = 100\nSEED = 18446744073709551615\n\n[LOCAL_FITS.STATISTICS.BSN]\nREPLICATES = 20\n\n[LOCAL_FITS.STATISTICS.MCMC]\nSTEPS = 20000\nBURN = 4000\nSEED = 680\n\n[exc]\nEXCLUDE = [12, 18, \"G2N-HN\"]\n"
     },
     {
-      "name": "GRID axes: values/log/lin, awkward floats, qualifiers, search targets auto-added to FIT",
+      "name": "GRID axes: values/log/lin, awkward floats, qualifiers (targets FIT explicitly)",
       "config": {
         "steps": [
           {
@@ -153,6 +153,14 @@
             "parameters": [
               {
                 "name": "DW_AB",
+                "mode": "fit"
+              },
+              {
+                "name": "PB",
+                "mode": "fit"
+              },
+              {
+                "name": "kex_ab",
                 "mode": "fit"
               }
             ],
@@ -169,7 +177,7 @@
                   "values": [
                     0.005,
                     0.30000000000000004,
-                    1e-7,
+                    1e-07,
                     2
                   ]
                 },

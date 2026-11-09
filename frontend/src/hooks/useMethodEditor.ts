@@ -11,8 +11,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
 import type { ChemexEndpointFamily } from '../lib/experimentPlugin';
 import type { MethodConfig, Step } from '../lib/methodConfig';
-import { createDefaultMethodConfig, createDefaultStep, newMethodId, normalizeMethodConfig } from '../lib/methodConfig';
-import { stepDisplayName, uniqueStepName } from '../lib/methodSteps';
+import { createDefaultMethodConfig, createDefaultStep, materializeLegacySearchFits, newMethodId, normalizeMethodConfig } from '../lib/methodConfig';
+import { setRolesFrom, stepDisplayName, uniqueStepName } from '../lib/methodSteps';
 import { configToToml, tomlToConfig } from '../lib/methodToml';
 import { validateMethodConfig } from '../lib/methodValidation';
 import type { MethodTemplate } from '../lib/methodTemplates';
@@ -20,6 +20,7 @@ import { DEFAULT_PARAM_METAS, type AvailableParamMeta } from '../components/meth
 import type { ResidueItem } from '../components/methods/ResidueSelector';
 import { useBaselineRoles } from './useBaselineRoles';
 import { useResolvedRoles } from './useResolvedRoles';
+import { useStepTimings } from './useStepTimings';
 
 
 /** URL segment of the per-analysis ChemEx routes for each family. */
@@ -187,6 +188,24 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
       });
       updateSteps(steps);
     },
+    /**
+     * Insert a plain TRF step right after a GRID step: ROLES_FROM the grid step (so its
+     * roles carry over and the grid axes are released as ordinary FIT coordinates) and
+     * the same residue selection; values continue from the committed grid state.
+     */
+    onAddRefineStep: (idx: number) => {
+      const src = methodConfig.steps[idx];
+      if (!src) return;
+      const name = uniqueStepName(`${stepDisplayName(src, idx)}_REFINE`, methodConfig.steps);
+      const refine: Step = setRolesFrom(
+        { id: newStepId(), name, parameters: [], residueMode: src.residueMode, residues: [...(src.residues || [])], roleRules: [] },
+        src,
+        idx
+      );
+      const steps = [...methodConfig.steps];
+      steps.splice(idx + 1, 0, refine);
+      updateSteps(steps, idx + 1);
+    },
     /** Reordering never rewrites ROLES_FROM; a reference that now points forward is reported. */
     onReorderSteps: (from: number, to: number) => {
       if (from === to || to < 0 || to >= methodConfig.steps.length) return;
@@ -225,7 +244,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
 
   // ── Templates & import ──
   const applyTemplate = (template: MethodTemplate) => {
-    setMethodConfig(normalizeMethodConfig(JSON.parse(JSON.stringify(template.config))));
+    setMethodConfig(materializeLegacySearchFits(normalizeMethodConfig(JSON.parse(JSON.stringify(template.config)))));
     setActiveStepIdx(0);
     setUnparsedTomlLines([]);
     setIsRawEditMode(false);
@@ -265,6 +284,9 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   // ── Persistence ──
   const effectiveMethodToml = isRawEditMode ? methodToml : configToToml(methodConfig);
 
+  /** Last run's per-step durations (refreshed when a run ends) for runtime estimates. */
+  const stepTimings = useStepTimings(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
+
   /** Per-step effective roles of every concrete parameter, resolved by ChemEx (debounced). */
   const resolvedRoles = useResolvedRoles({
     projectUuid,
@@ -283,7 +305,8 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     const cfg = saved.method_config;
     if (cfg && Array.isArray(cfg.steps) && cfg.steps.length > 0) {
       const { rawOverride, ...rest } = cfg;
-      const structured = normalizeMethodConfig(rest as MethodConfig);
+      // Saved before search targets stopped being auto-fitted: make that FIT explicit (same roles).
+      const structured = materializeLegacySearchFits(normalizeMethodConfig(rest as MethodConfig));
       setMethodConfigState(structured);
       if (rawOverride && rawOverride.trim()) {
         setMethodToml(rawOverride);
@@ -333,6 +356,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     availableParamsMeta,
     baselineRoles,
     resolvedRoles,
+    stepTimings,
     knownParamNames,
     validationErrors,
     blockingErrors,

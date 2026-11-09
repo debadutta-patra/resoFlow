@@ -18,7 +18,8 @@ from ..routers.analysis import _get_analysis_run_dir
 from ..schemas import MethodConfigSchema
 from ..services.fitting.chemex_workspace import stage_validation_workspace
 from ..services.fitting.method_emitter import MethodConfigModel, emit_method_toml_v2
-from ..services.fitting.method_resolution import missing_inputs_message, resolve_method
+from ..services.fitting.method_resolution import missing_inputs_message, resolve_method, step_timings_with_evaluations
+from ..services.fitting.run_dirs import load_chemex_config
 from .deps import get_analysis
 from resoflow.chemex_api.session import inspect_parameters, validate_inputs
 from resoflow.chemex_api.spec import FitJobSpec
@@ -171,3 +172,11 @@ def resolve_method_roles(
     )
     report["method_toml"] = method_toml
     return report
+
+
+@router.get(f"{ANALYSIS_CHEMEX}/step-timings")
+def get_step_timings(analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    """Per-step wall-clock durations of the analysis's last ChemEx run, with the number of
+    fits each step performed (for runtime / cost estimates of the next run)."""
+    model = (load_chemex_config(analysis) or {}).get("model") or "2st"
+    return step_timings_with_evaluations(_run_dir(analysis), model=model)

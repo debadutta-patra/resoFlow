@@ -59,6 +59,27 @@ def _format_progress_data(event: dict[str, Any], step: dict[str, Any] | None = N
     return prog
 
 
+def _write_step_timings(job_dir: Path, timings: list[dict[str, Any]], state: JobState) -> None:
+    """Persist per-step wall-clock durations of a finished job (step_timings.json).
+
+    The last step ends when the job ends; an unfinished (failed/cancelled) step is
+    kept but marked incomplete so estimates can ignore it.
+    """
+    if not timings:
+        return
+    end = time.time()
+    last = timings[-1]
+    if last.get("seconds") is None:
+        last["seconds"] = round(end - last["started_at"], 3)
+        last["incomplete"] = state != JobState.DONE
+    try:
+        tmp = job_dir / "step_timings.json.tmp"
+        tmp.write_text(json.dumps({"state": state.value if hasattr(state, "value") else str(state), "steps": timings}), encoding="utf-8")
+        tmp.replace(job_dir / "step_timings.json")
+    except Exception as exc:  # timing is advisory
+        logger.debug(f"Could not write step timings: {exc}")
+
+
 def wait_for_job(
     launcher: Launcher,
     handle: JobHandle,
@@ -90,6 +111,8 @@ def wait_for_job(
     last_file_write_time = 0.0
     last_milestones: dict[str, int] = {}
     current_step: dict[str, Any] | None = None
+    # Wall-clock per method step (for runtime / cost estimates of the next run).
+    step_timings: list[dict[str, Any]] = []
     last_heartbeat_seen = time.time()
     start_time = time.time()
 
@@ -116,7 +139,19 @@ def wait_for_job(
                             logger.debug(f"on_progress callback error: {e}")
 
                     step_changed = event.get("kind") == "step"
+                    event_t = event.get("t", time.time())
+                    if event.get("kind") == "grid" and step_timings and isinstance(event.get("total"), int):
+                        step_timings[-1]["grid_points"] = max(step_timings[-1].get("grid_points") or 0, event["total"])
                     if step_changed:
+                        if step_timings and step_timings[-1].get("seconds") is None:
+                            step_timings[-1]["seconds"] = round(event_t - step_timings[-1]["started_at"], 3)
+                        step_timings.append({
+                            "name": event.get("name") or "",
+                            "index": event.get("index"),
+                            "started_at": event_t,
+                            "seconds": None,
+                            "grid_points": None,
+                        })
                         current_step = {
                             "name": event.get("name") or "",
                             "index": event.get("index"),
@@ -215,6 +250,8 @@ def wait_for_job(
                 # Drain remaining output
                 _drain_progress()
                 _drain_log()
+
+                _write_step_timings(job_dir, step_timings, state)
 
                 # Write final terminal state to progress.json
                 final_stage = "Completed" if state == JobState.DONE else ("Cancelled" if state == JobState.CANCELLED else "Failed")

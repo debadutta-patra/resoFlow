@@ -51,3 +51,44 @@ def resolve_method(
                 "steps": [],
                 "errors": [{"message": str(exc) or type(exc).__name__, "type": type(exc).__name__, "source": {}}],
             }
+
+
+def step_timings_with_evaluations(run_dir: Path, model: str = "2st") -> dict[str, Any]:
+    """Last run's per-step durations plus how many fits each step performed.
+
+    ``evaluations`` is 1 for a plain TRF step and the profiled GRID evaluation count
+    for a GRID step (ChemEx does not report grid progress, so the count is recomputed
+    once from the run's own method snapshot and cached in step_timings.json).
+    DE steps get ``None`` (stochastic; no per-evaluation cost).
+    """
+    import json
+
+    path = run_dir / "step_timings.json"
+    if not path.exists():
+        return {"state": None, "steps": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"state": None, "steps": []}
+    steps = [s for s in data.get("steps", []) if isinstance(s, dict)]
+    if steps and any("evaluations" not in s for s in steps):
+        method_files = sorted((run_dir / "Methods").glob("*.toml")) if (run_dir / "Methods").is_dir() else []
+        by_name: dict[str, Any] = {}
+        if method_files:
+            report = resolve_method(run_dir, method_toml=method_files[0].read_text(encoding="utf-8"), model=model)
+            for st in report.get("steps", []):
+                search = st.get("search") or {}
+                if search.get("kind") == "grid":
+                    by_name[st["name"]] = search.get("evaluations")
+                elif search.get("kind") == "de":
+                    by_name[st["name"]] = None
+                else:
+                    by_name[st["name"]] = 1
+        for s in steps:
+            s["evaluations"] = by_name.get(s.get("name") or "", 1 if not method_files else None)
+        data["steps"] = steps
+        try:
+            path.write_text(json.dumps(data), encoding="utf-8")
+        except Exception:
+            pass
+    return {"state": data.get("state"), "steps": steps}
