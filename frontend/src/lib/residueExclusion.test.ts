@@ -66,3 +66,15 @@ describe('residueExclusion', () => {
     });
   });
 });
+
+describe('exclusions from legacy parameter files reach the results-side filter', () => {
+  it('a commented residue in an old resoFlow parameters.toml is excluded via excludedResidues, not via the comment', async () => {
+    const { parseWithLegacyExclusions, tomlToConfig } = await import('./parameterToml');
+    const legacy = '# Auto-generated ChemEx parameter file\n[CS_A]\n# 13N = 118.5\n14N = 120.1\n';
+    const { config } = parseWithLegacyExclusions(tomlToConfig, legacy, 'auto');
+    expect(isResidueExcluded('13N', config.excludedResidues)).toBe(true);
+    expect(isResidueExcluded('14N', config.excludedResidues)).toBe(false);
+    // Without the migration a comment carries no exclusion.
+    expect(tomlToConfig(legacy).config.excludedResidues).toBeUndefined();
+  });
+});

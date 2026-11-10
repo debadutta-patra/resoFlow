@@ -17,7 +17,12 @@ import {
   startingValuesFromGlobals,
   toggleExcludeResidue,
 } from '../lib/parameterConfig';
-import { DEFAULT_PARAMETER_CODEC, type ParameterCodec } from '../lib/parameterToml';
+import {
+  DEFAULT_PARAMETER_CODEC,
+  legacyExclusionNotice,
+  parseWithLegacyExclusions,
+  type ParameterCodec,
+} from '../lib/parameterToml';
 import { defaultsLookupFromCatalog, type CatalogDefaultsRow } from '../lib/chemexDefaults';
 
 export type { ParameterCodec };
@@ -57,9 +62,10 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
   };
   const toggleRawMode = () => (isRawParamEditMode ? setIsRawParamEditMode(false) : enterRawMode());
   const applyRawToml = () => {
-    const parsed = codec.fromToml(rawParamToml);
+    const parsed = parseWithLegacyExclusions(codec.fromToml, rawParamToml, 'auto');
     setParameterConfig(canonicalizeParameterConfig(parsed.config, profiles));
     setUnparsedParamTomlLines(parsed.unparsed);
+    if (parsed.legacyExcluded.length) setNotices([legacyExclusionNotice(parsed.legacyExcluded)]);
     setIsRawParamEditMode(false);
   };
   const discardRawToml = () => {
@@ -130,11 +136,13 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
         return true;
       }
       if (saved.parameter_toml) {
-        const parsed = codec.fromToml(saved.parameter_toml);
+        // Saved by resoFlow: commented residue lines are old-style exclusions.
+        const parsed = parseWithLegacyExclusions(codec.fromToml, saved.parameter_toml, true);
         const canon = canonicalizeParameterConfig(parsed.config, restoreProfiles);
         setParameterConfig(canon);
         setRawParamToml(saved.parameter_toml);
         setUnparsedParamTomlLines(parsed.unparsed);
+        setNotices(parsed.legacyExcluded.length ? [legacyExclusionNotice(parsed.legacyExcluded)] : []);
         return true;
       }
       return false;

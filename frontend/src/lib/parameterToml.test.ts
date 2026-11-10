@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { configToToml, tomlToConfig, applyExclusionsToExperimentToml } from './parameterToml';
+import {
+  configToToml,
+  tomlToConfig,
+  applyExclusionsToExperimentToml,
+  migrateLegacyCommentExclusions,
+  parseWithLegacyExclusions,
+  legacyExclusionNotice,
+} from './parameterToml';
 import {
   computePickHash,
   normalizeResidueKey,
@@ -287,7 +294,7 @@ describe('parameterConfig Utilities', () => {
     expect(toml).not.toContain('13N = 0');
   });
 
-  it('comments out excluded residues in generated TOML and parses them losslessly', () => {
+  it('writes excluded residues like any other line; exclusion lives only in excludedResidues', () => {
     const config: ParameterConfig = {
       globals: { pb: { value: 0.05, source: { kind: 'default' } } },
       residues: {
@@ -301,13 +308,38 @@ describe('parameterConfig Utilities', () => {
     };
 
     const toml = configToToml(config);
-    expect(toml).toContain('# 13N = 118.500');
+    expect(toml).toContain('\n13N = 118.500');
+    expect(toml).not.toContain('# 13N');
     expect(toml).toContain('14N = 120.100');
 
-    // Parse it back
-    const parsedResult = tomlToConfig(toml);
-    expect(parsedResult.config.residues['13N']?.cs_a?.value).toBe(118.5);
-    expect(parsedResult.config.excludedResidues).toEqual(['13N']);
+    // Comments never carry exclusions: a commented line is just an unparsed comment.
+    const parsedResult = tomlToConfig(`[CS_A]\n# 13N = 118.5\n14N = 120.1\n`);
+    expect(parsedResult.config.residues['13N']).toBeUndefined();
+    expect(parsedResult.config.excludedResidues).toBeUndefined();
+    expect(parsedResult.unparsed).toContain('# 13N = 118.5');
+  });
+
+  it('migrates old-style commented residue lines into exclusions (legacy files only)', () => {
+    const legacy = `# Auto-generated ChemEx parameter file\n\n[GLOBAL]\n# PB = 0.1\n\n[CS_A]\n# 13N = 118.500\n14N = 120.100\n# a free comment\n\n[DW_AB]\n# 13N = 2.000\n`;
+    const m = migrateLegacyCommentExclusions(legacy);
+    expect(m.excluded).toEqual(['13N']);
+    expect(m.toml).toContain('\n13N = 118.500');
+    expect(m.toml).toContain('# PB = 0.1'); // [GLOBAL] comments are not exclusions
+    expect(m.toml).toContain('# a free comment');
+
+    const auto = parseWithLegacyExclusions(tomlToConfig, legacy, 'auto');
+    expect(auto.legacyExcluded).toEqual(['13N']);
+    expect(auto.config.excludedResidues).toEqual(['13N']);
+    expect(auto.config.residues['13N'].cs_a?.value).toBe(118.5);
+    expect(auto.config.residues['13N'].dw_ab?.value).toBe(2);
+    // Re-export carries no comments, so the migration happens once.
+    expect(configToToml(auto.config)).not.toMatch(/^# 13N/m);
+
+    // A foreign file (no resoFlow header) keeps its comments unless asked.
+    const foreign = legacy.replace('# Auto-generated ChemEx parameter file\n', '');
+    expect(parseWithLegacyExclusions(tomlToConfig, foreign, 'auto').legacyExcluded).toEqual([]);
+    expect(parseWithLegacyExclusions(tomlToConfig, foreign, true).legacyExcluded).toEqual(['13N']);
+    expect(legacyExclusionNotice(['13N'])).toContain('Converted 1 commented residue');
   });
 
   it('toggles residue exclusion state correctly', () => {

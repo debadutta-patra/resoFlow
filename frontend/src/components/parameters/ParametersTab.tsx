@@ -16,6 +16,7 @@ import type { ParameterIssue } from '../../lib/parameterValidation';
 import type { SourceRunSummary, TargetAnalysisMeta } from '../../lib/compatibility';
 import { validateParameterConfig } from '../../lib/parameterValidation';
 import { fmtDefault } from '../../lib/chemexDefaults';
+import { legacyExclusionNotice } from '../../lib/parameterToml';
 import { GlobalParametersCard } from './GlobalParametersCard';
 import { ResidueParametersTable } from './ResidueParametersTable';
 import { ResyncModal } from './ResyncModal';
@@ -329,9 +330,13 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
         isOpen={showImport}
         onClose={() => setShowImport(false)}
         codec={capabilities.codec}
-        onImport={(imported, unparsed) => {
+        onImport={(imported, unparsed, legacyExcluded) => {
           editor.replaceConfig(imported, unparsed);
-          notify?.('Imported parameters.toml successfully');
+          notify?.(
+            legacyExcluded.length
+              ? legacyExclusionNotice(legacyExcluded)
+              : 'Imported parameters.toml successfully'
+          );
         }}
       />
 

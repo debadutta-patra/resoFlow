@@ -5,10 +5,14 @@ import type {
 import {
   isResidueExcluded,
   sortSpinKeys,
+  SpinSystemKey,
 } from './parameterConfig';
 import type { ParamValue } from './parameterConfig';
 import { getUnitDef, type ParamUnitDef } from './unitRegistry';
 import { fallbackDefaults, type ParamDefaultsLookup } from './chemexDefaults';
+
+/** First line of every parameters.toml resoFlow writes. */
+export const GENERATED_HEADER = 'Auto-generated ChemEx parameter file';
 
 export interface TomlWriteOptions {
   /** ChemEx default bounds, used to fill the side the user left unset (default: static table). */
@@ -111,7 +115,7 @@ export function configToToml(config: ParameterConfig, opts: TomlWriteOptions = {
   }
   const defaults = opts.defaults ?? fallbackDefaults;
 
-  const sections: string[] = ['# Auto-generated ChemEx parameter file'];
+  const sections: string[] = [`# ${GENERATED_HEADER}`];
 
   // 1. [GLOBAL] section
   const globalEntries = Object.entries(config.globals || {});
@@ -177,7 +181,6 @@ export function configToToml(config: ParameterConfig, opts: TomlWriteOptions = {
   for (const paramKey of sortedSections) {
     const sectionLines: string[] = [`[${paramKey.toUpperCase()}]`];
     const unitDef = getUnitDef(paramKey);
-    const excludedSet = new Set((config.excludedResidues || []).map(r => r.toUpperCase()));
 
     for (const resKey of residueKeys) {
       const resParam = config.residues[resKey]?.[paramKey];
@@ -187,11 +190,9 @@ export function configToToml(config: ParameterConfig, opts: TomlWriteOptions = {
         const fixed = unitDef.precision !== undefined ? chemexVal.toFixed(unitDef.precision) : null;
         const scalarStr = fixed !== null && Number(fixed) === chemexVal ? fixed : chemexVal.toString();
         const valStr = formatChemexValue(paramKey, resParam, unitDef, scalarStr, defaults);
-        if (excludedSet.has(resKey.toUpperCase())) {
-          sectionLines.push(`# ${resKey} = ${valStr}`);
-        } else {
-          sectionLines.push(`${resKey} = ${valStr}`);
-        }
+        // Excluded residues are written like any other: exclusion is applied only through the
+        // experiment files' [data.profiles] (applyExclusionsToExperimentToml), never by comments.
+        sectionLines.push(`${resKey} = ${valStr}`);
       }
     }
 
@@ -210,14 +211,13 @@ export interface TomlParseResult {
 
 /**
  * Parses a parameters.toml content string into a ParameterConfig object.
- * Extracts values, converts from ChemEx internal units to UI display units,
- * and preserves provenance and excluded residues (from commented-out lines).
+ * Extracts values (with bounds) and converts from ChemEx units to UI units.
+ * Comments are comments: they never carry exclusions (see migrateLegacyCommentExclusions).
  */
 export function tomlToConfig(tomlContent: string): TomlParseResult {
   const config: ParameterConfig = {
     globals: {},
     residues: {},
-    excludedResidues: [],
   };
   const unparsed: string[] = [];
 
@@ -235,21 +235,13 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
     // Skip empty lines
     if (!trimmed) continue;
 
-    let isCommented = false;
-    let effectiveLine = trimmed;
+    const effectiveLine = trimmed;
 
-    // Check if line is commented out
     if (trimmed.startsWith('#')) {
-      const commentKvMatch = trimmed.match(/^#\s*([A-Za-z0-9_.-]+)\s*=\s*(.+)$/);
-      if (commentKvMatch && currentSection && currentSection !== 'GLOBAL') {
-        isCommented = true;
-        effectiveLine = `${commentKvMatch[1].trim()} = ${commentKvMatch[2].trim()}`;
-      } else {
-        if (!trimmed.toLowerCase().includes('auto-generated chemex parameter file')) {
-          unparsed.push(line);
-        }
-        continue;
+      if (!trimmed.toLowerCase().includes(GENERATED_HEADER.toLowerCase())) {
+        unparsed.push(line);
       }
+      continue;
     }
 
     // Section header: [CS_A] or quoted ["CS_A"] (as written by ChemEx run_info files)
@@ -297,13 +289,6 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
         ...fromChemexValue(parsedValue, unitDef),
         source: { kind: 'imported' },
       };
-
-      if (isCommented) {
-        if (!config.excludedResidues) config.excludedResidues = [];
-        if (!config.excludedResidues.includes(resKey)) {
-          config.excludedResidues.push(resKey);
-        }
-      }
     }
   }
 
@@ -368,3 +353,67 @@ export interface ParameterCodec {
 }
 
 export const DEFAULT_PARAMETER_CODEC: ParameterCodec = { toToml: configToToml, fromToml: tomlToConfig };
+
+export interface LegacyExclusionMigration {
+  /** The file with the legacy commented residue lines uncommented. */
+  toml: string;
+  /** Residue keys that were commented out (old-style exclusions), in file order. */
+  excluded: string[];
+}
+
+/** True when the text was written by resoFlow (so commented residue lines are old exclusions). */
+export const isResoflowGenerated = (toml: string): boolean => toml.toLowerCase().includes(GENERATED_HEADER.toLowerCase());
+
+/**
+ * Older resoFlow versions excluded a residue by commenting its lines out in parameters.toml
+ * (`# 13N = 118.2` under a per-residue section). Uncomment those lines and report the keys,
+ * so callers can move them into `ParameterConfig.excludedResidues`.
+ */
+export function migrateLegacyCommentExclusions(toml: string): LegacyExclusionMigration {
+  const excluded: string[] = [];
+  let section = '';
+  const lines = (toml || '').split(/\r?\n/).map(line => {
+    const t = line.trim();
+    const sec = t.match(/^\[\s*"?([A-Za-z0-9_,-]+)"?\s*\]$/);
+    if (sec) {
+      section = sec[1].toUpperCase();
+      return line;
+    }
+    const m = t.match(/^#\s*("[^"]+"|[A-Za-z0-9_.-]+)\s*=\s*(.+)$/);
+    if (!m || !section || section === 'GLOBAL' || parseChemexValue(m[2]) === null) return line;
+    const key = m[1].replace(/^"(.*)"$/, '$1');
+    if (!excluded.includes(key)) excluded.push(key);
+    return `${m[1]} = ${m[2].trim()}`;
+  });
+  return { toml: lines.join('\n'), excluded };
+}
+
+/**
+ * Parse with a codec, first migrating legacy comment exclusions when `migrate` is true
+ * (or, with 'auto', when the file carries resoFlow's generated header).
+ */
+export function parseWithLegacyExclusions(
+  fromToml: (toml: string) => TomlParseResult,
+  toml: string,
+  migrate: boolean | 'auto' = 'auto'
+): TomlParseResult & { legacyExcluded: string[] } {
+  const apply = migrate === 'auto' ? isResoflowGenerated(toml) : migrate;
+  const m = apply ? migrateLegacyCommentExclusions(toml) : { toml, excluded: [] };
+  const parsed = fromToml(m.toml);
+  if (m.excluded.length === 0) return { ...parsed, legacyExcluded: [] };
+  // Codecs may canonicalize residue keys (CPMG: 4ASN → 4N): exclude the key the values landed on.
+  const parsedKeys = Object.keys(parsed.config.residues || {});
+  const landed = m.excluded.map(raw => {
+    if (parsedKeys.includes(raw)) return raw;
+    const target = SpinSystemKey.parse(raw);
+    return parsedKeys.find(k => SpinSystemKey.parse(k).matches(target)) ?? raw;
+  });
+  const excludedResidues = Array.from(new Set([...(parsed.config.excludedResidues || []), ...landed]));
+  return { ...parsed, config: { ...parsed.config, excludedResidues }, legacyExcluded: m.excluded };
+}
+
+/** Notice shown once after converting legacy comment exclusions. */
+export const legacyExclusionNotice = (keys: string[]): string =>
+  `Converted ${keys.length} commented residue${keys.length === 1 ? '' : 's'} (${keys.slice(0, 8).join(', ')}${
+    keys.length > 8 ? ', …' : ''
+  }) from an older parameter file into exclusions. Exclusions now apply through the experiment files, not comments.`;

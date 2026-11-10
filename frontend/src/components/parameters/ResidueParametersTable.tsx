@@ -891,8 +891,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                               }`}
                               title={
                                 row.isExcluded
-                                  ? 'Include this residue (uncomment in parameter file)'
-                                  : 'Exclude this residue (comment out in parameter file)'
+                                  ? 'Include this residue again (its profile returns to the experiment files)'
+                                  : 'Exclude this residue (its profile is left out of the experiment files)'
                               }
                             >
                               {row.isExcluded ? (

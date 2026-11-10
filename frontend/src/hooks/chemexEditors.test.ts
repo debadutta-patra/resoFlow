@@ -129,6 +129,21 @@ describe('useParameterEditor', () => {
     expect(result.current.notices).toEqual([]);
   });
 
+  it('restores a saved legacy parameters.toml with commented residues as exclusions, once', () => {
+    const { result } = renderHook(() =>
+      useParameterEditor({ createDefault: createDefaultParameterConfig, profiles: [], picks: {} })
+    );
+    act(() => {
+      result.current.restore({
+        parameter_toml: '# Auto-generated ChemEx parameter file\n\n[CS_A]\n# 13N = 118.500\n14N = 120.100\n',
+      });
+    });
+    expect(result.current.parameterConfig.excludedResidues).toEqual(['13N']);
+    expect(result.current.notices[0]).toContain('Converted 1 commented residue');
+    expect(result.current.effectiveParameterToml).toContain('\n13N = 118.500');
+    expect(result.current.effectiveParameterToml).not.toContain('# 13N');
+  });
+
   it('persists and restores raw parameters.toml edits', () => {
     const { result } = renderHook(() =>
       useParameterEditor({ createDefault: createDefaultParameterConfig, profiles: [], picks: {} })

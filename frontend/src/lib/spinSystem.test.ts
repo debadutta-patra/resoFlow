@@ -1,3 +1,4 @@
+import { parseWithLegacyExclusions } from "./parameterToml";
 import { describe, it, expect } from "vitest";
 import {
   parseSpinKey,
@@ -130,7 +131,7 @@ describe("CPMG TOML serialization & deduplication", () => {
     expect(toml).toContain("[CS_A]");
     expect(toml).toContain("3N = 120.185");
     expect(toml).not.toContain("3LYS");
-    expect(toml).toContain("# 4N = 118.554");
+    expect(toml).toContain("\n4N = 118.554"); // excluded via experiment files, not comments
     expect(toml).not.toContain("4ASN");
     expect(toml).toContain("71N = 121.863");
     expect(toml).not.toContain("71LYS");
@@ -150,6 +151,10 @@ KEX_AB = 500.0
     expect(config.residues["3N"]).toBeDefined();
     expect(config.residues["3N"].cs_a?.value).toBe(120.185);
     expect(config.residues["3LYS"]).toBeUndefined();
-    expect(config.excludedResidues).toContain("4N");
+    expect(config.excludedResidues).not.toContain("4N"); // a comment is only a comment
+    // The legacy migration maps the commented alias onto the canonical key.
+    const migrated = parseWithLegacyExclusions(cpmgTomlToConfig, rawToml, true);
+    expect(migrated.config.excludedResidues).toContain("4N");
+    expect(migrated.config.residues["4N"].cs_a?.value).toBe(118.554);
   });
 });

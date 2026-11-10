@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
-import { Upload, X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { DEFAULT_PARAMETER_CODEC, type ParameterCodec } from '../../lib/parameterToml';
+import React, { useMemo, useState } from 'react';
+import { Upload, X, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import {
+  DEFAULT_PARAMETER_CODEC,
+  isResoflowGenerated,
+  migrateLegacyCommentExclusions,
+  parseWithLegacyExclusions,
+  type ParameterCodec,
+} from '../../lib/parameterToml';
 import type { ParameterConfig } from '../../lib/parameterConfig';
 
 interface ParametersImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImport: (importedConfig: ParameterConfig, unparsed: string[]) => void;
+  /** `legacyExcluded`: residues converted from old-style commented lines into exclusions. */
+  onImport: (importedConfig: ParameterConfig, unparsed: string[], legacyExcluded: string[]) => void;
   /** Experiment-specific parameters.toml codec (defaults to the shared one). */
   codec?: ParameterCodec;
 }
@@ -19,6 +26,11 @@ export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
 }) => {
   const [tomlText, setTomlText] = useState('');
   const [error, setError] = useState('');
+  const [treatCommentsAsExclusions, setTreatCommentsAsExclusions] = useState(false);
+  const legacy = useMemo(() => {
+    const excluded = migrateLegacyCommentExclusions(tomlText).excluded;
+    return { count: excluded.length, generated: isResoflowGenerated(tomlText) };
+  }, [tomlText]);
 
   if (!isOpen) return null;
 
@@ -28,7 +40,12 @@ export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
       return;
     }
     try {
-      const { config, unparsed } = codec.fromToml(tomlText);
+      // resoFlow-written files: commented residue lines are old exclusions. Foreign files: only on request.
+      const { config, unparsed, legacyExcluded } = parseWithLegacyExclusions(
+        codec.fromToml,
+        tomlText,
+        legacy.generated ? true : treatCommentsAsExclusions
+      );
       const globalCount = Object.keys(config.globals || {}).length;
       const residueCount = Object.keys(config.residues || {}).length;
 
@@ -37,8 +54,9 @@ export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
         return;
       }
 
-      onImport(config, unparsed);
+      onImport(config, unparsed, legacyExcluded);
       setTomlText('');
+      setTreatCommentsAsExclusions(false);
       setError('');
       onClose();
     } catch (err: any) {
@@ -96,6 +114,30 @@ export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
               className="w-full text-xs font-mono p-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800 dark:text-slate-200 leading-relaxed resize-y"
             />
           </div>
+
+          {legacy.count > 0 && (
+            <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              {legacy.generated ? (
+                <span>
+                  This file was written by an older resoFlow: its {legacy.count} commented residue line
+                  {legacy.count === 1 ? '' : 's'} will be imported as exclusions.
+                </span>
+              ) : (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={treatCommentsAsExclusions}
+                    onChange={e => setTreatCommentsAsExclusions(e.target.checked)}
+                  />
+                  <span>
+                    Treat {legacy.count} commented residue line{legacy.count === 1 ? '' : 's'} as exclusions (old resoFlow
+                    convention). Otherwise they stay comments.
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
