@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Plot } from "../Plot";
+import { fallbackDefaults } from "../../lib/chemexDefaults";
 import { useTheme } from "../../context/ThemeContext";
 
 import {
@@ -117,8 +118,9 @@ export const CpmgDispersionTab: React.FC<CpmgDispersionTabProps> = ({
   };
 
   const handleSeedAllRex = () => {
-    const pb = parameterConfig?.globals?.pb?.value || 0.05;
-    const kex = parameterConfig?.globals?.kex_ab?.value || 500.0;
+    // Unset globals start from ChemEx's defaults.
+    const pb = parameterConfig?.globals?.pb?.value ?? fallbackDefaults('PB')?.value ?? 0.05;
+    const kex = parameterConfig?.globals?.kex_ab?.value ?? fallbackDefaults('KEX_AB')?.value ?? 200;
     const seeds: Record<string, number> = {};
 
     for (const p of safeProfiles) {

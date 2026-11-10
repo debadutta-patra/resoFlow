@@ -1,4 +1,5 @@
 import type { ParameterConfig, ParamValue } from './parameterConfig';
+import { isResidueExcluded } from './parameterConfig';
 import type { MethodConfig, Step } from './methodConfig';
 import { getNucleusInfoForModule } from './experimentPlugin';
 import { effectiveBounds, fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from './chemexDefaults';
@@ -10,6 +11,8 @@ export interface ParameterIssue {
   paramKey?: string;
   severity: 'warning' | 'info';
   message: string;
+  /** One-click fix offered next to the issue. */
+  quickFix?: { label: string; kind: 'set_global'; key: string; value: number };
 }
 
 export interface ValidationOptions {
@@ -22,6 +25,8 @@ export interface ValidationOptions {
   maxDwWarn?: number;
   /** ChemEx default values/bounds (backend catalogue); defaults to the static table. */
   defaults?: ParamDefaultsLookup;
+  /** Dispersion experiments: warn when DW_AB starts at ChemEx's 0 and offer this [GLOBAL] value. */
+  zeroDwQuickFix?: { value: number };
 }
 
 /** Bound checks for one value: inverted bounds, and a start value ChemEx would reject. */
@@ -240,7 +245,28 @@ export function validateParameterConfig(
     }
   }
 
-  // 4. MCMC samples a uniform prior over the effective bounds.
+  // 4. Dispersion: Rex has zero gradient in Δω at ChemEx's default DW_AB = 0.
+  if (options.zeroDwQuickFix && !config.globals?.dw_ab) {
+    const residues = availableResidues.length > 0 ? availableResidues : configResidues;
+    const atZero = residues.filter(r => {
+      if (isResidueExcluded(config, r)) return false;
+      const dw = config.residues?.[r]?.dw_ab?.value;
+      return dw === undefined || dw === 0;
+    });
+    if (atZero.length > 0) {
+      const v = options.zeroDwQuickFix.value;
+      issues.push({
+        id: 'dw-zero-start',
+        scope: 'global',
+        paramKey: 'DW_AB',
+        severity: 'warning',
+        message: `${atZero.length} residue${atZero.length === 1 ? '' : 's'} start DW_AB at ChemEx's default of 0 ppm. Rex has zero gradient with respect to Δω there, so the fit can stall. ChemEx's own CPMG examples set [GLOBAL] DW_AB = ${v}.`,
+        quickFix: { label: `Set [GLOBAL] DW_AB = ${v}`, kind: 'set_global', key: 'dw_ab', value: v },
+      });
+    }
+  }
+
+  // 5. MCMC samples a uniform prior over the effective bounds.
   if (methodConfig?.steps) {
     for (const step of methodConfig.steps) {
       if (!step.statistics?.mcmc?.enabled) continue;

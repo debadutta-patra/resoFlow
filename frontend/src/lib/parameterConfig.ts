@@ -2,7 +2,14 @@
  * Data structures and types for structured, provenance-tracked ChemEx parameter configuration.
  */
 
-export type SourceKind = 'pick' | 'manual' | 'default' | 'imported' | 'inherited' | 'estimated_from_rex';
+export type SourceKind =
+  | 'pick'
+  | 'manual'
+  | 'default'
+  | 'imported'
+  | 'inherited'
+  | 'estimated_from_rex'
+  | 'estimated_from_profile';
 
 export type Source =
   | { kind: 'pick'; pickSetHash: string; at: string }
@@ -10,7 +17,9 @@ export type Source =
   | { kind: 'default' }
   | { kind: 'imported' }
   | { kind: 'inherited'; sourceRunId: string; sourceRunLabel: string; at: string }
-  | { kind: 'estimated_from_rex'; at?: string };
+  | { kind: 'estimated_from_rex'; at?: string }
+  /** CS_A estimated from the residue's main (deepest) CEST dip. */
+  | { kind: 'estimated_from_profile'; at?: string };
 
 export interface ParamValue {
   value: number;
@@ -66,6 +75,7 @@ export interface PickSetData {
   cs_f?: number | null;
 }
 
+import { fallbackDefaults, type ParamDefaultsLookup } from './chemexDefaults';
 import {
   normalizeResidueKey,
   extractResidueNumber,
@@ -99,18 +109,30 @@ export function computePickHash(pick: PickSetData | null | undefined): string {
 }
 
 /**
- * Creates default initial parameter config.
- * Uses 4 ns for TAUC_A instead of 4e-9 s.
+ * Creates the initial parameter config: nothing is pre-filled, so every parameter starts
+ * from ChemEx's own default (shown as a placeholder) until the user or a pick sets it.
  */
 export function createDefaultParameterConfig(): ParameterConfig {
   return {
-    globals: {
-      pb: { value: 0.05, source: { kind: 'default' } },
-      kex_ab: { value: 500.0, source: { kind: 'default' } },
-      tauc_a: { value: 4.0, source: { kind: 'default' } },
-    },
+    globals: {},
     residues: {},
   };
+}
+
+/**
+ * Configs saved before ChemEx defaults were adopted carry resoFlow-chosen globals with
+ * `source: default` (PB 0.05, KEX_AB 500, TAUC_A 4, CPMG DW_AB 2.0) that no user set.
+ * Drop them so ChemEx's defaults apply. Returns the dropped (upper-case) names.
+ */
+export function dropLegacyDefaultGlobals(config: ParameterConfig): { config: ParameterConfig; dropped: string[] } {
+  const globals: Record<string, ParamValue> = {};
+  const dropped: string[] = [];
+  for (const [key, pv] of Object.entries(config.globals || {})) {
+    const untouched = pv?.source?.kind === 'default' && pv.lower === undefined && pv.upper === undefined;
+    if (untouched) dropped.push(key.toUpperCase());
+    else if (pv) globals[key] = pv;
+  }
+  return dropped.length ? { config: { ...config, globals }, dropped } : { config, dropped };
 }
 
 export interface ProfileRef {
@@ -386,14 +408,16 @@ export function staleResidueKeys(config: ParameterConfig, picks: Record<string, 
 
 /**
  * Starting values shown in the Methods tab, taken from every [GLOBAL] parameter
- * (lower- and upper-case keys), with the standard defaults as fallback.
+ * (lower- and upper-case keys), with ChemEx's own defaults as fallback.
  */
-export function startingValuesFromGlobals(config: ParameterConfig): Record<string, number> {
-  const defaults: Record<string, number> = { pb: 0.05, kex_ab: 500.0, tauc_a: 4.0 };
+export function startingValuesFromGlobals(
+  config: ParameterConfig,
+  lookup: ParamDefaultsLookup = fallbackDefaults
+): Record<string, number> {
   const out: Record<string, number> = {};
-  const keys = new Set([...Object.keys(defaults), ...Object.keys(config.globals || {})]);
+  const keys = new Set(['pb', 'kex_ab', 'tauc_a', ...Object.keys(config.globals || {})]);
   for (const key of keys) {
-    const v = config.globals?.[key]?.value ?? defaults[key];
+    const v = config.globals?.[key]?.value ?? lookup(key)?.value ?? undefined;
     if (v === undefined || Number.isNaN(v)) continue;
     out[key.toLowerCase()] = v;
     out[key.toUpperCase()] = v;
@@ -406,7 +430,8 @@ export interface ExtraGlobalField {
   key: string;
   label: string;
   hint?: string;
-  defaultValue: number;
+  /** @deprecated Starting values come from ChemEx's defaults; kept so older plugins still type-check. */
+  defaultValue?: number;
 }
 
 /** Where a parameter's step-1 starting value comes from, for the Methods tab. */
@@ -429,6 +454,8 @@ function sourceLabel(source: Source | undefined, pickLabel: string): string {
       return `run ${source.sourceRunLabel}`;
     case 'estimated_from_rex':
       return 'Rex estimate';
+    case 'estimated_from_profile':
+      return 'profile estimate';
     default:
       return 'default';
   }
@@ -496,4 +523,55 @@ export function withValue(pv: ParamValue | undefined, value: number, source: Sou
   if (pv?.upper !== undefined) next.upper = pv.upper;
   if (pv?.bruteStep !== undefined) next.bruteStep = pv.bruteStep;
   return next;
+}
+
+/** Starting value sources that a bulk estimate may replace (never picks or user/imported values). */
+const REPLACEABLE: ReadonlySet<SourceKind> = new Set<SourceKind>(['default', 'estimated_from_profile']);
+
+/**
+ * Seed CS_A from each profile's estimate for residues that have no pick and no
+ * user/imported/inherited CS_A. Keeps bounds. Returns the residues that were seeded.
+ */
+export function seedCsAFromProfiles(
+  config: ParameterConfig,
+  profiles: ProfileRef[],
+  picks: Record<string, PickSetData>,
+  estimate: (profile: ProfileRef) => number | null,
+  at: string = new Date().toISOString()
+): { config: ParameterConfig; seeded: string[] } {
+  const residues = { ...config.residues };
+  const seeded: string[] = [];
+  const hasPick = (key: string) => {
+    const canonical = getCanonicalResidueKey(key, profiles);
+    return Object.entries(picks || {}).some(
+      ([k, p]) => p?.cs_a != null && !Number.isNaN(p.cs_a) && getCanonicalResidueKey(k, profiles) === canonical
+    );
+  };
+  for (const profile of profiles) {
+    const key = profile.residue;
+    if (!key || hasPick(key) || isResidueExcluded(config, key, profiles)) continue;
+    const current = residues[key]?.cs_a;
+    if (current && !REPLACEABLE.has(current.source.kind)) continue;
+    const ppm = estimate(profile);
+    if (ppm === null || !Number.isFinite(ppm)) continue;
+    residues[key] = {
+      ...residues[key],
+      cs_a: withValue(current, Number(ppm.toFixed(3)), { kind: 'estimated_from_profile', at }),
+    };
+    seeded.push(key);
+  }
+  return { config: seeded.length ? { ...config, residues } : config, seeded };
+}
+
+/**
+ * Per-residue starting parameters that are not in parameters.toml for this residue, so
+ * ChemEx starts them from its default. A [GLOBAL] value counts as set for every residue.
+ */
+export function unsetStartingParams(config: ParameterConfig, resKey: string, names: string[]): string[] {
+  const params = config.residues?.[resKey] || {};
+  return names.filter(n => {
+    const key = n.toLowerCase();
+    const pv = params[key] ?? config.globals?.[key];
+    return !pv || Number.isNaN(pv.value);
+  });
 }

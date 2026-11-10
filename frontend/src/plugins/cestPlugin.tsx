@@ -5,8 +5,18 @@
  * Transfer (CEST) experiments in resoFlow.
  */
 
-import { registerExperimentPlugin, type ExperimentPlugin, type ParameterTabCapabilities } from "../lib/experimentPlugin";
+import {
+  getNucleusInfoForModule,
+  registerExperimentPlugin,
+  type ExperimentPlugin,
+  type ParameterTabCapabilities,
+} from "../lib/experimentPlugin";
 import { createDefaultParameterConfig } from "../lib/parameterConfig";
+import { mainDipPpm, type CestProfileLike } from "../lib/cestProfileSeed";
+
+/** CS_A from a CEST profile's main (deepest) dip, in the module's observed-nucleus ppm. */
+export const estimateCsAFromCestProfile = (profile: unknown, ctx: { selectedModule?: string }): number | null =>
+  mainDipPpm(profile as CestProfileLike, getNucleusInfoForModule(ctx.selectedModule ?? "cest_15n").xiRatio);
 import { createDefaultMethodConfig } from "../lib/methodConfig";
 
 /** Parameters-tab capabilities for CEST picks (also reused by the combined EXCHANGE page). */
@@ -26,6 +36,12 @@ export const CEST_PARAMETER_CAPABILITIES: ParameterTabCapabilities = {
     pickNoun: "peak pick",
     pickedLabel: "Picked",
     staleLabel: "Pick Moved",
+  },
+  seedFromProfiles: {
+    label: "Seed CS_A from profiles",
+    title:
+      "Set CS_A from each residue's main (deepest) CEST dip, for residues without a pick. Picked, edited, imported and inherited values are never overwritten.",
+    estimate: estimateCsAFromCestProfile,
   },
 };
 

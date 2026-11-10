@@ -26,8 +26,9 @@ export const CPMG_PARAMETER_CAPABILITIES: ParameterTabCapabilities = {
     migrate: migrateLegacyCpmgParameterConfig,
   },
   extraGlobals: [
-    { key: "dw_ab", label: "Universal Δω (DW_AB)", hint: "Universal starting chemical shift difference (ppm)", defaultValue: 2.0 },
+    { key: "dw_ab", label: "Universal Δω (DW_AB)", hint: "Universal starting chemical shift difference (ppm)" },
   ],
+  zeroDwQuickFix: { value: 2.0 },
   resync: {
     buttonLabel: "Re-sync from Peak Fit",
     buttonTitle: "Non-destructively re-sync CS_A from the current peak-fitting results",

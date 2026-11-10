@@ -103,6 +103,12 @@ interface TableRowData {
   profile?: ProfileRef;
   /** The residue's stored parameters (for bounds). */
   params: ResidueParams;
+  /** Values actually written to parameters.toml (null = ChemEx default applies). */
+  cfgCsA: number | null;
+  cfgDw: number | null;
+  /** Pick values not yet applied to the config (shown as a hint). */
+  pickCsA: number | null;
+  pickDw: number | null;
 }
 
 export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
@@ -301,8 +307,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
         dw_ab: dw_ab_val,
         r1_a: rParams.r1_a?.value ?? null,
         r2_a: rParams.r2_a?.value ?? null,
-        sourceCsA: rParams.cs_a?.source || (hasPick ? { kind: 'default' } : undefined),
-        sourceDw: rParams.dw_ab?.source || (hasPick ? { kind: 'default' } : undefined),
+        sourceCsA: rParams.cs_a?.source,
+        sourceDw: rParams.dw_ab?.source ?? config.globals?.dw_ab?.source,
         isStale,
         hasNoBPick,
         hasPick,
@@ -310,9 +316,13 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
         methodTreatment,
         profile: prof,
         params: rParams,
+        cfgCsA: rParams.cs_a?.value ?? null,
+        cfgDw: rParams.dw_ab?.value ?? config.globals?.dw_ab?.value ?? null,
+        pickCsA: pk?.cs_a != null && !isNaN(pk.cs_a) ? pk.cs_a : null,
+        pickDw: hasBPick && pk?.cs_a != null ? parseFloat((pk.cs_b! - pk.cs_a).toFixed(3)) : null,
       };
     });
-  }, [config.residues, config.excludedResidues, picks, profiles, profileMap, methodTreatmentMap, expectsBPicks]);
+  }, [config.residues, config.globals, config.excludedResidues, picks, profiles, profileMap, methodTreatmentMap, expectsBPicks]);
 
   // Aggregate Counts for Summary Header
   const counts = useMemo(() => {
@@ -760,13 +770,19 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                           <input
                             type="number"
                             step="0.001"
-                            value={row.cs_a != null && !isNaN(row.cs_a) ? row.cs_a : ''}
+                            value={row.cfgCsA != null && !isNaN(row.cfgCsA) ? row.cfgCsA : ''}
                             onChange={(e) =>
                               handleCellEdit(row.resKey, 'cs_a', parseFloat(e.target.value) || 0)
                             }
-                            className="w-24 px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500"
-                            placeholder="—"
+                            className="w-24 px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 placeholder:text-amber-500/80"
+                            placeholder={`ChemEx ${fmtDefault(defaults('cs_a')?.value)}`}
+                            title={row.cfgCsA == null ? `Not in parameters.toml: ChemEx starts CS_A at ${fmtDefault(defaults('cs_a')?.value)} ppm` : undefined}
                           />
+                          {row.cfgCsA == null && row.pickCsA != null && (
+                            <div className="text-[9px] text-slate-400 mt-0.5" title={`A ${pickNoun} exists but is not applied; use re-sync to write it`}>
+                              {pickNoun} {row.pickCsA.toFixed(3)} · not applied
+                            </div>
+                          )}
                         </td>
 
                         {/* CS_B Input (Computed display helper: dw_ab = cs_b - cs_a) */}
@@ -774,7 +790,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                           <input
                             type="number"
                             step="0.001"
-                            value={row.cs_b != null && !isNaN(row.cs_b) ? row.cs_b : ''}
+                            value={row.cfgCsA != null && row.cfgDw != null ? parseFloat((row.cfgCsA + row.cfgDw).toFixed(3)) : ''}
                             onChange={(e) =>
                               handleCellEdit(row.resKey, 'cs_b', parseFloat(e.target.value) || 0)
                             }
@@ -789,17 +805,27 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                           <input
                             type="number"
                             step="0.001"
-                            value={row.dw_ab != null && !isNaN(row.dw_ab) ? row.dw_ab : ''}
+                            value={row.params.dw_ab?.value ?? ''}
                             onChange={(e) =>
                               handleCellEdit(row.resKey, 'dw_ab', parseFloat(e.target.value) || 0)
+                            }
+                            title={
+                              row.params.dw_ab
+                                ? undefined
+                                : config.globals?.dw_ab
+                                  ? `Not set for this residue: starts from [GLOBAL] DW_AB = ${fmtDefault(config.globals.dw_ab.value)} ppm`
+                                  : `Not in parameters.toml: ChemEx starts DW_AB at ${fmtDefault(defaults('dw_ab')?.value)} ppm`
                             }
                             className={`w-24 px-2 py-1 bg-white dark:bg-slate-950 border rounded text-xs font-mono font-semibold focus:ring-1 focus:ring-blue-500 ${
                               row.dw_ab != null && Math.abs(row.dw_ab) > 6.0
                                 ? 'border-amber-400 text-amber-700 dark:text-amber-300'
                                 : 'border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
                             }`}
-                            placeholder="—"
+                            placeholder={config.globals?.dw_ab ? `[GLOBAL] ${fmtDefault(config.globals.dw_ab.value)}` : `ChemEx ${fmtDefault(defaults('dw_ab')?.value)}`}
                           />
+                          {!row.params.dw_ab && row.pickDw != null && (
+                            <div className="text-[9px] text-slate-400 mt-0.5">{pickNoun} {row.pickDw.toFixed(3)} · not applied</div>
+                          )}
                         </td>
 
                         {/* Profile Thumbnail */}
@@ -814,6 +840,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                             isStale={row.isStale}
                             hasNoBPick={row.hasNoBPick}
                             isExcluded={row.isExcluded}
+                            chemexDefault={defaults('cs_a')?.value}
+                            unit="ppm"
                           />
                         </td>
 
@@ -935,7 +963,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                         });
                                       }}
                                       className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
-                                      placeholder="Auto / Fit"
+                                      placeholder={`ChemEx ${fmtDefault(defaults('r1_a')?.value)}`}
                                     />
                                   </div>
                                   <div>
@@ -963,7 +991,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                         });
                                       }}
                                       className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
-                                      placeholder="Auto / Fit"
+                                      placeholder={`ChemEx ${fmtDefault(defaults('r2_a')?.value)}`}
                                     />
                                   </div>
                                 </div>
@@ -1000,7 +1028,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                 </div>
 
                                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400">
-                                  <span>CS_A source: {row.sourceCsA?.kind || 'default'}</span>
+                                  <span>CS_A source: {row.sourceCsA?.kind ?? 'ChemEx default'}</span>
                                   {row.sourceCsA && 'at' in row.sourceCsA && (
                                     <span className="block text-[9px] text-slate-400">
                                       Modified: {new Date(row.sourceCsA.at).toLocaleString()}

@@ -18,14 +18,10 @@ export type CpmgParameterConfig = ParameterConfig;
 export type CpmgResidueParams = ResidueParams;
 export type CpmgParseResult = TomlParseResult;
 
+/** Nothing pre-filled: every parameter starts from ChemEx's default until set. */
 export function createDefaultCpmgParameterConfig(): ParameterConfig {
   return {
-    globals: {
-      pb: { value: 0.05, source: { kind: "default" } },
-      kex_ab: { value: 500.0, source: { kind: "default" } },
-      dw_ab: { value: 2.0, source: { kind: "default" } },
-      tauc_a: { value: 4.0, source: { kind: "default" } },
-    },
+    globals: {},
     residues: {},
     excludedResidues: [],
   };
@@ -56,15 +52,13 @@ const isParamValue = (v: unknown): v is ParamValue =>
 
 /**
  * Convert a parameter config saved by the old CPMG-only model into the shared model:
- * - default globals are filled in,
  * - residue keys are canonicalized,
  * - legacy per-field records (`r2_a: { "600": {...} }`) are dropped (they were never
  *   written to parameters.toml, so dropping them keeps the emitted TOML unchanged),
  * - `inheritedFrom` is converted to the shared `{ sourceRunId, sourceRunLabel, at }` shape.
  */
 export function migrateLegacyCpmgParameterConfig(raw: any): ParameterConfig {
-  const defaults = createDefaultCpmgParameterConfig();
-  if (!raw || typeof raw !== "object") return defaults;
+  if (!raw || typeof raw !== "object") return createDefaultCpmgParameterConfig();
 
   const residues: Record<string, ResidueParams> = {};
   for (const [key, params] of Object.entries<any>(raw.residues || {})) {
@@ -86,7 +80,7 @@ export function migrateLegacyCpmgParameterConfig(raw: any): ParameterConfig {
 
   return canonicalizeCpmgResidues({
     ...raw,
-    globals: { ...defaults.globals, ...(raw.globals || {}) },
+    globals: { ...(raw.globals || {}) },
     residues,
     excludedResidues: Array.isArray(raw.excludedResidues) ? raw.excludedResidues : [],
     ...(inheritedFrom ? { inheritedFrom } : {}),
@@ -144,10 +138,9 @@ export function configToCpmgToml(config?: ParameterConfig, opts: TomlWriteOption
   return configToToml(canonicalizeCpmgResidues(config ?? createDefaultCpmgParameterConfig()), opts);
 }
 
-/** CPMG parameters.toml reader: the shared reader, defaults filled in, keys canonicalized. */
+/** CPMG parameters.toml reader: the shared reader with keys canonicalized. */
 export function cpmgTomlToConfig(tomlText: string): TomlParseResult {
   const parsed = tomlToConfig(tomlText);
-  const defaults = createDefaultCpmgParameterConfig();
   // CPMG dispersion is insensitive to the sign of Δω; keep magnitudes as before.
   for (const params of Object.values(parsed.config.residues)) {
     for (const [pKey, pVal] of Object.entries(params)) {
@@ -157,7 +150,7 @@ export function cpmgTomlToConfig(tomlText: string): TomlParseResult {
   return {
     config: canonicalizeCpmgResidues({
       ...parsed.config,
-      globals: { ...defaults.globals, ...parsed.config.globals },
+      globals: { ...parsed.config.globals },
     }),
     unparsed: parsed.unparsed,
   };

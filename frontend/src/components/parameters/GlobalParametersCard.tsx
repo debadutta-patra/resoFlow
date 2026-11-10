@@ -27,8 +27,6 @@ const boundInputClass =
 
 const BASE_GLOBALS = ['PB', 'KEX_AB', 'TAUC_A'];
 
-const FIELD_DEFAULTS: Record<string, number> = { pb: 0.05, kex_ab: 500, tauc_a: 4.0, pc: 0.01, kex_ac: 500, kex_bc: 500 };
-
 const FIELD_HINTS: Record<string, string> = {
   pb: 'Fraction of minor state B (e.g. 0.05 = 5%)',
   pc: 'Fraction of minor state C',
@@ -48,7 +46,12 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
   const globals = config.globals || {};
   const [openBounds, setOpenBounds] = useState<Record<string, boolean>>({});
 
-  const handleBound = (paramKey: string, side: 'lower' | 'upper', bound: number | undefined, displayed: number) => {
+  const handleBound = (
+    paramKey: string,
+    side: 'lower' | 'upper',
+    bound: number | undefined,
+    displayed: number | null | undefined
+  ) => {
     const next = withBound(globals[paramKey], side, bound, displayed);
     const nextGlobals = { ...globals };
     if (next) nextGlobals[paramKey] = next;
@@ -73,22 +76,17 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
         label: extra?.label ?? def.label,
         hint: extra?.hint ?? FIELD_HINTS[key] ?? def.gloss,
         unit: def.uiUnit === 'fraction' ? (def.max !== undefined ? `${def.min ?? 0} - ${def.max}` : '') : def.uiUnit,
-        min: def.min,
-        max: def.max,
-        step: def.step ?? 0.01,
-        defaultValue: extra?.defaultValue ?? FIELD_DEFAULTS[key] ?? 0,
+        chemexDefault: defaults(key)?.value ?? null,
       };
     });
-  }, [catalogGlobals, extraGlobals, globals]);
+  }, [catalogGlobals, extraGlobals, globals, defaults]);
 
-  const handleUpdate = (paramKey: string, val: number) => {
-    onChange({
-      ...config,
-      globals: {
-        ...globals,
-        [paramKey]: withValue(globals[paramKey], val, { kind: 'manual', at: new Date().toISOString() }),
-      },
-    });
+  /** A cleared field is removed from [GLOBAL] (with its bounds), so ChemEx's default applies. */
+  const handleUpdate = (paramKey: string, val: number | undefined) => {
+    const nextGlobals = { ...globals };
+    if (val === undefined) delete nextGlobals[paramKey];
+    else nextGlobals[paramKey] = withValue(globals[paramKey], val, { kind: 'manual', at: new Date().toISOString() });
+    onChange({ ...config, globals: nextGlobals });
   };
 
   return (
@@ -106,7 +104,8 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {fields.map(f => {
-          const param: ParamValue = globals[f.key] || { value: f.defaultValue, source: { kind: 'default' } };
+          const param: ParamValue | undefined = globals[f.key];
+          const placeholder = f.chemexDefault !== null ? `ChemEx default: ${fmtDefault(f.chemexDefault)}` : 'ChemEx default';
           return (
             <div key={f.key} className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -116,19 +115,16 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
                 >
                   {f.label}
                 </label>
-                <ParameterBadge source={param.source} compact />
+                <ParameterBadge source={param?.source} chemexDefault={f.chemexDefault} unit={f.unit} compact />
               </div>
               <div className="relative rounded-lg shadow-2xs">
-                <input
+                <NumericField
                   id={`global-${f.key}`}
-                  type="number"
-                  min={f.min}
-                  max={f.max}
-                  step={f.step}
-                  value={isNaN(param.value) ? '' : param.value}
-                  onChange={e => handleUpdate(f.key, parseFloat(e.target.value) || 0)}
-                  className="w-full text-sm pl-3 pr-16 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800 dark:text-slate-200 font-mono transition-colors"
-                  placeholder={String(f.defaultValue)}
+                  value={param?.value}
+                  onCommit={v => handleUpdate(f.key, v)}
+                  className="w-full text-sm pl-3 pr-16 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800 dark:text-slate-200 font-mono transition-colors placeholder:text-slate-400"
+                  placeholder={placeholder}
+                  title={param ? undefined : `Not set: ChemEx starts at its default. Clear a value to fall back to it.`}
                 />
                 {f.unit && (
                   <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none">
@@ -141,7 +137,7 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
               <p className="text-[10px] text-slate-400">{f.hint}</p>
               {f.key !== 'tref' && (() => {
                 const def = defaults(f.key);
-                const custom = param.lower !== undefined || param.upper !== undefined;
+                const custom = param?.lower !== undefined || param?.upper !== undefined;
                 const open = openBounds[f.key] ?? custom;
                 return (
                   <div className="pt-0.5">
@@ -166,15 +162,15 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
                       <div className="mt-1.5 grid grid-cols-2 gap-2">
                         <NumericField
                           ariaLabel={`${f.label} lower bound`}
-                          value={param.lower}
-                          onCommit={v => handleBound(f.key, 'lower', v, param.value)}
+                          value={param?.lower}
+                          onCommit={v => handleBound(f.key, 'lower', v, param?.value ?? f.chemexDefault)}
                           placeholder={`lower: ${fmtDefault(def?.lower)}`}
                           className={boundInputClass}
                         />
                         <NumericField
                           ariaLabel={`${f.label} upper bound`}
-                          value={param.upper}
-                          onCommit={v => handleBound(f.key, 'upper', v, param.value)}
+                          value={param?.upper}
+                          onCommit={v => handleBound(f.key, 'upper', v, param?.value ?? f.chemexDefault)}
                           placeholder={`upper: ${fmtDefault(def?.upper)}`}
                           className={boundInputClass}
                         />

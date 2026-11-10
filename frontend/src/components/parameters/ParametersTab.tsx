@@ -6,13 +6,16 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, GitFork, RefreshCw, Sliders, Upload } from 'lucide-react';
+import { Activity, AlertTriangle, GitFork, Info, RefreshCw, Sliders, Upload, X } from 'lucide-react';
 import type { ParameterEditor } from '../../hooks/useParameterEditor';
 import type { ParameterTabCapabilities } from '../../lib/experimentPlugin';
 import type { MethodConfig } from '../../lib/methodConfig';
 import type { ParameterConfig, PickSetData, ProfileRef } from '../../lib/parameterConfig';
+import { isResidueExcluded, seedCsAFromProfiles, unsetStartingParams } from '../../lib/parameterConfig';
+import type { ParameterIssue } from '../../lib/parameterValidation';
 import type { SourceRunSummary, TargetAnalysisMeta } from '../../lib/compatibility';
 import { validateParameterConfig } from '../../lib/parameterValidation';
+import { fmtDefault } from '../../lib/chemexDefaults';
 import { GlobalParametersCard } from './GlobalParametersCard';
 import { ResidueParametersTable } from './ResidueParametersTable';
 import { ResyncModal } from './ResyncModal';
@@ -91,9 +94,44 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
         methodConfig,
         selectedModule,
         defaults: editor.defaults,
+        zeroDwQuickFix: capabilities.zeroDwQuickFix,
       }),
-    [parameterConfig, profiles, methodConfig, selectedModule, editor.defaults]
+    [parameterConfig, profiles, methodConfig, selectedModule, editor.defaults, capabilities.zeroDwQuickFix]
   );
+
+  // Residues (with data, not excluded) that will start CS_A / DW_AB from ChemEx's defaults.
+  const defaultStart = useMemo(() => {
+    const active = profiles.filter(p => !isResidueExcluded(parameterConfig, p.residue, profiles));
+    const starting = active.filter(p => unsetStartingParams(parameterConfig, p.residue, ['cs_a', 'dw_ab']).length > 0);
+    return { total: active.length, count: starting.length };
+  }, [profiles, parameterConfig]);
+
+  const applyQuickFix = (issue: ParameterIssue) => {
+    const fix = issue.quickFix;
+    if (!fix || fix.kind !== 'set_global') return;
+    editor.setParameterConfig(prev => ({
+      ...prev,
+      globals: {
+        ...prev.globals,
+        [fix.key]: { ...prev.globals?.[fix.key], value: fix.value, source: { kind: 'manual', at: new Date().toISOString() } },
+      },
+    }));
+    notify?.(`${fix.label} applied`);
+  };
+
+  const seed = capabilities.seedFromProfiles;
+  const handleSeedFromProfiles = () => {
+    if (!seed) return;
+    const { config, seeded } = seedCsAFromProfiles(parameterConfig, profiles, picks, p =>
+      seed.estimate(p, { selectedModule })
+    );
+    if (seeded.length > 0) editor.setParameterConfig(config);
+    notify?.(
+      seeded.length > 0
+        ? `Seeded CS_A from profiles for ${seeded.length} residue${seeded.length === 1 ? '' : 's'}`
+        : 'No residue without a pick had a clear dip to seed CS_A from'
+    );
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -126,6 +164,12 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
                 </span>
               )}
             </button>
+            {seed && (
+              <button type="button" onClick={handleSeedFromProfiles} className={actionBtnNeutral} title={seed.title}>
+                <Activity className="w-3.5 h-3.5" />
+                <span>{seed.label}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowImport(true)}
@@ -147,9 +191,49 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
             {issue.residue && <strong>[{issue.residue}] </strong>}
             {issue.paramKey && <strong>({issue.paramKey}) </strong>}
             {issue.message}
+            {issue.quickFix && (
+              <button
+                type="button"
+                onClick={() => applyQuickFix(issue)}
+                className="ml-2 px-2 py-0.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold"
+              >
+                {issue.quickFix.label}
+              </button>
+            )}
           </>
         ))}
       />
+
+      {editor.notices.length > 0 && (
+        <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-start justify-between gap-3 text-xs text-blue-800 dark:text-blue-300">
+          <div className="flex items-start gap-2.5">
+            <Info className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              {editor.notices.map((n, i) => (
+                <p key={i}>{n}</p>
+              ))}
+            </div>
+          </div>
+          <button type="button" onClick={editor.dismissNotices} className="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40" aria-label="Dismiss notice">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {!editor.isRawParamEditMode && defaultStart.count > 0 && (
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-300">
+          <span className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-slate-500 shrink-0" />
+            <span>
+              <strong>
+                {defaultStart.count} of {defaultStart.total}
+              </strong>{' '}
+              residue{defaultStart.total === 1 ? '' : 's'} will start from ChemEx defaults (CS_A {fmtDefault(editor.defaults('cs_a')?.value)} ppm and/or DW_AB{' '}
+              {fmtDefault(editor.defaults('dw_ab')?.value)} ppm).
+            </span>
+          </span>
+        </div>
+      )}
 
       {!editor.isRawParamEditMode && (
         <UnparsedLinesNotice

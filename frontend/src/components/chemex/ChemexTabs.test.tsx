@@ -65,6 +65,30 @@ describe.each([cestPlugin, cpmgPlugin, exchangePlugin])('Parameters tab on $id',
 });
 
 describe('Parameters tab capability differences', () => {
+  it('offers "Seed CS_A from profiles" on CEST and EXCHANGE only', () => {
+    renderParameters(cestPlugin);
+    expect(screen.getByRole('button', { name: /Seed CS_A from profiles/i })).toBeDefined();
+    cleanup();
+    renderParameters(exchangePlugin);
+    expect(screen.getByRole('button', { name: /Seed CS_A from profiles/i })).toBeDefined();
+    cleanup();
+    renderParameters(cpmgPlugin);
+    expect(screen.queryByRole('button', { name: /Seed CS_A from profiles/i })).toBeNull();
+  });
+
+  it('unset globals show the ChemEx default as placeholder; DW_AB = 0 quick-fix only on dispersion pages', () => {
+    renderParameters(cestPlugin);
+    expect((screen.getByLabelText(/p_b/i) as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText(/p_b/i) as HTMLInputElement).placeholder).toBe('ChemEx default: 0.05');
+    expect(screen.getByText(/1 of 1/)).toBeDefined(); // residue starts from ChemEx defaults
+    expect(screen.queryByRole('button', { name: /Set \[GLOBAL\] DW_AB/i })).toBeNull();
+    cleanup();
+    renderParameters(cpmgPlugin);
+    fireEvent.click(screen.getByRole('button', { name: /Set \[GLOBAL\] DW_AB = 2/i }));
+    expect((screen.getByLabelText(/Universal Δω/i) as HTMLInputElement).value).toBe('2');
+    expect(screen.queryByRole('button', { name: /Set \[GLOBAL\] DW_AB/i })).toBeNull();
+  });
+
   it('CEST shows the CS_B column; CPMG hides it and adds the universal DW_AB global', () => {
     renderParameters(cestPlugin);
     expect(screen.getByText('CS_B (ppm)')).toBeDefined();
@@ -81,7 +105,7 @@ describe('Parameters tab capability differences', () => {
     renderParameters(plugin);
     fireEvent.click(screen.getByRole('button', { name: /Edit Raw TOML/i }));
     const textarea = screen.getByPlaceholderText(/parameters.toml/i) as HTMLTextAreaElement;
-    expect(textarea.value).toContain('[GLOBAL]');
+    expect(textarea.value).toContain('Auto-generated ChemEx parameter file');
     fireEvent.change(textarea, { target: { value: '[GLOBAL]\nPB = 0.2\n' } });
     fireEvent.click(screen.getByRole('button', { name: /Parse & Return/i }));
     expect((screen.getByLabelText(/p_b/i) as HTMLInputElement).value).toBe('0.2');

@@ -101,9 +101,32 @@ describe('useParameterEditor', () => {
     });
     const cfg = result.current.parameterConfig;
     expect(cfg.residues['3N'].cs_a?.value).toBe(120);
-    expect(cfg.globals.dw_ab.value).toBe(2.0);
+    expect(cfg.globals.dw_ab).toBeUndefined(); // nothing pre-filled: ChemEx's default applies
     expect(result.current.staleResidues).toEqual([]);
     expect(result.current.effectiveParameterToml).toContain('3N = 120.000');
+  });
+
+  it('drops never-edited legacy resoFlow defaults on restore, once, with a notice', () => {
+    const { result } = renderHook(() =>
+      useParameterEditor({ createDefault: createDefaultParameterConfig, profiles: [], picks: {} })
+    );
+    act(() => {
+      result.current.restore({
+        parameter_config: {
+          globals: {
+            pb: { value: 0.05, source: { kind: 'default' } },
+            kex_ab: { value: 750, source: { kind: 'manual' } },
+          },
+          residues: {},
+        } as any,
+      });
+    });
+    expect(result.current.parameterConfig.globals.pb).toBeUndefined();
+    expect(result.current.parameterConfig.globals.kex_ab.value).toBe(750);
+    expect(result.current.notices).toHaveLength(1);
+    expect(result.current.notices[0]).toContain('PB');
+    act(() => result.current.dismissNotices());
+    expect(result.current.notices).toEqual([]);
   });
 
   it('persists and restores raw parameters.toml edits', () => {
@@ -125,7 +148,7 @@ describe('useParameterEditor', () => {
     expect(reloaded.current.effectiveParameterToml).toContain('# custom');
   });
 
-  it('exposes every global as a Methods starting value', () => {
+  it('exposes ChemEx defaults (and every set global) as Methods starting values', () => {
     const { result } = renderHook(() =>
       useParameterEditor({
         createDefault: CPMG_PARAMETER_CAPABILITIES.createDefaultParameters,
@@ -133,7 +156,8 @@ describe('useParameterEditor', () => {
         picks: {},
       })
     );
-    expect(result.current.startingValues).toMatchObject({ PB: 0.05, KEX_AB: 500, TAUC_A: 4, DW_AB: 2 });
+    expect(result.current.startingValues).toMatchObject({ PB: 0.05, KEX_AB: 200, TAUC_A: 4 });
+    expect(result.current.startingValues.DW_AB).toBeUndefined();
   });
 
   it('uses the same exclusion rule on every page', () => {

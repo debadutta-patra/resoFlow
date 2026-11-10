@@ -11,7 +11,7 @@ import { createDefaultMethodConfig } from "../lib/methodConfig";
 import { ProfileThumbnail, type CestProfile } from "../components/parameters/ProfileThumbnail";
 import { DispersionThumbnail } from "../components/cpmg/DispersionThumbnail";
 import type { CpmgProfileItem } from "../components/cpmg/CpmgDispersionTab";
-import { cestPlugin, CEST_PARAMETER_CAPABILITIES } from "./cestPlugin";
+import { cestPlugin, CEST_PARAMETER_CAPABILITIES, estimateCsAFromCestProfile } from "./cestPlugin";
 import { cpmgPlugin } from "./cpmgPlugin";
 
 const isCpmgProfile = (p: unknown): p is CpmgProfileItem =>
@@ -24,6 +24,12 @@ export const EXCHANGE_PARAMETER_CAPABILITIES: ParameterTabCapabilities = {
     "Configure global kinetic settings and per-residue shifts & rates shared by the CEST and CPMG datasets, with full provenance and stale detection.",
   createDefaultParameters: createDefaultParameterConfig,
   residueTable: { ...CEST_PARAMETER_CAPABILITIES.residueTable, profileTitle: "Profile" },
+  seedFromProfiles: {
+    ...CEST_PARAMETER_CAPABILITIES.seedFromProfiles!,
+    // Only CEST profiles have a dip; CPMG dispersion profiles carry no CS_A information.
+    estimate: (profile, ctx) => (isCpmgProfile(profile) ? null : estimateCsAFromCestProfile(profile, ctx)),
+  },
+  zeroDwQuickFix: { value: 2.0 },
   renderResidueProfile: (row, size) => {
     const width = size === "thumb" ? 130 : 480;
     const height = size === "thumb" ? 34 : 120;

@@ -54,6 +54,21 @@ export interface ParameterTabCapabilities {
   };
   /** Thumbnail/large profile preview in the residue table (defaults to CEST profile). */
   renderResidueProfile?: (row: ResidueProfileCell, size: "thumb" | "large") => React.ReactNode;
+  /**
+   * Bulk "Seed CS_A from profiles": estimate CS_A from a residue's profile (null = no
+   * estimate). Only residues without a pick and without a user/imported value are seeded.
+   */
+  seedFromProfiles?: {
+    label: string;
+    title: string;
+    estimate: (profile: unknown, ctx: { selectedModule?: string }) => number | null;
+  };
+  /**
+   * Dispersion experiments: Rex has zero gradient in Δω at DW_AB = 0 (ChemEx's default),
+   * so warn when residues would start there and offer `[GLOBAL] DW_AB = value` (ChemEx's
+   * own CPMG examples use 2.0 ppm).
+   */
+  zeroDwQuickFix?: { value: number };
 }
 
 export interface NucleusInfo {

@@ -6,12 +6,11 @@ import {
 } from './cpmgConfig';
 
 describe('cpmgConfig', () => {
-  it('creates default configuration and serializes to TOML', () => {
+  it('creates an empty default configuration so ChemEx defaults apply', () => {
     const config = createDefaultCpmgParameterConfig();
+    expect(config.globals).toEqual({});
     const toml = configToCpmgToml(config);
-    expect(toml).toContain('[GLOBAL]');
-    expect(toml).toContain('PB = 0.05');
-    expect(toml).toContain('KEX_AB = 500');
+    expect(toml).not.toContain('[GLOBAL]');
   });
 
   it('correctly applies grid coordinates to globals and residues', () => {
@@ -70,7 +69,7 @@ describe('CPMG on the shared parameter model', () => {
   it('migrates legacy CPMG configs into the shared ParameterConfig shape', () => {
     const cfg = migrateLegacyCpmgParameterConfig(legacy);
     expect(cfg.globals.pb.value).toBe(0.012);
-    expect(cfg.globals.kex_ab.value).toBe(500); // defaults filled in
+    expect(cfg.globals.kex_ab).toBeUndefined(); // no resoFlow defaults filled in
     expect(cfg.residues['3N'].cs_a?.value).toBe(120.185); // alias merged, not dropped
     expect(cfg.residues['3N'].dw_ab?.value).toBe(1.5);
     expect(cfg.residues['3LYS']).toBeUndefined();
@@ -94,7 +93,7 @@ describe('CPMG on the shared parameter model', () => {
     expect(config.residues['3N'].cs_a?.value).toBe(120.185);
     expect(config.residues['3N'].dw_ab?.value).toBe(1.2);
     expect(config.excludedResidues).toEqual(['4N']);
-    expect(config.globals.tauc_a.value).toBe(4);
+    expect(config.globals.tauc_a).toBeUndefined(); // not in the file: ChemEx default applies
   });
 });
 

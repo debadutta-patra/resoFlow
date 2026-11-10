@@ -7,8 +7,10 @@ import {
   Sparkles,
   MinusCircle,
   GitFork,
+  Activity,
 } from 'lucide-react';
 import type { Source } from '../../lib/parameterConfig';
+import { fmtDefault } from '../../lib/chemexDefaults';
 
 export type DisplayBadgeState =
   | 'excluded'
@@ -18,7 +20,9 @@ export type DisplayBadgeState =
   | 'no_b'
   | 'default'
   | 'imported'
-  | 'inherited';
+  | 'inherited'
+  | 'from_profile'
+  | 'rex_estimate';
 
 interface ParameterBadgeProps {
   source?: Source;
@@ -27,6 +31,9 @@ interface ParameterBadgeProps {
   isExcluded?: boolean;
   compact?: boolean;
   className?: string;
+  /** ChemEx's default for the parameter, shown in the "ChemEx default" tooltip. */
+  chemexDefault?: number | null;
+  unit?: string;
 }
 
 export const ParameterBadge: React.FC<ParameterBadgeProps> = ({
@@ -36,6 +43,8 @@ export const ParameterBadge: React.FC<ParameterBadgeProps> = ({
   isExcluded = false,
   compact = false,
   className = '',
+  chemexDefault,
+  unit,
 }) => {
   let state: DisplayBadgeState = 'default';
 
@@ -53,6 +62,10 @@ export const ParameterBadge: React.FC<ParameterBadgeProps> = ({
     state = 'picked';
   } else if (source?.kind === 'imported') {
     state = 'imported';
+  } else if (source?.kind === 'estimated_from_profile') {
+    state = 'from_profile';
+  } else if (source?.kind === 'estimated_from_rex') {
+    state = 'rex_estimate';
   } else {
     state = 'default';
   }
@@ -72,7 +85,7 @@ export const ParameterBadge: React.FC<ParameterBadgeProps> = ({
   > = {
     excluded: {
       label: 'Excluded',
-      title: 'Residue is commented out in parameters.toml and excluded from ChemEx',
+      title: 'Residue is excluded: its profile is left out of the experiment files, so ChemEx does not fit it',
       classes: 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-700 font-semibold',
       Icon: MinusCircle,
       iconColor: 'text-rose-600 dark:text-rose-400',
@@ -119,9 +132,26 @@ export const ParameterBadge: React.FC<ParameterBadgeProps> = ({
       Icon: GitFork,
       iconColor: 'text-indigo-600 dark:text-indigo-400',
     },
+    from_profile: {
+      label: 'From profile',
+      title: 'Estimated from the main (deepest) dip of the profile' + (timeFormatted ? ` at ${timeFormatted}` : ''),
+      classes: 'bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-700',
+      Icon: Activity,
+      iconColor: 'text-teal-600 dark:text-teal-400',
+    },
+    rex_estimate: {
+      label: 'Rex estimate',
+      title: 'Estimated from the dispersion amplitude (Rex)',
+      classes: 'bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-700',
+      Icon: Activity,
+      iconColor: 'text-teal-600 dark:text-teal-400',
+    },
     default: {
-      label: 'Default',
-      title: 'Initial default parameter value',
+      label: 'ChemEx default',
+      title:
+        chemexDefault !== undefined && chemexDefault !== null
+          ? `Not set in parameters.toml: ChemEx starts at ${fmtDefault(chemexDefault)}${unit ? ` ${unit}` : ''}`
+          : "Not set in parameters.toml: ChemEx's default applies",
       classes: 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700',
       Icon: Sparkles,
       iconColor: 'text-slate-400 dark:text-slate-500',

@@ -11,6 +11,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { ParameterConfig, PickSetData, ProfileRef } from '../lib/parameterConfig';
 import {
   canonicalizeParameterConfig,
+  dropLegacyDefaultGlobals,
   isResidueExcluded,
   staleResidueKeys,
   startingValuesFromGlobals,
@@ -43,6 +44,9 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
   const [unparsedParamTomlLines, setUnparsedParamTomlLines] = useState<string[]>([]);
   // ChemEx default values/bounds for the current model (backend catalogue; static table until loaded).
   const [catalog, setCatalog] = useState<CatalogDefaultsRow[] | null>(null);
+  // One-time notices about migrations applied while loading a saved config.
+  const [notices, setNotices] = useState<string[]>([]);
+  const dismissNotices = useCallback(() => setNotices([]), []);
   const defaults = useMemo(() => defaultsLookupFromCatalog(catalog), [catalog]);
   const toToml = useCallback((cfg: ParameterConfig) => codec.toToml(cfg, { defaults }), [codec, defaults]);
 
@@ -90,7 +94,7 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
 
   // ── Derived ──
   const staleResidues = useMemo(() => staleResidueKeys(parameterConfig, picks), [parameterConfig, picks]);
-  const startingValues = useMemo(() => startingValuesFromGlobals(parameterConfig), [parameterConfig]);
+  const startingValues = useMemo(() => startingValuesFromGlobals(parameterConfig, defaults), [parameterConfig, defaults]);
 
   // ── Persistence ──
   const effectiveParameterToml = isRawParamEditMode ? rawParamToml : toToml(parameterConfig);
@@ -104,7 +108,16 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
       const rawCfg = saved.parameter_config;
       if (rawCfg && typeof rawCfg === 'object' && rawCfg.globals) {
         const { rawOverride, ...structured } = (codec.migrate ? codec.migrate(rawCfg) : rawCfg) as ParameterConfig;
-        const canon = canonicalizeParameterConfig(structured, restoreProfiles);
+        const legacy = dropLegacyDefaultGlobals(structured);
+        const canon = canonicalizeParameterConfig(legacy.config, restoreProfiles);
+        setNotices(
+          legacy.dropped.length
+            ? [
+                `Removed resoFlow's old pre-filled starting values (${legacy.dropped.join(', ')}) that were never edited; ` +
+                  `these parameters now start from ChemEx's defaults. Set them again if you relied on them.`,
+              ]
+            : []
+        );
         const override = rawOverride ?? rawCfg.rawOverride;
         setParameterConfig(canon);
         if (override && override.trim()) {
@@ -154,6 +167,9 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
     defaults,
     /** Feed the backend parameter catalogue (from useMethodEditor's `onCatalog`). */
     setCatalog,
+    /** One-time migration notices from the last restore. */
+    notices,
+    dismissNotices,
     restore,
   };
 }
