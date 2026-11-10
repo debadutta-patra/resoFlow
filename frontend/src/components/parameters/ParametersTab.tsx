@@ -19,6 +19,7 @@ import type { ResolvedStep } from '../../lib/resolvedRoles';
 import type { SourceRunSummary, TargetAnalysisMeta } from '../../lib/compatibility';
 import { validateParameterConfig } from '../../lib/parameterValidation';
 import { fmtDefault } from '../../lib/chemexDefaults';
+import { toCelsius } from '../../lib/taucEstimate';
 import { legacyExclusionNotice } from '../../lib/parameterToml';
 import { GlobalParametersCard } from './GlobalParametersCard';
 import { ResidueParametersTable } from './ResidueParametersTable';
@@ -293,6 +294,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
             roleChip={roleChipFor}
             onRoleClick={onNavigateToMethods}
             model={targetAnalysis.model}
+            temperatureC={toCelsius(targetAnalysis.temperature)}
           />
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">

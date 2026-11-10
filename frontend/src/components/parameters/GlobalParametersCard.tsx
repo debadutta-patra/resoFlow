@@ -11,6 +11,7 @@ import { getUnitDef } from '../../lib/unitRegistry';
 import { fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from '../../lib/chemexDefaults';
 import { ParameterBadge } from './ParameterBadge';
 import { NumericField } from './NumericField';
+import { TaucEstimator } from './TaucEstimator';
 
 export type { ExtraGlobalField };
 
@@ -33,6 +34,8 @@ interface GlobalParametersCardProps {
   onRoleClick?: () => void;
   /** Kinetic model, for the derived PA/KAB/KBA/τ strip. */
   model?: string;
+  /** Sample temperature in °C (TAUC_A estimator default). */
+  temperatureC?: number;
 }
 
 const CHIP_TONES: Record<RoleChip['tone'], string> = {
@@ -54,7 +57,7 @@ const FIELD_HINTS: Record<string, string> = {
   kex_ab: 'Sum of forward & reverse rates: k_ab + k_ba',
   kex_ac: 'Sum of forward & reverse rates: k_ac + k_ca',
   kex_bc: 'Sum of forward & reverse rates: k_bc + k_cb',
-  tauc_a: 'Rotational correlation time in nanoseconds',
+  tauc_a: 'Rotational correlation time (ns). Seeds relaxation estimates (model-free / R1·R2 initialisation); fixed by default.',
 };
 
 export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
@@ -67,6 +70,7 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
   roleChip,
   onRoleClick,
   model,
+  temperatureC = 25,
 }) => {
   const globals = useMemo(() => config.globals || {}, [config.globals]);
   const [openBounds, setOpenBounds] = useState<Record<string, boolean>>({});
@@ -184,6 +188,12 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
                       </button>
                     ) : null;
                   })()}
+                  {f.key === 'tauc_a' && (
+                    <TaucEstimator
+                      temperatureC={temperatureC}
+                      onUse={tau => handleUpdate('tauc_a', tau)}
+                    />
+                  )}
                   <ParameterBadge source={param?.source} chemexDefault={f.chemexDefault} unit={f.unit} compact />
                   {f.removable && (
                     <button

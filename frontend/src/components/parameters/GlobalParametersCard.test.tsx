@@ -88,3 +88,22 @@ describe('import section order', () => {
     expect(tomlToConfig('[GLOBAL]\nR2_A = 20\n\n[R2_A]\n3N = 7\n').warnings).toBeUndefined();
   });
 });
+
+describe('TAUC_A estimator', () => {
+  it('fills TAUC_A from MW and temperature', () => {
+    let latest: ParameterConfig = { globals: {}, residues: {} };
+    render(<Harness onConfig={c => (latest = c)} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Estimate TAUC_A' }));
+    const mw = screen.getByLabelText('Molecular weight (kDa)');
+    fireEvent.focus(mw);
+    fireEvent.change(mw, { target: { value: '26' } });
+    fireEvent.blur(mw);
+    const t = screen.getByLabelText('Temperature (°C)');
+    fireEvent.focus(t);
+    fireEvent.change(t, { target: { value: '26.85' } });
+    fireEvent.blur(t);
+    expect(screen.getByLabelText('Estimated τc').textContent).toBe('10.00 ns');
+    fireEvent.click(screen.getByRole('button', { name: 'Use' }));
+    expect(latest.globals.tauc_a?.value).toBe(10);
+  });
+});
