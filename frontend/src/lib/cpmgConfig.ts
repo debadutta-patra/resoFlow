@@ -153,6 +153,7 @@ export function cpmgTomlToConfig(tomlText: string): TomlParseResult {
       globals: { ...parsed.config.globals },
     }),
     unparsed: parsed.unparsed,
+    ...(parsed.warnings ? { warnings: parsed.warnings } : {}),
   };
 }
 

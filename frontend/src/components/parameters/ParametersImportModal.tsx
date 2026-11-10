@@ -13,7 +13,7 @@ interface ParametersImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   /** `legacyExcluded`: residues converted from old-style commented lines into exclusions. */
-  onImport: (importedConfig: ParameterConfig, unparsed: string[], legacyExcluded: string[]) => void;
+  onImport: (importedConfig: ParameterConfig, unparsed: string[], legacyExcluded: string[], warnings: string[]) => void;
   /** Experiment-specific parameters.toml codec (defaults to the shared one). */
   codec?: ParameterCodec;
 }
@@ -41,7 +41,7 @@ export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
     }
     try {
       // resoFlow-written files: commented residue lines are old exclusions. Foreign files: only on request.
-      const { config, unparsed, legacyExcluded } = parseWithLegacyExclusions(
+      const { config, unparsed, legacyExcluded, warnings } = parseWithLegacyExclusions(
         codec.fromToml,
         tomlText,
         legacy.generated ? true : treatCommentsAsExclusions
@@ -54,7 +54,7 @@ export const ParametersImportModal: React.FC<ParametersImportModalProps> = ({
         return;
       }
 
-      onImport(config, unparsed, legacyExcluded);
+      onImport(config, unparsed, legacyExcluded, warnings ?? []);
       setTomlText('');
       setTreatCommentsAsExclusions(false);
       setError('');

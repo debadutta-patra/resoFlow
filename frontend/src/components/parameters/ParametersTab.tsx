@@ -279,6 +279,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
             catalogGlobals={catalogGlobals}
             extraGlobals={capabilities.extraGlobals}
             defaults={editor.defaults}
+            catalog={editor.catalog}
           />
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
@@ -330,8 +331,9 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
         isOpen={showImport}
         onClose={() => setShowImport(false)}
         codec={capabilities.codec}
-        onImport={(imported, unparsed, legacyExcluded) => {
+        onImport={(imported, unparsed, legacyExcluded, warnings) => {
           editor.replaceConfig(imported, unparsed);
+          warnings.forEach(editor.addNotice);
           notify?.(
             legacyExcluded.length
               ? legacyExclusionNotice(legacyExcluded)

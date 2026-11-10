@@ -23,7 +23,8 @@ import {
   parseWithLegacyExclusions,
   type ParameterCodec,
 } from '../lib/parameterToml';
-import { defaultsLookupFromCatalog, type CatalogDefaultsRow } from '../lib/chemexDefaults';
+import { defaultsLookupFromCatalog } from '../lib/chemexDefaults';
+import type { AvailableParamMeta } from '../components/methods/ParameterTable';
 
 export type { ParameterCodec };
 
@@ -48,7 +49,7 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
   const [isRawParamEditMode, setIsRawParamEditMode] = useState(false);
   const [unparsedParamTomlLines, setUnparsedParamTomlLines] = useState<string[]>([]);
   // ChemEx default values/bounds for the current model (backend catalogue; static table until loaded).
-  const [catalog, setCatalog] = useState<CatalogDefaultsRow[] | null>(null);
+  const [catalog, setCatalog] = useState<AvailableParamMeta[] | null>(null);
   // One-time notices about migrations applied while loading a saved config.
   const [notices, setNotices] = useState<string[]>([]);
   const dismissNotices = useCallback(() => setNotices([]), []);
@@ -65,7 +66,11 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
     const parsed = parseWithLegacyExclusions(codec.fromToml, rawParamToml, 'auto');
     setParameterConfig(canonicalizeParameterConfig(parsed.config, profiles));
     setUnparsedParamTomlLines(parsed.unparsed);
-    if (parsed.legacyExcluded.length) setNotices([legacyExclusionNotice(parsed.legacyExcluded)]);
+    const raised = [
+      ...(parsed.legacyExcluded.length ? [legacyExclusionNotice(parsed.legacyExcluded)] : []),
+      ...(parsed.warnings ?? []),
+    ];
+    if (raised.length) setNotices(raised);
     setIsRawParamEditMode(false);
   };
   const discardRawToml = () => {
@@ -175,6 +180,10 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
     defaults,
     /** Feed the backend parameter catalogue (from useMethodEditor's `onCatalog`). */
     setCatalog,
+    /** The backend parameter catalogue for the current model (null until loaded). */
+    catalog,
+    /** Show a one-off notice (e.g. import warnings). */
+    addNotice: (message: string) => setNotices(prev => [...prev, message]),
     /** One-time migration notices from the last restore. */
     notices,
     dismissNotices,

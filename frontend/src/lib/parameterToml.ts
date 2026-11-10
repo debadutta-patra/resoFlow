@@ -207,6 +207,12 @@ export function configToToml(config: ParameterConfig, opts: TomlWriteOptions = {
 export interface TomlParseResult {
   config: ParameterConfig;
   unparsed: string[];
+  /**
+   * Semantics that change on export. ChemEx applies the *last* matching entry in file
+   * order; resoFlow writes [GLOBAL] first. So a [GLOBAL] value placed after a per-residue
+   * section for the same parameter (global wins in this file) loses to it after export.
+   */
+  warnings?: string[];
 }
 
 /**
@@ -227,6 +233,8 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
 
   const rawLines = tomlContent.split(/\r?\n/);
   let currentSection = '';
+  const residueSectionsSeen = new Set<string>();
+  const warnings: string[] = [];
 
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i];
@@ -271,6 +279,12 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
     if (!currentSection || currentSection === 'GLOBAL') {
       // Global parameter
       const globalKey = key.toLowerCase();
+      if (residueSectionsSeen.has(key.toUpperCase())) {
+        warnings.push(
+          `[GLOBAL] ${key.toUpperCase()} comes after [${key.toUpperCase()}] in this file, so ChemEx would apply the global value to every residue. ` +
+            `resoFlow writes [GLOBAL] first, so after export the per-residue [${key.toUpperCase()}] values take precedence.`
+        );
+      }
       const unitDef = getUnitDef(key);
       config.globals[globalKey] = {
         ...fromChemexValue(parsedValue, unitDef),
@@ -279,6 +293,7 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
     } else {
       // Per-residue parameter section (e.g. [CS_A], [DW_AB], [R1_A])
       const sectionParamKey = currentSection.toLowerCase();
+      residueSectionsSeen.add(currentSection);
       const resKey = key; // residue name e.g. 13N
       const unitDef = getUnitDef(sectionParamKey);
 
@@ -292,7 +307,7 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
     }
   }
 
-  return { config, unparsed };
+  return warnings.length ? { config, unparsed, warnings } : { config, unparsed };
 }
 
 /**
