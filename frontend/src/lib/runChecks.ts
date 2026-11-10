@@ -9,6 +9,7 @@ import { dismissFix, issueKey, mapStep, type QuickFix } from './methodQuickFixes
 import type { ValidationError } from './methodValidation';
 import { fmtValue, overviewStep, type OverviewGridAxis, type RunOverview } from './runOverview';
 import { stepTomlName } from './methodToml';
+import { kexWindowNote, type ScienceSettings } from './scienceChecks';
 
 /** Physical bounds used when extending a range (populations in [0, 1], rates non-negative). */
 function bounds(param: string): { min: number; max: number } {
@@ -78,7 +79,11 @@ export function gridEdgeFix(stepId: string, axis: SearchAxis, edge: 'low' | 'hig
 }
 
 /** Grid-edge warnings for every GRID axis whose last committed minimum sits on a range edge. */
-export function gridEdgeIssues(config: MethodConfig, ov: RunOverview | null | undefined): ValidationError[] {
+export function gridEdgeIssues(
+  config: MethodConfig,
+  ov: RunOverview | null | undefined,
+  context: { family?: string; settings?: ScienceSettings } = {}
+): ValidationError[] {
   if (!ov) return [];
   const out: ValidationError[] = [];
   config.steps.forEach((step, i) => {
@@ -101,7 +106,9 @@ export function gridEdgeIssues(config: MethodConfig, ov: RunOverview | null | un
         severity: 'warning',
         code: 'grid-edge',
         message: `${axis.param}: last run's grid minimum is at the ${where} edge (${fmtValue(r.best)})${suggestion}.`,
-        detail: `Scanned ${axisRange(axis)}; the true minimum may lie outside it.`,
+        detail: [`Scanned ${axisRange(axis)}; the true minimum may lie outside it.`, kexWindowNote(axis.param, axis.low, axis.high, context.family ?? '', context.settings)]
+          .filter(Boolean)
+          .join(' '),
       };
       issue.actions = [...(fix ? [fix] : []), dismissFix(step.id, issueKey(issue) as string)];
       out.push(issue);
@@ -110,3 +117,54 @@ export function gridEdgeIssues(config: MethodConfig, ov: RunOverview | null | un
   return out;
 }
 
+
+/**
+ * DE: the coordinate converged within 2 % (of the log or linear span) of a bound in the last run.
+ * Combined with the CEST KEX_AB window note (C4).
+ */
+export function deEdgeIssues(
+  config: MethodConfig,
+  ov: RunOverview | null | undefined,
+  context: { family?: string; settings?: ScienceSettings } = {}
+): ValidationError[] {
+  if (!ov) return [];
+  const out: ValidationError[] = [];
+  config.steps.forEach((step, i) => {
+    const name = stepTomlName(step, i);
+    const ran = overviewStep(ov, name);
+    const search = step.search;
+    if (!ran || !search || search.mode !== 'de') return;
+    for (const axis of search.axes) {
+      if (axis.qualifier || axis.fn === 'values') continue;
+      const copy = ran.values[axis.param.toUpperCase()]?.copies.find(c => !c.residue && c.value !== null);
+      const v = copy?.value;
+      if (v === null || v === undefined) continue;
+      const pos = axis.fn === 'log' && axis.low > 0 && v > 0 ? Math.log(v / axis.low) / Math.log(axis.high / axis.low) : (v - axis.low) / (axis.high - axis.low);
+      const edge = pos <= 0.02 ? 'low' : pos >= 0.98 ? 'high' : null;
+      if (!edge) continue;
+      const fix = extendAxis(axis, edge);
+      const issue: ValidationError = {
+        stepId: step.id,
+        stepName: name,
+        paramName: axis.param.toUpperCase(),
+        severity: 'warning',
+        code: 'de-edge',
+        message: `${axis.param}: last run converged at ${fmtValue(v)}, next to the ${edge === 'high' ? 'upper' : 'lower'} DE bound.`,
+        detail: [`DE range ${axisRange(axis)}.`, kexWindowNote(axis.param, axis.low, axis.high, context.family ?? '', context.settings)].filter(Boolean).join(' '),
+      };
+      const fixes: QuickFix[] = fix
+        ? [
+            {
+              id: `extend-de:${axis.id}:${edge}`,
+              label: `Extend to ${axis.fn}(${fmtValue(fix.low)}–${fmtValue(fix.high)})`,
+              apply: (c: MethodConfig) =>
+                mapStep(c, step.id, s => (s.search ? { ...s, search: { ...s.search, axes: s.search.axes.map(a => (a.id === axis.id ? { ...a, low: fix.low, high: fix.high } : a)) } } : s)),
+            },
+          ]
+        : [];
+      issue.actions = [...fixes, dismissFix(step.id, issueKey(issue) as string)];
+      out.push(issue);
+    }
+  });
+  return out;
+}

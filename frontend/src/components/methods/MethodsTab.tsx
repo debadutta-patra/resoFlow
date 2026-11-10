@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Lock, Sparkles, Upload, Workflow } from 'lucide-react';
+import { FlaskConical, Lock, Sparkles, Upload, Workflow } from 'lucide-react';
 import type { StartingProvenance } from '../../lib/parameterConfig';
 import type { MethodEditor } from '../../hooks/useMethodEditor';
 import { METHOD_TEMPLATES, additionTarget, type MethodAdditionTemplate, type MethodTemplate } from '../../lib/methodTemplates';
@@ -26,7 +26,10 @@ import { overviewStep, stepResultBadge, type StepResultBadge } from '../../lib/r
 import McmcDiagnosticsTab from './McmcDiagnosticsTab';
 import { toMcmcMethodData } from './StatisticsResultsSection';
 import GridLandscape from './GridLandscape';
-
+import ScienceChecksModal from './ScienceChecksModal';
+import { checkEnabled } from '../../lib/scienceChecks';
+import { JointDistributionModal } from './JointDistributionModal';
+import { strongCorrelationsByName } from '../../lib/runOverview';
 import { itemHasType, labelWithSequence } from '../../lib/sequence';
 import { stepDisplayName } from '../../lib/methodSteps';
 import {
@@ -75,7 +78,8 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showSequence, setShowSequence] = useState(false);
-
+  const [showChecks, setShowChecks] = useState(false);
+  const [joint, setJoint] = useState<{ x: string; y: string; method: string; step: string } | null>(null);
   const { sequence, settings: projectSettings } = editor.projectSettings;
   /** Chips carry the residue type from assignment names, else from the project sequence. */
   const labeledResidues = useMemo(
@@ -88,6 +92,35 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   const resolvedStep = report?.steps.find(s => s.name.toUpperCase() === (activeStep.name || '').trim().toUpperCase());
   const resolvedCounts = useMemo(() => resolvedCountsByName(resolvedStep), [resolvedStep]);
   const activeOverview = overviewStep(editor.runOverview.overview, activeStep.name || '');
+  // C5: strongly correlated pairs (last run) noted next to the parameter names.
+  const correlationNotes = useMemo(() => {
+    const strong = strongCorrelationsByName(activeOverview);
+    const sampled: Record<string, string> = { MCMC: 'mcmc', MonteCarlo: 'monte_carlo', Bootstrap: 'bootstrap', BootstrapNS: 'bootstrap_ns' };
+    const notes: Record<string, React.ReactNode> = {};
+    if (checkEnabled(editor.projectSettings.settings.scientific_checks, 'strong-correlation')) {
+      for (const [name, list] of Object.entries(strong)) {
+        notes[name] = (
+          <div className="mt-1 space-y-0.5" data-testid={`corr-${name}`}>
+            {list.map((c, i) => (
+              <p key={i} className="text-xs text-blue-900 dark:text-blue-700">
+                ρ = {c.rho.toFixed(2)} with {c.other} ({c.method}){' '}
+                {sampled[c.method] && activeOverview && (
+                  <button
+                    type="button"
+                    className="underline hover:no-underline"
+                    onClick={() => setJoint({ x: c.a, y: c.b, method: sampled[c.method], step: activeOverview.name })}
+                  >
+                    joint distribution
+                  </button>
+                )}
+              </p>
+            ))}
+          </div>
+        );
+      }
+    }
+    return notes;
+  }, [activeOverview, editor.projectSettings.settings.scientific_checks]);
   // Error locations index ROLES actions, so only map them onto rules for the current method text.
   const chemexErrors = useMemo(() => (stale ? [] : errorsForStep(report, activeStep.name || '')), [report, stale, activeStep.name]);
 
@@ -162,6 +195,10 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             <button type="button" disabled={readOnly} onClick={() => setShowImport(true)} className={`${actionBtnNeutral} disabled:opacity-50 disabled:cursor-not-allowed`}>
               <Upload className="w-3.5 h-3.5" />
               <span>Import TOML</span>
+            </button>
+            <button type="button" onClick={() => setShowChecks(true)} className={actionBtnNeutral} title="Scientific checks for this project">
+              <FlaskConical className="w-3.5 h-3.5" />
+              <span>Checks</span>
             </button>
             <RawModeToggleButton active={editor.isRawEditMode} onClick={editor.toggleRawMode} disabled={readOnly} />
           </>
@@ -245,6 +282,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               resolvedParams={resolvedStep?.parameters}
               committedStep={activeOverview}
               committedFromPreviousMethod={editor.previousMethod}
+              nameNotes={correlationNotes}
               onShowRules={showRules}
             />
           </div>
@@ -276,7 +314,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             timings={editor.stepTimings}
             onAddRefineStep={() => editor.stepHandlers.onAddRefineStep(editor.activeStepIdx)}
             chemexIssues={activeChemexIssues}
-            runAxisIssues={editor.validationErrors.filter(e => e.stepId === activeStep.id && e.code === 'grid-edge')}
+            runAxisIssues={editor.validationErrors.filter(e => e.stepId === activeStep.id && (e.code === 'grid-edge' || e.code === 'de-edge'))}
             onApplyFix={editor.applyQuickFix}
             landscape={
               activeOverview?.grid ? (
@@ -352,6 +390,25 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             setShowTemplates(false);
           }}
           additionTarget={t => additionTarget(t, methodConfig, editor.activeStepIdx)}
+        />
+      )}
+      {showChecks && (
+        <ScienceChecksModal
+          settings={editor.projectSettings.settings.scientific_checks}
+          onClose={() => setShowChecks(false)}
+          onSave={next => editor.projectSettings.update({ scientific_checks: next })}
+        />
+      )}
+      {joint && (
+        <JointDistributionModal
+          isOpen
+          onClose={() => setJoint(null)}
+          projectUuid={editor.projectUuid}
+          analysisUuid={analysisUuid}
+          methodName={joint.method}
+          stepName={joint.step}
+          paramX={joint.x}
+          paramY={joint.y}
         />
       )}
       {mcmcStep && (

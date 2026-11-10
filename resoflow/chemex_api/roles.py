@@ -214,6 +214,38 @@ def _search_report(step: Any, parameterization: Any, model: Any, spin_of: dict[s
     return None
 
 
+def _data_summary(experiments: Any) -> dict[str, Any]:
+    """Active data points per spin system and per-experiment B1 fields for the selected profiles.
+
+    Feeds resoFlow's soft scientific checks (data / parameter ratio, number of B1 fields).
+    Best-effort: a profile type without the expected attributes is skipped, never fatal.
+    """
+    points: dict[str, int] = {}
+    exps: list[dict[str, Any]] = []
+    for experiment in experiments:
+        b1: float | None = None
+        n_profiles = 0
+        for profile in getattr(experiment, "profiles", []):
+            n_profiles += 1
+            try:
+                spin = str(profile.spin_system)
+                mask = getattr(profile.data, "mask", None)
+                n = int(mask.sum()) if mask is not None else len(profile.data.exp)
+                points[spin] = points.get(spin, 0) + n
+            except Exception:
+                continue
+            if b1 is None:
+                raw = getattr(getattr(getattr(profile, "pulse_sequence", None), "settings", None), "b1_frq", None)
+                try:
+                    b1 = float(raw) if raw is not None and math.isfinite(float(raw)) else None
+                except (TypeError, ValueError):
+                    b1 = None
+        exps.append(
+            {"name": getattr(experiment, "name", ""), "file": str(getattr(experiment, "filename", "")), "b1_frq": b1, "profiles": n_profiles}
+        )
+    return {"data_points": points, "ndata": sum(points.values()), "experiments": exps}
+
+
 def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, chain: list[RuleOrigin]) -> dict[str, Any]:
     model = session.parameter_factory.sealed_parameter_model
     experiments.select_profiles(step.selection)
@@ -230,6 +262,8 @@ def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, c
     if not required:
         out["error"] = {"message": "No profiles selected for this step; ChemEx skips it.", "type": "NoData", "source": {}}
         return out
+
+    out.update(_data_summary(experiments))
 
     actions = plan.effective_role_actions()[step.name]
     parameterization = session.compile_parameterization_from_actions(actions, required)

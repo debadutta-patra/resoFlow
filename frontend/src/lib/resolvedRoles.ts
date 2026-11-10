@@ -83,6 +83,12 @@ export interface ResolvedStep {
   counts: Record<ResolvedRole, number>;
   search?: ResolvedSearch | null;
   error: ChemexError | null;
+  /** Active (unmasked) data points per spin system in this step's selection. */
+  data_points?: Record<string, number>;
+  /** Total active data points in this step. */
+  ndata?: number;
+  /** Experiments contributing profiles to this step (B1 field for CEST). */
+  experiments?: Array<{ name: string; file: string; b1_frq: number | null; profiles: number }>;
 }
 
 export interface ResolveReport {

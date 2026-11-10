@@ -239,3 +239,35 @@ def test_resolved_parameters_carry_starting_value(resolve):
     assert p["__KEX_AB"]["value"] == pytest.approx(70.0)
     cs = [q for q in report["steps"][0]["parameters"] if q["name"] == "CS_A" and q["spin"].startswith("13N")]
     assert cs and cs[0]["value"] == pytest.approx(108.207)
+
+
+def test_steps_report_data_points_and_b1_fields(resolve):
+    """Per-spin active data points and each experiment's B1 field (Phase C scientific checks)."""
+    report = resolve('FORMAT_VERSION = 2\n\n[STEP]\nINCLUDE = ["13N", "26N"]\nROLES = [{ FIT = ["PB"] }]\n')
+    assert report["valid"], report["errors"]
+    step = report["steps"][0]
+    assert set(step["data_points"]) == {"13N", "26N"}
+    assert all(n > 0 for n in step["data_points"].values())
+    assert step["ndata"] == sum(step["data_points"].values())
+    assert sorted(e["b1_frq"] for e in step["experiments"]) == [13.0, 26.3]
+    assert all(e["profiles"] == 2 for e in step["experiments"])
+
+
+def test_r2b_quick_fix_rules_resolve_as_intended(resolve):
+    """Phase C quick-fixes: [R2_B] = [R2_A] constrains every copy; "one global R2_B" leaves a single FIT copy."""
+    tied = resolve('FORMAT_VERSION = 2\n\n[STEP]\nINCLUDE = ["13N", "26N"]\nROLES = [{ CONSTRAIN = ["[R2_B] = [R2_A]"] }]\n')
+    assert tied["valid"], tied["errors"]
+    r2b = [p for p in tied["steps"][0]["parameters"] if p["name"] == "R2_B"]
+    assert r2b and all(p["role"] == "constrained" for p in r2b)
+
+    # The exact rules the "One global R2_B" quick-fix emits (FIT the anchor, constrain the others to it).
+    shared = resolve(
+        'FORMAT_VERSION = 2\n\n[STEP]\nINCLUDE = ["13N", "26N", "28N"]\nROLES = [\n'
+        '  { FIT = ["R2_B, NUC->13N"] },\n'
+        '  { CONSTRAIN = ["[R2_B, NUC->26N] = [R2_B, NUC->13N]", "[R2_B, NUC->28N] = [R2_B, NUC->13N]"] },\n]\n'
+    )
+    assert shared["valid"], shared["errors"]
+    r2b = [p for p in shared["steps"][0]["parameters"] if p["name"] == "R2_B"]
+    fits = [p for p in r2b if p["role"] == "fit"]
+    assert len({p["spin"] for p in fits}) == 1 and fits[0]["spin"].startswith("13N")
+    assert all(p["role"] == "constrained" for p in r2b if not p["spin"].startswith("13N"))

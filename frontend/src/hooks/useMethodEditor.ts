@@ -25,7 +25,8 @@ import { useStepTimings } from './useStepTimings';
 import { useLastRunMethod } from './useLastRunMethod';
 import { useProjectSettings } from './useProjectSettings';
 import { useRunOverview } from './useRunOverview';
-import { gridEdgeIssues } from '../lib/runChecks';
+import { deEdgeIssues, gridEdgeIssues } from '../lib/runChecks';
+import { scienceIssues } from '../lib/scienceChecks';
 import { isPreviousMethod } from '../lib/runOverview';
 import { chemexIssues } from '../lib/resolvedRoles';
 
@@ -325,7 +326,14 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const runOverview = useRunOverview(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
   /** The method changed since that run: its committed values belong to a previous method. */
   const previousMethod = useMemo(() => isPreviousMethod(runOverview.overview, effectiveMethodToml), [runOverview.overview, effectiveMethodToml]);
-  const runIssues = useMemo(() => gridEdgeIssues(methodConfig, runOverview.overview), [methodConfig, runOverview.overview]);
+  const checkSettings = projectSettings.settings.scientific_checks;
+  const runIssues = useMemo(
+    () => [
+      ...gridEdgeIssues(methodConfig, runOverview.overview, { family, settings: checkSettings }),
+      ...deEdgeIssues(methodConfig, runOverview.overview, { family, settings: checkSettings }),
+    ],
+    [methodConfig, runOverview.overview, family, checkSettings]
+  );
 
   /** Per-step effective roles of every concrete parameter, resolved by ChemEx (debounced). */
   const resolvedRoles = useResolvedRoles({
@@ -344,8 +352,12 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
    */
   const { active: validationErrors, dismissed: dismissedIssues } = useMemo(() => {
     const fromChemex = resolvedRoles.stale ? [] : chemexIssues(resolvedRoles.report, methodConfig.steps);
-    return partitionDismissed<ValidationError>([...localValidationErrors, ...runIssues, ...fromChemex], methodConfig);
-  }, [localValidationErrors, runIssues, resolvedRoles.report, resolvedRoles.stale, methodConfig]);
+    // Scientific hints need a current ChemEx resolution (stale roles would point at an older method).
+    const science = resolvedRoles.stale
+      ? []
+      : scienceIssues({ config: methodConfig, report: resolvedRoles.report, overview: runOverview.overview, family, settings: checkSettings });
+    return partitionDismissed<ValidationError>([...localValidationErrors, ...runIssues, ...science, ...fromChemex], methodConfig);
+  }, [localValidationErrors, runIssues, resolvedRoles.report, resolvedRoles.stale, methodConfig, runOverview.overview, family, checkSettings]);
   /** Apply an issue's quick-fix (ignored while the method is locked by a run). */
   const applyQuickFix = useCallback(
     (fix: QuickFix) => {
