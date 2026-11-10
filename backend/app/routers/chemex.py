@@ -27,7 +27,7 @@ from ..services.fitting.method_resolution import (
     step_timings_with_evaluations,
     validate_method_for_analysis,
 )
-from ..services.fitting.run_dirs import load_chemex_config
+from ..services.fitting.run_dirs import last_run_input_text, load_chemex_config
 from .deps import get_analysis, get_project
 from resoflow.chemex_api.session import inspect_parameters
 from resoflow.chemex_api.spec import FitJobSpec
@@ -214,18 +214,19 @@ def validate_method_endpoint(
 @router.get(f"{ANALYSIS_CHEMEX}/last-run-method")
 def get_last_run_method(analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
     """method.toml used by the last completed run (archived by ChemEx in Output/run_info)."""
-    output = _run_dir(analysis) / "Output"
-    candidates = [output / "run_info" / "inputs" / "methods"]
-    if output.is_dir():  # individual fit mode: Output/<residue>/run_info
-        candidates += sorted(d / "run_info" / "inputs" / "methods" for d in output.iterdir() if d.is_dir())
-    for methods in candidates:
-        files = sorted(methods.glob("*.toml")) if methods.is_dir() else []
-        if files:
-            return {
-                "method_toml": "\n".join(f.read_text(encoding="utf-8") for f in files),
-                "completed_at": analysis.completed_at.isoformat() if analysis.completed_at else None,
-            }
-    return {"method_toml": None, "completed_at": None}
+    return {
+        "method_toml": last_run_input_text(_run_dir(analysis), "methods"),
+        "completed_at": analysis.completed_at.isoformat() if analysis.completed_at else None,
+    }
+
+
+@router.get(f"{ANALYSIS_CHEMEX}/last-run-parameters")
+def get_last_run_parameters(analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    """parameters.toml used by the last completed run (archived by ChemEx in Output/run_info)."""
+    return {
+        "parameter_toml": last_run_input_text(_run_dir(analysis), "parameters"),
+        "completed_at": analysis.completed_at.isoformat() if analysis.completed_at else None,
+    }
 
 
 @router.get(f"{ANALYSIS_CHEMEX}/step-timings")

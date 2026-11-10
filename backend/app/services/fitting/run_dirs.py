@@ -66,3 +66,20 @@ def load_chemex_config(analysis) -> dict:
             return normalize_chemex_config(json.load(f))
     except Exception:
         return {}
+
+
+def last_run_input_text(run_dir: "os.PathLike[str] | str", kind: str) -> str | None:
+    """Text of the ``kind`` input files (``methods``, ``parameters``, …) ChemEx archived for the
+    last run under ``Output/run_info/inputs/<kind>``; falls back to individual-fit residue
+    folders (``Output/<residue>/run_info``). Several files are joined with a newline."""
+    from pathlib import Path
+
+    output = Path(run_dir) / "Output"
+    candidates = [output / "run_info" / "inputs" / kind]
+    if output.is_dir():
+        candidates += sorted(d / "run_info" / "inputs" / kind for d in output.iterdir() if d.is_dir())
+    for folder in candidates:
+        files = sorted(folder.glob("*.toml")) if folder.is_dir() else []
+        if files:
+            return "\n".join(f.read_text(encoding="utf-8") for f in files)
+    return None

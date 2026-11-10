@@ -1030,6 +1030,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
               methodConfig={methodConfig}
               activeStepIdx={methodEditor.activeStepIdx}
               resolvedSteps={methodEditor.resolvedRoles.report?.steps}
+              runStateKey={String(status)}
               selectedModule={resolvedModuleName}
               catalogGlobals={catalogGlobals}
               onNavigateToMethods={() => setActiveTab("methods")}

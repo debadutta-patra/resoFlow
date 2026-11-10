@@ -1412,6 +1412,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               methodConfig={methodConfig}
               activeStepIdx={methodEditor.activeStepIdx}
               resolvedSteps={methodEditor.resolvedRoles.report?.steps}
+              runStateKey={String(status)}
               selectedModule={selectedModule}
               catalogGlobals={catalogGlobals}
               onNavigateToMethods={() => setActiveTab('methods')}

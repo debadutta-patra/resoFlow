@@ -1490,6 +1490,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
           methodConfig={methodConfig}
           activeStepIdx={methodEditor.activeStepIdx}
               resolvedSteps={methodEditor.resolvedRoles.report?.steps}
+              runStateKey={isFitting ? 'running' : 'idle'}
           selectedModule={cestModuleName}
           catalogGlobals={catalogGlobals}
           onNavigateToMethods={() => setActiveTab('methods')}

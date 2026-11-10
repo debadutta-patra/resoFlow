@@ -20,6 +20,7 @@ import type { SourceRunSummary, TargetAnalysisMeta } from '../../lib/compatibili
 import { validateParameterConfig } from '../../lib/parameterValidation';
 import { fmtDefault } from '../../lib/chemexDefaults';
 import { toCelsius } from '../../lib/taucEstimate';
+import { useLastRunParameters } from '../../hooks/useLastRunParameters';
 import { legacyExclusionNotice } from '../../lib/parameterToml';
 import { GlobalParametersCard } from './GlobalParametersCard';
 import { ResidueParametersTable } from './ResidueParametersTable';
@@ -61,6 +62,8 @@ export interface ParametersTabProps {
   /** Apply an inherited source run (parameters, and optionally method + picks). */
   onApplyInherited: (params: ParameterConfig, method?: MethodConfig, picks?: Record<string, PickSetData>) => void;
   notify?: (message: string) => void;
+  /** Changes when a run starts/finishes, to refresh the "diff vs last committed run" baseline. */
+  runStateKey?: string;
 }
 
 export const ParametersTab: React.FC<ParametersTabProps> = ({
@@ -80,7 +83,9 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
   onNavigateToMethods,
   onApplyInherited,
   notify,
+  runStateKey = '',
 }) => {
+  const lastRun = useLastRunParameters(projectUuid, analysisUuid, runStateKey);
   const [showResync, setShowResync] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showSourcePicker, setShowSourcePicker] = useState(false);
@@ -347,6 +352,8 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
         toml={editor.effectiveParameterToml}
         badge={`${residueCount} residue${residueCount === 1 ? '' : 's'}`}
         onCopied={notify}
+        baseline={lastRun.toml}
+        baselineAt={lastRun.completedAt}
       />
 
       <ResyncModal

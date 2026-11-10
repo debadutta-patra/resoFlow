@@ -4,8 +4,9 @@
  * collapsible generated-TOML preview strip.
  */
 
-import React, { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Code, Copy, Download, FileCode, Info } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { AlertTriangle, ChevronDown, ChevronUp, Code, Copy, Download, FileCode, GitCompare, Info } from 'lucide-react';
+import { diffStats, lineDiff } from '../../lib/textDiff';
 
 export const chemexInputCls =
   'w-full text-sm px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900 dark:text-slate-200';
@@ -168,14 +169,26 @@ export function downloadText(content: string, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+const DIFF_LINE_CLS = {
+  ' ': 'text-slate-300',
+  '+': 'bg-emerald-900/40 text-emerald-300',
+  '-': 'bg-red-900/40 text-red-300 line-through decoration-red-400/50',
+} as const;
+
 export const TomlPreviewStrip: React.FC<{
   fileName: string;
   downloadName: string;
   toml: string;
   badge: string;
   onCopied?: (message: string) => void;
-}> = ({ fileName, downloadName, toml, badge, onCopied }) => {
+  /** The file the last committed run used (enables "Diff vs last committed run"). */
+  baseline?: string | null;
+  baselineAt?: string | null;
+}> = ({ fileName, downloadName, toml, badge, onCopied, baseline, baselineAt }) => {
   const [open, setOpen] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const diff = useMemo(() => (showDiff && baseline ? lineDiff(baseline, toml) : null), [showDiff, baseline, toml]);
+  const stats = diff ? diffStats(diff) : null;
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-2xs">
       <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/60 flex items-center justify-between">
@@ -192,6 +205,25 @@ export const TomlPreviewStrip: React.FC<{
           </span>
         </button>
         <div className="flex items-center gap-1.5">
+          {baseline && (
+            <button
+              type="button"
+              aria-pressed={showDiff}
+              onClick={() => {
+                setShowDiff(d => !d);
+                setOpen(true);
+              }}
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 border shadow-2xs ${
+                showDiff
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+              }`}
+              title={`Compare with the ${fileName} the last committed run used`}
+            >
+              <GitCompare className="w-3.5 h-3.5" />
+              <span>Diff vs last committed run</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -215,9 +247,28 @@ export const TomlPreviewStrip: React.FC<{
           </button>
         </div>
       </div>
+      {open && diff && stats && (
+        <div className="px-4 py-1.5 text-xs bg-slate-800 text-slate-300 border-t border-slate-700 flex items-center gap-2">
+          <span className="text-emerald-400">+{stats.added}</span>
+          <span className="text-red-400">−{stats.removed}</span>
+          <span>vs last committed run{baselineAt ? ` (${new Date(baselineAt).toLocaleString()})` : ''}</span>
+          {stats.added + stats.removed === 0 && <span>— identical</span>}
+        </div>
+      )}
       {open && (
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-900 overflow-x-auto">
-          <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">{toml}</pre>
+          {diff ? (
+            <pre className="text-xs font-mono" data-testid="preview-diff">
+              {diff.map((l, i) => (
+                <div key={i} className={DIFF_LINE_CLS[l.op]}>
+                  <span className="select-none opacity-60 mr-2">{l.op}</span>
+                  {l.text || ' '}
+                </div>
+              ))}
+            </pre>
+          ) : (
+            <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">{toml}</pre>
+          )}
         </div>
       )}
     </div>

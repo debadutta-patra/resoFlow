@@ -455,3 +455,15 @@ def test_last_run_method_endpoint(db_session, test_project, auth_headers):
     (top / "method.toml").write_text("FORMAT_VERSION = 2\n\n[GLOBAL]\n", encoding="utf-8")
     assert client.get(url, headers=auth_headers).json()["method_toml"] == "FORMAT_VERSION = 2\n\n[GLOBAL]\n"
     assert client.get(url).status_code == 401
+
+
+def test_last_run_parameters_endpoint(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-last-run-params")
+    url = _url(test_project, analysis.analysis_uuid, "last-run-parameters")
+    assert client.get(url, headers=auth_headers).json() == {"parameter_toml": None, "completed_at": None}
+    run_dir = Path(test_project.local_directory_path) / "cest_fitting" / analysis.analysis_uuid
+    archived = run_dir / "Output" / "run_info" / "inputs" / "parameters"
+    archived.mkdir(parents=True)
+    (archived / "parameters.toml").write_text("[GLOBAL]\nPB = 0.05\n", encoding="utf-8")
+    assert client.get(url, headers=auth_headers).json()["parameter_toml"] == "[GLOBAL]\nPB = 0.05\n"
+    assert client.get(url).status_code == 401
