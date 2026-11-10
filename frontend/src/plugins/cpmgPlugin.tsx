@@ -21,7 +21,7 @@ export const CPMG_PARAMETER_CAPABILITIES: ParameterTabCapabilities = {
     "Configure global exchange parameters (pb, kex, universal DW_AB, τc) and ground-state chemical shifts (CS_A) seeded from peak fitting.",
   createDefaultParameters: createDefaultCpmgParameterConfig,
   codec: {
-    toToml: (cfg) => configToCpmgToml(cfg),
+    toToml: (cfg, opts) => configToCpmgToml(cfg, opts),
     fromToml: cpmgTomlToConfig,
     migrate: migrateLegacyCpmgParameterConfig,
   },

@@ -32,6 +32,7 @@ import {
   sortSpinKeys,
   applyGridCoordinatesToConfig,
   startingProvenance,
+  withValue,
 } from '../lib/parameterConfig';
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
@@ -699,18 +700,18 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       const curRes = prev.residues[res] || {};
       const updatedRes = { ...curRes };
       if (pickMode === 'cs_a') {
-        updatedRes.cs_a = { value: x, source: { kind: 'pick', pickSetHash: pickHash, at: nowIso } };
+        updatedRes.cs_a = withValue(updatedRes.cs_a, x, { kind: 'pick', pickSetHash: pickHash, at: nowIso });
       } else if (pickMode === 'cs_b') {
-        updatedRes.cs_b = { value: x, source: { kind: 'pick', pickSetHash: pickHash, at: nowIso } };
+        updatedRes.cs_b = withValue(updatedRes.cs_b, x, { kind: 'pick', pickSetHash: pickHash, at: nowIso });
         const csA = updatedRes.cs_a?.value;
         if (csA !== undefined) {
-          updatedRes.dw_ab = { value: x - csA, source: { kind: 'pick', pickSetHash: pickHash, at: nowIso } };
+          updatedRes.dw_ab = withValue(updatedRes.dw_ab, x - csA, { kind: 'pick', pickSetHash: pickHash, at: nowIso });
         }
       } else if (pickMode === 'cs_c') {
-        updatedRes.cs_c = { value: x, source: { kind: 'pick', pickSetHash: pickHash, at: nowIso } };
+        updatedRes.cs_c = withValue(updatedRes.cs_c, x, { kind: 'pick', pickSetHash: pickHash, at: nowIso });
         const csA = updatedRes.cs_a?.value;
         if (csA !== undefined) {
-          updatedRes.dw_ac = { value: x - csA, source: { kind: 'pick', pickSetHash: pickHash, at: nowIso } };
+          updatedRes.dw_ac = withValue(updatedRes.dw_ac, x - csA, { kind: 'pick', pickSetHash: pickHash, at: nowIso });
         }
       }
       return {
@@ -751,7 +752,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
           ...prev.residues,
           [resKey]: {
             ...curRes,
-            dw_ab: { value: dwPpm, source: { kind: 'manual', at: new Date().toISOString() } },
+            dw_ab: withValue(curRes.dw_ab, dwPpm, { kind: 'manual', at: new Date().toISOString() }),
           },
         },
       };
@@ -764,7 +765,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       for (const [resKey, dwVal] of Object.entries(seeds)) {
         nextRes[resKey] = {
           ...(nextRes[resKey] || {}),
-          dw_ab: { value: dwVal, source: { kind: 'manual', at: new Date().toISOString() } },
+          dw_ab: withValue(nextRes[resKey]?.dw_ab, dwVal, { kind: 'manual', at: new Date().toISOString() }),
         };
       }
       return { ...prev, residues: nextRes };

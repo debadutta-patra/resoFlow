@@ -160,8 +160,8 @@
         "n_samples": 4,
         "expression": null,
         "is_near_bound": false,
-        "bound_low": null,
-        "bound_high": null,
+        "bound_low": -100.0,
+        "bound_high": 100.0,
         "flag_reason": null,
         "is_asymmetric": true,
         "method_name": "MONTECARLO"
@@ -436,7 +436,7 @@
         "expression": null,
         "is_near_bound": false,
         "bound_low": 0.0,
-        "bound_high": Infinity,
+        "bound_high": null,
         "flag_reason": null,
         "is_asymmetric": true,
         "method_name": "MONTECARLO"

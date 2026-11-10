@@ -22,6 +22,7 @@ import {
   extractResidueNumber,
   normalizeResidueKey,
   getCanonicalResidueKey,
+  withValue,
 } from '../../lib/parameterConfig';
 import type { MethodConfig } from '../../lib/methodConfig';
 import type { SourceRunSummary } from '../../lib/compatibility';
@@ -318,27 +319,15 @@ export const InheritParametersModal: React.FC<InheritParametersModalProps> = ({
 
     if (inheritKex && sourceGlobals.kex_ab) {
       updatedGlobals.kex_ab = {
-        value: sourceGlobals.kex_ab.value,
+        ...withValue(updatedGlobals.kex_ab, sourceGlobals.kex_ab.value, { kind: 'inherited', sourceRunId, sourceRunLabel, at: timestamp }),
         err: sourceGlobals.kex_ab.err,
-        source: {
-          kind: 'inherited',
-          sourceRunId,
-          sourceRunLabel,
-          at: timestamp,
-        },
       };
     }
 
     if (inheritPb && sourceGlobals.pb) {
       updatedGlobals.pb = {
-        value: sourceGlobals.pb.value,
+        ...withValue(updatedGlobals.pb, sourceGlobals.pb.value, { kind: 'inherited', sourceRunId, sourceRunLabel, at: timestamp }),
         err: sourceGlobals.pb.err,
-        source: {
-          kind: 'inherited',
-          sourceRunId,
-          sourceRunLabel,
-          at: timestamp,
-        },
       };
     }
 
@@ -354,28 +343,16 @@ export const InheritParametersModal: React.FC<InheritParametersModalProps> = ({
       // CS_A
       if (inheritCsAColumn && row.inheritedCsA) {
         currentR.cs_a = {
-          value: row.inheritedCsA.value,
+          ...withValue(currentR.cs_a, row.inheritedCsA.value, { kind: 'inherited', sourceRunId, sourceRunLabel, at: timestamp }),
           err: row.inheritedCsA.err,
-          source: {
-            kind: 'inherited',
-            sourceRunId,
-            sourceRunLabel,
-            at: timestamp,
-          },
         };
       }
 
       // DW_AB
       if (inheritDwABColumn && row.inheritedDwAB) {
         currentR.dw_ab = {
-          value: row.inheritedDwAB.value,
+          ...withValue(currentR.dw_ab, row.inheritedDwAB.value, { kind: 'inherited', sourceRunId, sourceRunLabel, at: timestamp }),
           err: row.inheritedDwAB.err,
-          source: {
-            kind: 'inherited',
-            sourceRunId,
-            sourceRunLabel,
-            at: timestamp,
-          },
         };
       }
 

@@ -16,6 +16,14 @@ export interface ParamValue {
   value: number;
   err?: number | null;
   source: Source;
+  /**
+   * Explicit ChemEx bounds (`[init, lower, upper]`), in UI units. When either is set the
+   * value is written as a list and replaces ChemEx's default bounds (also the MCMC prior).
+   */
+  lower?: number;
+  upper?: number;
+  /** Optional 4th list element (ChemEx brute-force step); round-tripped, not edited. */
+  bruteStep?: number;
 }
 
 export interface ResidueParams {
@@ -332,10 +340,7 @@ export function applyGridCoordinatesToConfig(
         nextConfig.residues[targetResKey] = {};
       }
       const existingRes = { ...nextConfig.residues[targetResKey] };
-      existingRes[paramSection] = {
-        value: val,
-        source: { kind: 'manual', at: now },
-      };
+      existingRes[paramSection] = withValue(existingRes[paramSection], val, { kind: 'manual', at: now });
 
       // Do not add [CS_B] to parameterConfig/TOML - ensure cs_b is omitted so only [DW_AB] is generated
       if (paramSection === 'dw_ab') {
@@ -349,10 +354,7 @@ export function applyGridCoordinatesToConfig(
     } else {
       // Global parameter
       const gKey = kTrimmed.toLowerCase();
-      nextConfig.globals[gKey] = {
-        value: val,
-        source: { kind: 'manual', at: now },
-      };
+      nextConfig.globals[gKey] = withValue(nextConfig.globals[gKey], val, { kind: 'manual', at: now });
       updatedCount++;
     }
   }
@@ -460,4 +462,38 @@ export function startingProvenance(config: ParameterConfig, pickLabel: string): 
     out[name] = { source: `Per residue · ${detail}` };
   }
   return out;
+}
+
+/**
+ * Set or clear one bound of a parameter. ChemEx needs an initial value next to bounds,
+ * so a parameter without a value takes `fallbackValue` (the displayed / ChemEx default).
+ * Returns undefined when nothing is left to write (no value was set and bounds are cleared).
+ */
+export function withBound(
+  pv: ParamValue | undefined,
+  side: 'lower' | 'upper',
+  bound: number | undefined,
+  fallbackValue: number | null | undefined,
+  at: string = new Date().toISOString()
+): ParamValue | undefined {
+  if (!pv) {
+    if (bound === undefined || fallbackValue === null || fallbackValue === undefined) return undefined;
+    return { value: fallbackValue, source: { kind: 'manual', at }, [side]: bound };
+  }
+  const next: ParamValue = { ...pv };
+  if (bound === undefined) delete next[side];
+  else next[side] = bound;
+  return next;
+}
+
+/**
+ * A new value and provenance for a parameter, keeping its explicit bounds (and brute step).
+ * Use this instead of building `{ value, source }` so an edit or re-sync never drops bounds.
+ */
+export function withValue(pv: ParamValue | undefined, value: number, source: Source): ParamValue {
+  const next: ParamValue = { value, source };
+  if (pv?.lower !== undefined) next.lower = pv.lower;
+  if (pv?.upper !== undefined) next.upper = pv.upper;
+  if (pv?.bruteStep !== undefined) next.bruteStep = pv.bruteStep;
+  return next;
 }

@@ -147,8 +147,8 @@
         "n_samples": null,
         "expression": null,
         "is_near_bound": false,
-        "bound_low": null,
-        "bound_high": null,
+        "bound_low": -100.0,
+        "bound_high": 100.0,
         "flag_reason": null,
         "is_asymmetric": false,
         "method_name": "Covariance"
@@ -422,8 +422,8 @@
         "n_samples": null,
         "expression": null,
         "is_near_bound": false,
-        "bound_low": null,
-        "bound_high": null,
+        "bound_low": -100.0,
+        "bound_high": 100.0,
         "flag_reason": null,
         "is_asymmetric": false,
         "method_name": "Covariance"
@@ -698,7 +698,7 @@
         "expression": null,
         "is_near_bound": false,
         "bound_low": 0.0,
-        "bound_high": Infinity,
+        "bound_high": null,
         "flag_reason": null,
         "is_asymmetric": false,
         "method_name": null
@@ -768,7 +768,7 @@
             "expression": null,
             "is_near_bound": false,
             "bound_low": 0.0,
-            "bound_high": Infinity,
+            "bound_high": null,
             "flag_reason": null,
             "is_asymmetric": false,
             "method_name": "Covariance"
@@ -889,8 +889,8 @@
             "n_samples": null,
             "expression": null,
             "is_near_bound": false,
-            "bound_low": null,
-            "bound_high": null,
+            "bound_low": -100.0,
+            "bound_high": 100.0,
             "flag_reason": null,
             "is_asymmetric": false,
             "method_name": "Covariance"
@@ -1483,7 +1483,7 @@
             "expression": null,
             "is_near_bound": false,
             "bound_low": 0.0,
-            "bound_high": Infinity,
+            "bound_high": null,
             "flag_reason": null,
             "is_asymmetric": false,
             "method_name": null
@@ -1604,8 +1604,8 @@
             "n_samples": null,
             "expression": null,
             "is_near_bound": false,
-            "bound_low": null,
-            "bound_high": null,
+            "bound_low": -100.0,
+            "bound_high": 100.0,
             "flag_reason": null,
             "is_asymmetric": false,
             "method_name": "Covariance"
@@ -2171,8 +2171,8 @@
             "n_samples": null,
             "expression": null,
             "is_near_bound": false,
-            "bound_low": null,
-            "bound_high": null,
+            "bound_low": -100.0,
+            "bound_high": 100.0,
             "flag_reason": null,
             "is_asymmetric": false,
             "method_name": "Covariance"

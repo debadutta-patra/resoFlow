@@ -8,8 +8,8 @@
  */
 
 import type { ParameterConfig, ParamValue, PickSetData, ResidueParams } from "./parameterConfig";
-import { computePickHash } from "./parameterConfig";
-import { configToToml, tomlToConfig, type TomlParseResult } from "./parameterToml";
+import { computePickHash, withValue } from "./parameterConfig";
+import { configToToml, tomlToConfig, type TomlParseResult, type TomlWriteOptions } from "./parameterToml";
 import { SpinSystemKey } from "./spinSystem";
 
 /** @deprecated CPMG uses the shared model; kept as an alias for existing imports. */
@@ -140,8 +140,8 @@ export function seedCpmgResiduesFromProfiles(
 }
 
 /** CPMG parameters.toml writer: the shared writer over canonical CPMG residue keys. */
-export function configToCpmgToml(config?: ParameterConfig, _fields: number[] = [600]): string {
-  return configToToml(canonicalizeCpmgResidues(config ?? createDefaultCpmgParameterConfig()));
+export function configToCpmgToml(config?: ParameterConfig, opts: TomlWriteOptions = {}): string {
+  return configToToml(canonicalizeCpmgResidues(config ?? createDefaultCpmgParameterConfig()), opts);
 }
 
 /** CPMG parameters.toml reader: the shared reader, defaults filled in, keys canonicalized. */
@@ -251,10 +251,7 @@ export function applyGridCoordinatesToCpmgConfig(
       const existingRes = { ...nextConfig.residues[targetResKey] };
 
       if (paramSection === 'dw_ab' || paramSection === 'cs_a') {
-        existingRes[paramSection] = {
-          value: val,
-          source: { kind: 'manual', at: now },
-        };
+        existingRes[paramSection] = withValue(existingRes[paramSection], val, { kind: 'manual', at: now });
         nextConfig.residues[targetResKey] = existingRes;
       }
 
@@ -266,10 +263,7 @@ export function applyGridCoordinatesToCpmgConfig(
       else if (kUpper.includes('KEX')) gKey = 'kex_ab';
       else if (kUpper.includes('TAUC')) gKey = 'tauc_a';
 
-      nextConfig.globals[gKey] = {
-        value: val,
-        source: { kind: 'manual', at: now },
-      };
+      nextConfig.globals[gKey] = withValue(nextConfig.globals[gKey], val, { kind: 'manual', at: now });
       updatedCount++;
     }
   }

@@ -108,15 +108,87 @@ PB = 0.08
     expect(configToToml(config)).toBe(rawContent);
   });
 
-  it('correctly handles list syntax from ChemEx parameter files', () => {
-    const tomlWithLists = `
-[GLOBAL]
+  it('round-trips [init, lower, upper] bounds on globals', () => {
+    const toml = `[GLOBAL]
 PB = [0.02, 0.0, 0.5]
 KEX_AB = [150.0, 10.0, 2000.0]
+TAUC_A = 4.0
 `;
-    const result = tomlToConfig(tomlWithLists);
-    expect(result.config.globals.pb?.value).toBe(0.02);
-    expect(result.config.globals.kex_ab?.value).toBe(150.0);
+    const { config, unparsed } = tomlToConfig(toml);
+    expect(unparsed).toEqual([]);
+    expect(config.globals.pb).toMatchObject({ value: 0.02, lower: 0, upper: 0.5 });
+    expect(config.globals.kex_ab).toMatchObject({ value: 150, lower: 10, upper: 2000 });
+    expect(config.globals.tauc_a?.lower).toBeUndefined();
+    const out = configToToml(config);
+    expect(out).toContain('PB = [0.02, 0, 0.5]');
+    expect(out).toContain('KEX_AB = [150, 10, 2000]');
+    expect(out).toContain('TAUC_A = 4\n');
+    expect(tomlToConfig(out).config.globals).toEqual(config.globals);
+  });
+
+  it('round-trips bounds on per-residue values, including negative DW_AB', () => {
+    const toml = `[CS_A]
+13N = [108.207, 100.0, 120.0]
+26N = 115.711
+
+[DW_AB]
+55N = [-6.5, -15.0, 0.0]
+`;
+    const { config, unparsed } = tomlToConfig(toml);
+    expect(unparsed).toEqual([]);
+    expect(config.residues['13N'].cs_a).toMatchObject({ value: 108.207, lower: 100, upper: 120 });
+    expect(config.residues['26N'].cs_a?.lower).toBeUndefined();
+    expect(config.residues['55N'].dw_ab).toMatchObject({ value: -6.5, lower: -15, upper: 0 });
+    const out = configToToml(config);
+    expect(out).toContain('13N = [108.207, 100, 120]');
+    expect(out).toContain('26N = 115.711\n');
+    expect(out).toContain('55N = [-6.500, -15, 0]');
+    expect(tomlToConfig(out).config.residues).toEqual(config.residues);
+  });
+
+  it('fills an unset side from the ChemEx default bound when writing', () => {
+    const config: ParameterConfig = {
+      globals: { pb: { value: 0.1, upper: 0.3, source: { kind: 'manual' } } },
+      residues: { '13N': { dw_ab: { value: 2, lower: -5, source: { kind: 'manual' } } } },
+    };
+    const out = configToToml(config);
+    expect(out).toContain('PB = [0.1, 0, 0.3]'); // ChemEx PB lower bound is 0
+    expect(out).toContain('13N = [2.000, -5, 100]'); // ChemEx DW upper bound is 100
+    // A custom lookup (backend catalogue) takes precedence over the static table.
+    const custom = configToToml(config, { defaults: n => (n === 'PB' ? { name: 'PB', value: 0.02, lower: 0.001, upper: 1 } : undefined) });
+    expect(custom).toContain('PB = [0.1, 0.001, 0.3]');
+    expect(custom).toContain('13N = [2.000, -5, inf]'); // no default known → explicit inf
+  });
+
+  it('keeps the optional 4th element (brute step) and reads -inf/inf bounds as unset', () => {
+    const { config, unparsed } = tomlToConfig(`[GLOBAL]
+KEX_AB = [200.0, 0.0, 1000.0, 50.0]
+
+["CS_A"]
+"3N" = [120.072, -inf, inf]
+`);
+    expect(unparsed).toEqual([]);
+    expect(config.globals.kex_ab).toMatchObject({ value: 200, lower: 0, upper: 1000, bruteStep: 50 });
+    expect(config.residues['3N'].cs_a).toEqual({ value: 120.072, source: { kind: 'imported' } });
+    expect(configToToml(config)).toContain('KEX_AB = [200, 0, 1000, 50]');
+  });
+
+  it('never writes bounds on TREF', () => {
+    const out = configToToml({ globals: { tref: { value: 20, lower: 0, upper: 40, source: { kind: 'manual' } } }, residues: {} });
+    expect(out).toContain('TREF = 20\n');
+  });
+
+  it.each([
+    ['PB = [0.02, 0.5, 0.1]', 'inverted bounds'],
+    ['PB = []', 'empty list'],
+    ['PB = [0.02, 0.0, 0.5, 1, 2]', 'too many items'],
+    ['PB = [0.02, "a", 0.5]', 'non-numeric item'],
+    ['PB = [inf, 0, 1]', 'non-finite value'],
+    ['PB = [0.02, 0.0', 'unterminated list'],
+  ])('sends a malformed value to unparsed (%s: %s)', line => {
+    const { config, unparsed } = tomlToConfig(`[GLOBAL]\n${line}\n`);
+    expect(config.globals.pb).toBeUndefined();
+    expect(unparsed).toContain(line);
   });
 
   it('preserves unparsed comments or invalid lines into unparsed array', () => {
@@ -352,7 +424,7 @@ path = "../data/25hz"
     // Verify TOML serialization
     const generatedToml = configToToml(nextConfig);
     expect(generatedToml).toContain('[GLOBAL]\nPB = 0.0035\nKEX_AB = 483.293\nTAUC_A = 8.2');
-    expect(generatedToml).toContain('[DW_AB]\nC14N = 6.842\nQ55N = 4.737\nL65N = 4.210');
+    expect(generatedToml).toContain('[DW_AB]\nC14N = 6.8421\nQ55N = 4.7368\nL65N = 4.2105');
     expect(generatedToml).not.toContain('[CS_B]');
     expect(generatedToml).not.toContain('DW_AB, NUC->14N');
   });

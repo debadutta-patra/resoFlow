@@ -27,7 +27,11 @@ import {
   isResidueExcluded,
   toggleExcludeResidue,
   isPickSourceStale,
+  withBound,
+  withValue,
 } from '../../lib/parameterConfig';
+import { fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from '../../lib/chemexDefaults';
+import { NumericField } from './NumericField';
 import type { MethodConfig } from '../../lib/methodConfig';
 import type { ResidueProfileCell } from '../../lib/experimentPlugin';
 import { ParameterBadge } from './ParameterBadge';
@@ -56,7 +60,16 @@ export interface ResidueParametersTableProps {
   renderProfile?: (row: ResidueProfileCell, size: 'thumb' | 'large') => React.ReactNode;
   /** Optional override for excluding a residue (defaults to toggling config.excludedResidues). */
   onToggleExclude?: (resKey: string) => void;
+  /** ChemEx default values and bounds (backend catalogue); defaults to the static table. */
+  defaults?: ParamDefaultsLookup;
 }
+
+const BOUND_PARAMS: Array<{ key: 'cs_a' | 'dw_ab' | 'r1_a' | 'r2_a'; label: string }> = [
+  { key: 'cs_a', label: 'CS_A' },
+  { key: 'dw_ab', label: 'DW_AB' },
+  { key: 'r1_a', label: 'R1_A' },
+  { key: 'r2_a', label: 'R2_A' },
+];
 
 const defaultRenderProfile = (row: ResidueProfileCell, size: 'thumb' | 'large') => (
   <ProfileThumbnail
@@ -88,6 +101,8 @@ interface TableRowData {
   isExcluded: boolean;
   methodTreatment?: string;
   profile?: ProfileRef;
+  /** The residue's stored parameters (for bounds). */
+  params: ResidueParams;
 }
 
 export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
@@ -105,6 +120,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   staleLabel = 'Pick Moved',
   renderProfile = defaultRenderProfile,
   onToggleExclude,
+  defaults = fallbackDefaults,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
@@ -293,6 +309,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
         isExcluded,
         methodTreatment,
         profile: prof,
+        params: rParams,
       };
     });
   }, [config.residues, config.excludedResidues, picks, profiles, profileMap, methodTreatmentMap, expectsBPicks]);
@@ -439,11 +456,11 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
 
     const updatedResEntry: ResidueParams = {
       ...existing,
-      cs_a: { value: updatedCsA, source: { kind: 'manual' as const, at: now } },
+      cs_a: withValue(existing.cs_a, updatedCsA, { kind: 'manual', at: now }),
     };
 
     if (updatedDw !== null) {
-      updatedResEntry.dw_ab = { value: updatedDw, source: { kind: 'manual' as const, at: now } };
+      updatedResEntry.dw_ab = withValue(existing.dw_ab, updatedDw, { kind: 'manual', at: now });
     }
 
     nextResidues[canonicalKey] = updatedResEntry;
@@ -483,12 +500,12 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
 
     const updatedResEntry: ResidueParams = {
       ...existing,
-      cs_a: { value: cs_a, source: { kind: 'pick' as const, pickSetHash: pHash, at: now } },
+      cs_a: withValue(existing.cs_a, cs_a, { kind: 'pick', pickSetHash: pHash, at: now }),
     };
 
     if (hasBPick) {
       const dw_ab = parseFloat((pk.cs_b! - cs_a).toFixed(3));
-      updatedResEntry.dw_ab = { value: dw_ab, source: { kind: 'pick' as const, pickSetHash: pHash, at: now } };
+      updatedResEntry.dw_ab = withValue(existing.dw_ab, dw_ab, { kind: 'pick', pickSetHash: pHash, at: now });
     } else {
       // If there is No B-pick, do nothing for DW_AB / do not set DW_AB to 0.0 or CS_B to CS_A
       delete updatedResEntry.dw_ab;
@@ -508,6 +525,21 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       return;
     }
     onChange(toggleExcludeResidue(config, resKey, profiles));
+  };
+
+  const handleBoundEdit = (
+    row: TableRowData,
+    paramKey: 'cs_a' | 'dw_ab' | 'r1_a' | 'r2_a',
+    side: 'lower' | 'upper',
+    bound: number | undefined
+  ) => {
+    const existing = config.residues?.[row.resKey] || {};
+    const displayed = (row[paramKey] as number | null | undefined) ?? defaults(paramKey)?.value;
+    const next = withBound(existing[paramKey] ?? row.params[paramKey], side, bound, displayed);
+    const entry: ResidueParams = { ...existing };
+    if (next) entry[paramKey] = next;
+    else delete entry[paramKey];
+    onChange({ ...config, residues: { ...config.residues, [row.resKey]: entry } });
   };
 
   const columnCount = expectsBPicks ? 9 : 8;
@@ -897,7 +929,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                               ...existing,
                                               r1_a: isNaN(val)
                                                 ? undefined
-                                                : { value: val, source: { kind: 'manual', at: new Date().toISOString() } },
+                                                : withValue(existing.r1_a, val, { kind: 'manual', at: new Date().toISOString() }),
                                             },
                                           },
                                         });
@@ -925,7 +957,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                               ...existing,
                                               r2_a: isNaN(val)
                                                 ? undefined
-                                                : { value: val, source: { kind: 'manual', at: new Date().toISOString() } },
+                                                : withValue(existing.r2_a, val, { kind: 'manual', at: new Date().toISOString() }),
                                             },
                                           },
                                         });
@@ -934,6 +966,37 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                       placeholder="Auto / Fit"
                                     />
                                   </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                                  <h6 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" title="ChemEx [init, lower, upper]: explicit bounds replace ChemEx's default bounds (and the MCMC prior support)">
+                                    Bounds
+                                  </h6>
+                                  {BOUND_PARAMS.map(({ key, label }) => {
+                                    const pv = row.params[key];
+                                    const def = defaults(key);
+                                    return (
+                                      <div key={key} className="grid grid-cols-[3.5rem_1fr_1fr] items-center gap-1.5">
+                                        <span className="text-[10px] font-semibold text-slate-500">{label}</span>
+                                        <NumericField
+                                          ariaLabel={`${label} lower bound for ${row.label}`}
+                                          value={pv?.lower}
+                                          onCommit={v => handleBoundEdit(row, key, 'lower', v)}
+                                          placeholder={fmtDefault(def?.lower)}
+                                          title={`Lower bound (ChemEx default ${fmtDefault(def?.lower)})`}
+                                          className="w-full px-1.5 py-0.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono text-slate-800 dark:text-slate-200"
+                                        />
+                                        <NumericField
+                                          ariaLabel={`${label} upper bound for ${row.label}`}
+                                          value={pv?.upper}
+                                          onCommit={v => handleBoundEdit(row, key, 'upper', v)}
+                                          placeholder={fmtDefault(def?.upper)}
+                                          title={`Upper bound (ChemEx default ${fmtDefault(def?.upper)})`}
+                                          className="w-full px-1.5 py-0.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-mono text-slate-800 dark:text-slate-200"
+                                        />
+                                      </div>
+                                    );
+                                  })}
                                 </div>
 
                                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400">

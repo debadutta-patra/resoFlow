@@ -6,15 +6,110 @@ import {
   isResidueExcluded,
   sortSpinKeys,
 } from './parameterConfig';
-import { getUnitDef } from './unitRegistry';
+import type { ParamValue } from './parameterConfig';
+import { getUnitDef, type ParamUnitDef } from './unitRegistry';
+import { fallbackDefaults, type ParamDefaultsLookup } from './chemexDefaults';
+
+export interface TomlWriteOptions {
+  /** ChemEx default bounds, used to fill the side the user left unset (default: static table). */
+  defaults?: ParamDefaultsLookup;
+}
+
+/** One TOML float token (`1_000.5`, `1e-3`, `inf`, `-inf`, `nan`), or null if not a number. */
+export function parseTomlFloat(token: string): number | null {
+  const t = token.trim().replace(/(?<=\d)_(?=\d)/g, '');
+  if (/^[+-]?inf$/.test(t)) return t.startsWith('-') ? -Infinity : Infinity;
+  if (/^[+-]?nan$/.test(t)) return NaN;
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) return null;
+  return Number(t);
+}
+
+export interface ChemexValue {
+  value: number;
+  lower?: number;
+  upper?: number;
+  bruteStep?: number;
+}
+
+/**
+ * Parse a ChemEx parameter value: a scalar, or `[init]`, `[init, lower]`,
+ * `[init, lower, upper]`, `[init, lower, upper, brute_step]` (ChemEx `DefaultSetting`).
+ * `-inf`/`inf` bounds mean "unset" (as written by run_info/parameters_used.toml).
+ * Returns null for anything ChemEx would reject or that is not representable.
+ */
+export function parseChemexValue(raw: string): ChemexValue | null {
+  const s = raw.replace(/\s+#.*$/, '').trim();
+  let parts: string[];
+  if (s.startsWith('[')) {
+    if (!s.endsWith(']')) return null;
+    const inside = s.slice(1, -1).trim().replace(/,\s*$/, '');
+    if (!inside) return null;
+    parts = inside.split(',');
+  } else {
+    parts = [s];
+  }
+  if (parts.length < 1 || parts.length > 4) return null;
+  const nums = parts.map(parseTomlFloat);
+  if (nums.some(n => n === null || Number.isNaN(n))) return null;
+  const [value, lo, hi, step] = nums as number[];
+  if (!Number.isFinite(value)) return null;
+  if (lo !== undefined && lo === Infinity) return null;
+  if (hi !== undefined && hi === -Infinity) return null;
+  const out: ChemexValue = { value };
+  if (lo !== undefined && Number.isFinite(lo)) out.lower = lo;
+  if (hi !== undefined && Number.isFinite(hi)) out.upper = hi;
+  if (step !== undefined) {
+    if (!Number.isFinite(step)) return null;
+    out.bruteStep = step;
+  }
+  if (out.lower !== undefined && out.upper !== undefined && out.lower >= out.upper) return null;
+  return out;
+}
+
+/** UI-unit value + optional bounds from a parsed ChemEx-unit value. */
+function fromChemexValue(v: ChemexValue, unitDef: ParamUnitDef): Pick<ParamValue, 'value' | 'lower' | 'upper' | 'bruteStep'> {
+  const out: Pick<ParamValue, 'value' | 'lower' | 'upper' | 'bruteStep'> = { value: unitDef.fromChemEx(v.value) };
+  if (v.lower !== undefined) out.lower = unitDef.fromChemEx(v.lower);
+  if (v.upper !== undefined) out.upper = unitDef.fromChemEx(v.upper);
+  if (v.bruteStep !== undefined) out.bruteStep = unitDef.fromChemEx(v.bruteStep);
+  return out;
+}
+
+const fmtBound = (x: number): string => (Number.isFinite(x) ? String(x) : x > 0 ? 'inf' : '-inf');
+
+/**
+ * Render a value for parameters.toml. A list is written only when a bound (or brute step)
+ * is set; the unset side is filled from ChemEx's default bound so the file is explicit
+ * (ChemEx would otherwise keep its default on that side). TREF never carries bounds.
+ */
+export function formatChemexValue(
+  key: string,
+  param: ParamValue,
+  unitDef: ParamUnitDef,
+  valueStr: string,
+  defaults: ParamDefaultsLookup = fallbackDefaults
+): string {
+  const upperKey = key.toUpperCase();
+  const hasBounds = param.lower !== undefined || param.upper !== undefined || param.bruteStep !== undefined;
+  if (!hasBounds || upperKey === 'TREF') return valueStr;
+  const def = defaults(upperKey);
+  const lowerUi = param.lower ?? (def?.lower ?? -Infinity);
+  const upperUi = param.upper ?? (def?.upper ?? Infinity);
+  const lower = Number.isFinite(lowerUi) ? unitDef.toChemEx(lowerUi) : lowerUi;
+  const upper = Number.isFinite(upperUi) ? unitDef.toChemEx(upperUi) : upperUi;
+  const items = [valueStr, fmtBound(lower), fmtBound(upper)];
+  if (param.bruteStep !== undefined) items.push(String(unitDef.toChemEx(param.bruteStep)));
+  return `[${items.join(', ')}]`;
+}
 
 /**
  * Serializes a structured ParameterConfig into a deterministic ChemEx parameters.toml string.
  */
-export function configToToml(config: ParameterConfig): string {
+export function configToToml(config: ParameterConfig, opts: TomlWriteOptions = {}): string {
   if (config.rawOverride !== undefined && config.rawOverride.trim() !== '') {
     return config.rawOverride;
   }
+  const defaults = opts.defaults ?? fallbackDefaults;
 
   const sections: string[] = ['# Auto-generated ChemEx parameter file'];
 
@@ -39,7 +134,7 @@ export function configToToml(config: ParameterConfig): string {
       if (param && param.value !== undefined && !isNaN(param.value)) {
         const unitDef = getUnitDef(key);
         const chemexVal = unitDef.toChemEx(param.value);
-        const valStr = chemexVal.toString();
+        const valStr = formatChemexValue(key, param, unitDef, chemexVal.toString(), defaults);
         globalLines.push(`${key.toUpperCase()} = ${valStr}`);
       }
     }
@@ -88,9 +183,10 @@ export function configToToml(config: ParameterConfig): string {
       const resParam = config.residues[resKey]?.[paramKey];
       if (resParam && resParam.value !== undefined && !isNaN(resParam.value)) {
         const chemexVal = unitDef.toChemEx(resParam.value);
-        const valStr = unitDef.precision !== undefined
-          ? chemexVal.toFixed(unitDef.precision)
-          : chemexVal.toString();
+        // Fixed precision only when it is exact, so imported values round-trip losslessly.
+        const fixed = unitDef.precision !== undefined ? chemexVal.toFixed(unitDef.precision) : null;
+        const scalarStr = fixed !== null && Number(fixed) === chemexVal ? fixed : chemexVal.toString();
+        const valStr = formatChemexValue(paramKey, resParam, unitDef, scalarStr, defaults);
         if (excludedSet.has(resKey.toUpperCase())) {
           sectionLines.push(`# ${resKey} = ${valStr}`);
         } else {
@@ -156,41 +252,26 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
       }
     }
 
-    // Section header: [SECTION]
-    const secMatch = effectiveLine.match(/^\[([A-Za-z0-9_,-]+)\]$/);
+    // Section header: [CS_A] or quoted ["CS_A"] (as written by ChemEx run_info files)
+    const secMatch = effectiveLine.match(/^\[\s*(?:"([^"]+)"|([A-Za-z0-9_,-]+))\s*\]$/);
     if (secMatch) {
-      currentSection = secMatch[1].trim().toUpperCase();
+      currentSection = (secMatch[1] ?? secMatch[2]).trim().toUpperCase();
       continue;
     }
 
     // Key-value pair: KEY = VALUE
-    const kvMatch = effectiveLine.match(/^([A-Za-z0-9_.-]+)\s*=\s*(.+)$/);
+    const kvMatch = effectiveLine.match(/^("[^"]+"|[A-Za-z0-9_.-]+)\s*=\s*(.+)$/);
     if (!kvMatch) {
       unparsed.push(line);
       continue;
     }
 
-    const key = kvMatch[1].trim();
+    const key = kvMatch[1].trim().replace(/^"(.*)"$/, '$1');
     const rawValStr = kvMatch[2].trim();
 
-    // Parse value: float or array [val, min, max, ...]
-    let numericValue: number | null = null;
-
-    if (rawValStr.startsWith('[') && rawValStr.endsWith(']')) {
-      const inside = rawValStr.slice(1, -1).trim();
-      const firstPart = inside.split(',')[0].trim();
-      const parsed = parseFloat(firstPart);
-      if (!isNaN(parsed)) {
-        numericValue = parsed;
-      }
-    } else {
-      const parsed = parseFloat(rawValStr);
-      if (!isNaN(parsed)) {
-        numericValue = parsed;
-      }
-    }
-
-    if (numericValue === null) {
+    // Parse value: scalar or [init, lower, upper(, brute_step)]
+    const parsedValue = parseChemexValue(rawValStr);
+    if (parsedValue === null) {
       unparsed.push(line);
       continue;
     }
@@ -199,9 +280,8 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
       // Global parameter
       const globalKey = key.toLowerCase();
       const unitDef = getUnitDef(key);
-      const uiVal = unitDef.fromChemEx(numericValue);
       config.globals[globalKey] = {
-        value: uiVal,
+        ...fromChemexValue(parsedValue, unitDef),
         source: { kind: 'imported' },
       };
     } else {
@@ -209,13 +289,12 @@ export function tomlToConfig(tomlContent: string): TomlParseResult {
       const sectionParamKey = currentSection.toLowerCase();
       const resKey = key; // residue name e.g. 13N
       const unitDef = getUnitDef(sectionParamKey);
-      const uiVal = unitDef.fromChemEx(numericValue);
 
       if (!config.residues[resKey]) {
         config.residues[resKey] = {};
       }
       config.residues[resKey][sectionParamKey] = {
-        value: uiVal,
+        ...fromChemexValue(parsedValue, unitDef),
         source: { kind: 'imported' },
       };
 
@@ -282,7 +361,7 @@ export function applyExclusionsToExperimentToml(
 
 /** parameters.toml reader/writer pair; experiments may wrap the default codec. */
 export interface ParameterCodec {
-  toToml: (config: ParameterConfig) => string;
+  toToml: (config: ParameterConfig, opts?: TomlWriteOptions) => string;
   fromToml: (toml: string) => TomlParseResult;
   /** Convert a config saved by an older version of a page (optional). */
   migrate?: (raw: unknown) => ParameterConfig;

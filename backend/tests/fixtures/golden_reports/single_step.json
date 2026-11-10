@@ -76,7 +76,7 @@
     [
       "kex_ab",
       {
-        "bound_high": Infinity,
+        "bound_high": null,
         "bound_low": 0.0,
         "err_high": 15.973,
         "err_high_95": 31.307080000000003,
@@ -240,8 +240,8 @@
       },
       "display_name": "15N",
       "dw": {
-        "bound_high": null,
-        "bound_low": null,
+        "bound_high": 100.0,
+        "bound_low": -100.0,
         "err_high": 0.0343175,
         "err_high_95": 0.0672623,
         "err_low": 0.0343175,

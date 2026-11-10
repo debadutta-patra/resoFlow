@@ -50,7 +50,7 @@ import {
   peakFitPicks,
   seedCpmgResiduesFromProfiles,
 } from "../lib/cpmgConfig";
-import { startingProvenance } from "../lib/parameterConfig";
+import { startingProvenance, withValue } from "../lib/parameterConfig";
 import { evaluateCpmgDiagnostics, type CpmgDiagnosticsResult } from "../lib/cpmgDiagnostics";
 import { getNucleusInfoForModule } from "../lib/experimentPlugin";
 import { chemexConfigHash, experimentsFingerprint, findLineage, isRunActive, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from "../lib/chemexRun";
@@ -495,7 +495,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         ...parameterConfig.residues,
         [resKey]: {
           ...curRes,
-          dw_ab: { value: dwPpm, source: { kind: "estimated_from_rex" } },
+          dw_ab: withValue(curRes.dw_ab, dwPpm, { kind: "estimated_from_rex" }),
         },
       },
     });
@@ -507,7 +507,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
       const cur = nextRes[resKey] || {};
       nextRes[resKey] = {
         ...cur,
-        dw_ab: { value: dwVal, source: { kind: "estimated_from_rex" } },
+        dw_ab: withValue(cur.dw_ab, dwVal, { kind: "estimated_from_rex" }),
       };
     }
     setParameterConfig({

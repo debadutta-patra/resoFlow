@@ -20,6 +20,7 @@ import {
   extractResidueNumber,
   normalizeResidueKey,
   getCanonicalResidueKey,
+  withValue,
 } from '../../lib/parameterConfig';
 import { ParameterBadge } from './ParameterBadge';
 
@@ -281,10 +282,11 @@ export const ResyncModal: React.FC<ResyncModalProps> = ({
           }
         }
         const pHash = computePickHash(pk);
-        updatedResidues[canonicalKey][item.paramKey] = {
-          value: parseFloat(item.newValue.toFixed(3)),
-          source: { kind: 'pick', pickSetHash: pHash, at: now },
-        };
+        updatedResidues[canonicalKey][item.paramKey] = withValue(
+          updatedResidues[canonicalKey][item.paramKey],
+          parseFloat(item.newValue.toFixed(3)),
+          { kind: 'pick', pickSetHash: pHash, at: now }
+        );
       }
     }
 

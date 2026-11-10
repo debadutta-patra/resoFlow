@@ -1,8 +1,11 @@
-import React, { useMemo } from 'react';
-import { Layers, Info } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Layers, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import type { ExtraGlobalField, ParameterConfig, ParamValue } from '../../lib/parameterConfig';
+import { withBound, withValue } from '../../lib/parameterConfig';
 import { getUnitDef } from '../../lib/unitRegistry';
+import { fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from '../../lib/chemexDefaults';
 import { ParameterBadge } from './ParameterBadge';
+import { NumericField } from './NumericField';
 
 export type { ExtraGlobalField };
 
@@ -15,7 +18,12 @@ interface GlobalParametersCardProps {
    */
   catalogGlobals?: string[];
   extraGlobals?: ExtraGlobalField[];
+  /** ChemEx default values and bounds (backend catalogue); defaults to the static table. */
+  defaults?: ParamDefaultsLookup;
 }
+
+const boundInputClass =
+  'w-full text-xs px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800 dark:text-slate-200 font-mono';
 
 const BASE_GLOBALS = ['PB', 'KEX_AB', 'TAUC_A'];
 
@@ -35,8 +43,18 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
   onChange,
   catalogGlobals,
   extraGlobals = [],
+  defaults = fallbackDefaults,
 }) => {
   const globals = config.globals || {};
+  const [openBounds, setOpenBounds] = useState<Record<string, boolean>>({});
+
+  const handleBound = (paramKey: string, side: 'lower' | 'upper', bound: number | undefined, displayed: number) => {
+    const next = withBound(globals[paramKey], side, bound, displayed);
+    const nextGlobals = { ...globals };
+    if (next) nextGlobals[paramKey] = next;
+    else delete nextGlobals[paramKey];
+    onChange({ ...config, globals: nextGlobals });
+  };
 
   const fields = useMemo(() => {
     const keys: string[] = [];
@@ -68,7 +86,7 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
       ...config,
       globals: {
         ...globals,
-        [paramKey]: { value: val, source: { kind: 'manual' as const, at: new Date().toISOString() } },
+        [paramKey]: withValue(globals[paramKey], val, { kind: 'manual', at: new Date().toISOString() }),
       },
     });
   };
@@ -121,6 +139,50 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
                 )}
               </div>
               <p className="text-[10px] text-slate-400">{f.hint}</p>
+              {f.key !== 'tref' && (() => {
+                const def = defaults(f.key);
+                const custom = param.lower !== undefined || param.upper !== undefined;
+                const open = openBounds[f.key] ?? custom;
+                return (
+                  <div className="pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setOpenBounds(prev => ({ ...prev, [f.key]: !open }))}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      aria-expanded={open}
+                      title="ChemEx [init, lower, upper]: explicit bounds replace ChemEx's default bounds (and the MCMC prior support)"
+                    >
+                      {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      <span>Bounds</span>
+                      {custom ? (
+                        <span className="ml-1 w-1.5 h-1.5 rounded-full bg-blue-500" aria-label="custom bounds" />
+                      ) : (
+                        <span className="font-normal text-slate-400">
+                          ChemEx [{fmtDefault(def?.lower)}, {fmtDefault(def?.upper)}]
+                        </span>
+                      )}
+                    </button>
+                    {open && (
+                      <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        <NumericField
+                          ariaLabel={`${f.label} lower bound`}
+                          value={param.lower}
+                          onCommit={v => handleBound(f.key, 'lower', v, param.value)}
+                          placeholder={`lower: ${fmtDefault(def?.lower)}`}
+                          className={boundInputClass}
+                        />
+                        <NumericField
+                          ariaLabel={`${f.label} upper bound`}
+                          value={param.upper}
+                          onCommit={v => handleBound(f.key, 'upper', v, param.value)}
+                          placeholder={`upper: ${fmtDefault(def?.upper)}`}
+                          className={boundInputClass}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

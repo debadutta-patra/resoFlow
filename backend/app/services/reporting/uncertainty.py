@@ -31,6 +31,7 @@ from ..fitting.chemex_output.grid_parser import (
     compute_1d_profiles,
 )
 from ..fitting.statistics_engine import load_replicates_or_fallback, clean_param_name
+from ..fitting.spin_system import SpinSystemKey
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,11 @@ class UncertaintyResolver:
 
         # Cache starting parameter bounds for boundary proximity checks
         self.starting_bounds: Dict[str, Tuple[Optional[float], Optional[float]]] = self._load_starting_bounds()
+        self.starting_param_names: set[str] = {
+            (k if sec.upper() == "GLOBAL" else sec).upper()
+            for sec, p_dict in ((self.run_result.starting_parameters or {}) if self.run_result else {}).items()
+            for k in p_dict
+        } | {k.split("/")[0] for k in self.starting_bounds}
 
         # Cache loaded grid profiles and resampled samples
         self._1d_grid_cache: Dict[Any, Dict[str, Any]] = {}
@@ -196,29 +202,84 @@ class UncertaintyResolver:
                 summary[res.source.value] += 1
         return summary
 
+    @staticmethod
+    def _finite_or_none(x: Any) -> Optional[float]:
+        try:
+            v = float(x)
+        except (TypeError, ValueError):
+            return None
+        return v if math.isfinite(v) else None
+
     def _load_starting_bounds(self) -> Dict[str, Tuple[Optional[float], Optional[float]]]:
-        """Extract parameter bounds from starting_parameters or config.json."""
+        """Effective starting bounds per parameter, keyed ``NAME`` (global) or ``NAME/RESIDUE``.
+
+        Primary source is ChemEx's ``run_info/parameters_used.toml``, which records the
+        effective ``[value, min, max]`` (user bounds from parameters.toml, else ChemEx's
+        defaults). Non-finite bounds are treated as unset. ``config.json``'s structured
+        ``parameter_config`` (``lower``/``upper``, legacy ``min``/``max``) fills gaps.
+        """
         bounds: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
+
+        def put(key: str, lo: Any, hi: Any) -> None:
+            lo_f, hi_f = self._finite_or_none(lo), self._finite_or_none(hi)
+            if lo_f is None and hi_f is None:
+                return
+            bounds.setdefault(key.upper(), (lo_f, hi_f))
+
         if self.run_result and self.run_result.starting_parameters:
             for sec, p_dict in self.run_result.starting_parameters.items():
                 for k, p_obj in p_dict.items():
-                    key_norm = f"{sec}/{k}".upper()
-                    bounds[key_norm] = (p_obj.min_val, p_obj.max_val)
-                    bounds[k.upper()] = (p_obj.min_val, p_obj.max_val)
+                    key = k if sec.upper() == "GLOBAL" else f"{sec}/{k}"
+                    put(key, p_obj.min_val, p_obj.max_val)
 
-        # Check config.json if starting_parameters lacked bounds
         cfg_path = self.analysis_dir / "config.json"
         if cfg_path.is_file():
             try:
                 cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-                p_cfg = cfg.get("parameter_config", {})
+                p_cfg = cfg.get("parameter_config") or cfg.get("parameterConfig") or {}
+
+                def lo_hi(v: Any) -> Tuple[Any, Any]:
+                    return (v.get("lower", v.get("min")), v.get("upper", v.get("max")))
+
+                for k, v in (p_cfg.get("globals") or {}).items():
+                    if isinstance(v, dict):
+                        put(k, *lo_hi(v))
+                # Legacy flat shape: {"R2_B": {"min": .., "max": ..}} applies to every residue.
                 for k, v in p_cfg.items():
-                    if isinstance(v, dict) and ("min" in v or "max" in v):
-                        bounds[k.upper()] = (v.get("min"), v.get("max"))
+                    if k not in ("globals", "residues") and isinstance(v, dict) and ("min" in v or "max" in v):
+                        put(k, *lo_hi(v))
+                for res, params in (p_cfg.get("residues") or {}).items():
+                    for k, v in (params or {}).items():
+                        if isinstance(v, dict):
+                            put(f"{k}/{res}", *lo_hi(v))
             except Exception:
                 pass
 
         return bounds
+
+    def _bounds_for(self, name: str, scope: str) -> Tuple[Optional[float], Optional[float]]:
+        """Bounds for a global (``scope == 'global'``) or per-residue parameter."""
+        name_u = name.upper()
+        if scope.strip().lower() == "global":
+            return self.starting_bounds.get(name_u, (None, None))
+        exact = self.starting_bounds.get(f"{name_u}/{scope.strip().upper()}")
+        if exact is not None:
+            return exact
+        try:
+            target: Optional[SpinSystemKey] = SpinSystemKey.parse(scope)
+        except Exception:
+            target = None
+        prefix = f"{name_u}/"
+        if target is not None:
+            for key, val in self.starting_bounds.items():
+                if key.startswith(prefix):
+                    try:
+                        if SpinSystemKey.parse(key[len(prefix):]).matches(target):
+                            return val
+                    except Exception:
+                        continue
+        # A [GLOBAL] entry for a per-residue parameter applies to every residue (ChemEx semantics).
+        return self.starting_bounds.get(name_u, (None, None))
 
     def _discover_statistics_roots(self) -> List[Tuple[str, Path]]:
         """
@@ -680,9 +741,7 @@ class UncertaintyResolver:
         # 2. Check NOT_IN_MODEL
         if p_clean in ("tauc_a", "tau_c"):
             # Check if tau_c was actually in the model / starting parameters
-            has_tauc_in_starting = any(
-                "TAUC" in k.upper() for k in self.starting_bounds.keys()
-            )
+            has_tauc_in_starting = any("TAUC" in k for k in self.starting_param_names)
             if not has_tauc_in_starting and (value is None or value == 0.0):
                 return ResolvedParameter(
                     name=param_name,
@@ -702,7 +761,7 @@ class UncertaintyResolver:
             )
 
         # 3. Check Bound Proximity (Phase 2 requirement)
-        bound_low, bound_high = self.starting_bounds.get(p_clean.upper(), (None, None))
+        bound_low, bound_high = self._bounds_for(p_clean, scope_clean)
 
         # Scale populations (pb, pa, pc) to percentages when unit is %
         if p_clean in ("pb", "pa", "pc") and unit == "%":
