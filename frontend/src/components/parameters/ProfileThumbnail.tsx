@@ -21,6 +21,8 @@ interface ProfileThumbnailProps {
   profile?: CestProfile;
   csA?: number | null;
   csB?: number | null;
+  /** Last fit for the same experiment (raw offsets in Hz, back-calculated intensities), drawn over the data. */
+  fit?: { offsets: number[]; calc: number[] } | null;
   width?: number;
   height?: number;
   className?: string;
@@ -30,6 +32,7 @@ export const ProfileThumbnail: React.FC<ProfileThumbnailProps> = ({
   profile,
   csA,
   csB,
+  fit,
   width = 160,
   height = 50,
   className = '',
@@ -62,7 +65,8 @@ export const ProfileThumbnail: React.FC<ProfileThumbnailProps> = ({
   
   // Find reference intensity
   const refIdx = exp.offsets.findIndex(o => o < -10000);
-  const i0 = refIdx !== -1 && exp.intensities[refIdx] > 0 ? exp.intensities[refIdx] : 1.0;
+  // Signed reference: some data sets store negative intensities, and I/I0 is still the profile.
+  const i0 = refIdx !== -1 && exp.intensities[refIdx] !== 0 ? exp.intensities[refIdx] : 1.0;
 
   const validPoints: { ppm: number; normI: number }[] = [];
   for (let i = 0; i < exp.offsets.length; i++) {
@@ -114,6 +118,15 @@ export const ProfileThumbnail: React.FC<ProfileThumbnailProps> = ({
     .map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${scaleX(pt.ppm).toFixed(1)} ${scaleY(pt.normI).toFixed(1)}`)
     .join(' ');
 
+  const fitPoints = (fit?.offsets ?? [])
+    .map((o, i) => ({ o, c: fit!.calc[i] }))
+    .filter(p => p.o > -10000 && Number.isFinite(p.c))
+    .map(p => ({ ppm: toPpm(p.o), normI: Math.max(0, p.c / i0) }))
+    .sort((a, b) => a.ppm - b.ppm);
+  const fitD = fitPoints.length
+    ? fitPoints.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${scaleX(pt.ppm).toFixed(1)} ${scaleY(pt.normI).toFixed(1)}`).join(' ')
+    : null;
+
   const xA = csA != null ? scaleX(csA) : null;
   const xB = csB != null ? scaleX(csB) : null;
 
@@ -133,6 +146,8 @@ export const ProfileThumbnail: React.FC<ProfileThumbnailProps> = ({
           strokeLinecap="round"
           strokeLinejoin="round"
         />
+
+        {fitD && <path d={fitD} fill="none" stroke="#f59e0b" strokeWidth="1.25" strokeDasharray="3 2" data-testid="thumbnail-fit" />}
 
         {/* CS_A vertical line (Ground state - cyan/blue) */}
         {xA !== null && (

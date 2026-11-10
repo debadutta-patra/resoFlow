@@ -1423,6 +1423,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               startingProvenance={startingProvenance(parameterConfig, cestPlugin.dataPrepTabLabel ?? 'pick')}
               committedByStep={committedByStep}
               resultsSteps={analysisResults?.steps}
+              profiles={profiles}
+              picks={picks}
               onNavigateToParameters={() => setActiveTab('parameters')}
               notify={notify}
               readOnly={runLocked}

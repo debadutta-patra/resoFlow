@@ -26,6 +26,10 @@ import { overviewStep, stepResultBadge, type StepResultBadge } from '../../lib/r
 import McmcDiagnosticsTab from './McmcDiagnosticsTab';
 import { toMcmcMethodData } from './StatisticsResultsSection';
 import GridLandscape from './GridLandscape';
+import ResiduePreview from './ResiduePreview';
+import { availableChipMetrics, chipMetricValues, gapNumbers, type ChipMetric, type PickLike } from '../../lib/residueMetrics';
+import { sequenceRange } from '../../lib/sequence';
+import type { CestProfile } from '../parameters/ProfileThumbnail';
 import ScienceChecksModal from './ScienceChecksModal';
 import { checkEnabled } from '../../lib/scienceChecks';
 import { JointDistributionModal } from './JointDistributionModal';
@@ -61,6 +65,9 @@ export interface MethodsTabProps {
   /** Raw per-step results of the last run (results bundle), for the MCMC diagnostics view. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resultsSteps?: Record<string, any>;
+  /** CEST profiles and Pick CEST picks (chip shading by dip depth, hover thumbnails). */
+  profiles?: CestProfile[];
+  picks?: Record<string, PickLike | null | undefined>;
 }
 
 export const MethodsTab: React.FC<MethodsTabProps> = ({
@@ -74,6 +81,8 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   committedByStep,
   readOnly = false,
   resultsSteps,
+  profiles,
+  picks,
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -87,11 +96,25 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
     [residueItems, sequence, projectSettings.sequence_offset]
   );
   const residueTypesKnown = useMemo(() => labeledResidues.some(itemHasType), [labeledResidues]);
+  const gaps = useMemo(
+    () => gapNumbers(residueItems, sequence ? sequenceRange(sequence, projectSettings.sequence_offset) : null),
+    [residueItems, sequence, projectSettings.sequence_offset]
+  );
   const { methodConfig, activeStep } = editor;
   const { report, stale } = editor.resolvedRoles;
   const resolvedStep = report?.steps.find(s => s.name.toUpperCase() === (activeStep.name || '').trim().toUpperCase());
   const resolvedCounts = useMemo(() => resolvedCountsByName(resolvedStep), [resolvedStep]);
   const activeOverview = overviewStep(editor.runOverview.overview, activeStep.name || '');
+  // Chip shading: this step's last run, else the run's last step.
+  const metricRunStep = activeOverview ?? editor.runOverview.overview?.steps.at(-1);
+  const metricSources = useMemo(() => ({ profiles, picks, runStep: metricRunStep }), [profiles, picks, metricRunStep]);
+  const metricOptions = useMemo(() => availableChipMetrics(residueItems, metricSources), [residueItems, metricSources]);
+  const [chipMetricChoice, setChipMetricChoice] = useState<ChipMetric | null | undefined>(undefined);
+  // Default: dip depth when available (first option), until the user picks.
+  const chipMetric = chipMetricChoice === undefined ? metricOptions[0] ?? null : chipMetricChoice && metricOptions.includes(chipMetricChoice) ? chipMetricChoice : null;
+  const chipValues = useMemo(() => (chipMetric ? chipMetricValues(chipMetric, residueItems, metricSources) : {}), [chipMetric, residueItems, metricSources]);
+  const profileById = useMemo(() => new Map((profiles ?? []).map(p => [p.residue, p])), [profiles]);
+  const namedSelections = projectSettings.named_selections;
   // C5: strongly correlated pairs (last run) noted next to the parameter names.
   const correlationNotes = useMemo(() => {
     const strong = strongCorrelationsByName(activeOverview);
@@ -333,6 +356,33 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             residues={labeledResidues}
             residueTypesKnown={residueTypesKnown}
             onImportSequence={() => setShowSequence(true)}
+            gaps={gaps}
+            metric={metricOptions.length ? { options: metricOptions, active: chipMetric, values: chipValues, onChange: setChipMetricChoice } : undefined}
+            renderPreview={
+              profiles
+                ? item => (
+                    <ResiduePreview
+                      projectUuid={editor.projectUuid}
+                      analysisUuid={analysisUuid}
+                      residue={item.id}
+                      stepName={metricRunStep?.name ?? null}
+                      profile={profileById.get(item.id)}
+                      csA={picks?.[item.id]?.cs_a ?? null}
+                      csB={picks?.[item.id]?.cs_b ?? null}
+                    />
+                  )
+                : undefined
+            }
+            namedSelections={namedSelections}
+            onSaveSelection={(name, residues) =>
+              editor.projectSettings.update({
+                named_selections: [
+                  ...namedSelections.filter(n => n.name !== name),
+                  { id: `sel_${Date.now().toString(36)}`, name, residues, created_at: new Date().toISOString() },
+                ],
+              })
+            }
+            onDeleteSelection={id => editor.projectSettings.update({ named_selections: namedSelections.filter(n => n.id !== id) })}
             mode={activeStep.residueMode || 'all'}
             selectedIds={activeStep.residues || []}
             onModeChange={residueMode => editor.handleStepChange({ ...activeStep, residueMode })}
