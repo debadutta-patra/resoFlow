@@ -15,6 +15,7 @@ import { createDefaultMethodConfig, createDefaultStep, migrateSavedConfig, newMe
 import { setRolesFrom, stepDisplayName, uniqueStepName } from '../lib/methodSteps';
 import { configToToml, tomlToConfig } from '../lib/methodToml';
 import { validateMethodConfig } from '../lib/methodValidation';
+import { partitionDismissed, restoreIssue as restoreIssueIn, type QuickFix } from '../lib/methodQuickFixes';
 import type { MethodTemplate } from '../lib/methodTemplates';
 import { DEFAULT_PARAM_METAS, type AvailableParamMeta } from '../components/methods/ParameterTable';
 import type { ResidueItem } from '../components/methods/ResidueSelector';
@@ -22,6 +23,7 @@ import { useBaselineRoles } from './useBaselineRoles';
 import { useResolvedRoles } from './useResolvedRoles';
 import { useStepTimings } from './useStepTimings';
 import { useLastRunMethod } from './useLastRunMethod';
+import { useProjectSettings } from './useProjectSettings';
 import { chemexIssues } from '../lib/resolvedRoles';
 
 
@@ -70,6 +72,8 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const [unparsedTomlLines, setUnparsedTomlLines] = useState<string[]>([]);
   const [activeStepIdx, setActiveStepIdx] = useState(0);
   const [availableParamsMeta, setAvailableParamsMeta] = useState<AvailableParamMeta[]>(DEFAULT_PARAM_METAS);
+  /** Project-level Methods metadata (sequence offset, check toggles, named selections, templates). */
+  const projectSettings = useProjectSettings(projectUuid);
   /** Roles ChemEx assigns with no ROLES actions — what "Default" means for this analysis. */
   const baselineRoles = useBaselineRoles({
     projectUuid,
@@ -287,9 +291,20 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     [availableParamsMeta]
   );
   /** Instant local checks (ChemEx's own verdict is merged in below). */
+  const baselineFitNames = useMemo(
+    () =>
+      Object.entries(baselineRoles.roles ?? {})
+        .filter(([, c]) => c.fit > 0)
+        .map(([name]) => name)
+        .sort(),
+    [baselineRoles.roles]
+  );
   const localValidationErrors = useMemo(
-    () => validateMethodConfig(methodConfig, knownParamNames, residueItems.filter(r => r.hasData).length, baselineRoles.catalog),
-    [methodConfig, knownParamNames, residueItems, baselineRoles.catalog]
+    () =>
+      validateMethodConfig(methodConfig, knownParamNames, residueItems.filter(r => r.hasData).length, baselineRoles.catalog, {
+        baselineFitNames,
+      }),
+    [methodConfig, knownParamNames, residueItems, baselineRoles.catalog, baselineFitNames]
   );
 
   // ── Persistence ──
@@ -318,10 +333,25 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
    * (a stale report is ignored — the run pre-flight re-checks with ChemEx anyway).
    * Every error blocks Run.
    */
-  const validationErrors = useMemo(() => {
+  const { active: validationErrors, dismissed: dismissedIssues } = useMemo(() => {
     const fromChemex = resolvedRoles.stale ? [] : chemexIssues(resolvedRoles.report, methodConfig.steps);
-    return [...localValidationErrors, ...fromChemex];
-  }, [localValidationErrors, resolvedRoles.report, resolvedRoles.stale, methodConfig.steps]);
+    return partitionDismissed([...localValidationErrors, ...fromChemex], methodConfig);
+  }, [localValidationErrors, resolvedRoles.report, resolvedRoles.stale, methodConfig]);
+  /** Apply an issue's quick-fix (ignored while the method is locked by a run). */
+  const applyQuickFix = useCallback(
+    (fix: QuickFix) => {
+      if (opts.locked) return;
+      setMethodConfig(normalizeMethodConfig(fix.apply(methodConfig)));
+    },
+    [methodConfig, opts.locked, setMethodConfig]
+  );
+  const restoreIssue = useCallback(
+    (stepId: string, key: string) => {
+      if (opts.locked) return;
+      setMethodConfig(restoreIssueIn(methodConfig, stepId, key));
+    },
+    [methodConfig, opts.locked, setMethodConfig]
+  );
   const blockingErrors = useMemo(() => validationErrors.filter(e => e.severity === 'error'), [validationErrors]);
   const methodConfigForSave: MethodConfig & { rawOverride?: string } = isRawEditMode
     ? { ...methodConfig, rawOverride: methodToml }
@@ -362,6 +392,9 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   }, []);
 
   return {
+    projectUuid,
+    analysisUuid,
+    projectSettings,
     family,
     methodConfig,
     setMethodConfig,
@@ -388,6 +421,9 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     lastRunMethod,
     knownParamNames,
     validationErrors,
+    dismissedIssues,
+    applyQuickFix,
+    restoreIssue,
     blockingErrors,
     effectiveMethodToml,
     methodConfigForSave,

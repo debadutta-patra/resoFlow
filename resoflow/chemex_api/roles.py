@@ -17,6 +17,8 @@ The FIT/FIX attribution uses ``chemex.parameters.parameterization._build_action_
 
 from __future__ import annotations
 
+import math
+
 import contextlib
 import re
 from dataclasses import dataclass
@@ -256,7 +258,13 @@ def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, c
         out["counts"][kind] += 1
 
         declaration = model.declarations.get(param_id)
-        pname = getattr(settings.get(param_id), "param_name", None)
+        setting = settings.get(param_id)
+        pname = getattr(setting, "param_name", None)
+        raw_value = getattr(setting, "value", None)
+        try:
+            value = float(raw_value) if raw_value is not None and math.isfinite(float(raw_value)) else None
+        except (TypeError, ValueError):
+            value = None
         spin = str(pname.spin_system) if pname is not None and pname.spin_system else ""
         out["parameters"].append(
             {
@@ -274,6 +282,8 @@ def _resolve_step(session: Any, experiments: Any, plan: MethodPlan, step: Any, c
                 ),
                 "rule": _origin_dict(origin, step.name),
                 "protected": bool(getattr(declaration, "model_owned", False)),
+                # Value at step start before any earlier step commits (parameters file / ChemEx default).
+                "value": value,
             }
         )
     spin_of = {p["id"]: p["spin"] for p in out["parameters"]}

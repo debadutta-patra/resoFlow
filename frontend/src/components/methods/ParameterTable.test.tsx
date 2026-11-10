@@ -60,8 +60,8 @@ describe('ParameterTable starting-value provenance', () => {
     expect(within(pb).getByText('(last run, GLOBAL_FIT: 0.0523)')).toBeDefined();
     expect(within(pb).queryByText('0.05')).toBeNull();
     expect(within(pb).queryByRole('button', { name: /Params/ })).toBeNull();
-    // FIX rows say the same: values continue from the committed fit.
-    expect(within(row('KEX_AB')).getByText('From previous step result')).toBeDefined();
+    // FIX rows say where the held value comes from: the committed fit of the previous step.
+    expect(within(row('KEX_AB')).getByText('value committed by GLOBAL_FIT')).toBeDefined();
   });
 });
 
@@ -75,9 +75,11 @@ describe('ParameterTable resolved Default', () => {
         baselineRoles={{ loading: false, error: null, catalog: null, roles: { CS_A: { fit: 0, fix: 16, derived: 0 }, R2_B: { fit: 16, fix: 0, derived: 0 } } }}
       />
     );
-    expect(within(row('CS_A')).getByText('Default → Fixed')).toBeDefined();
-    expect(within(row('R2_B')).getByText('Default → Fit')).toBeDefined();
-    expect(within(row('PB')).getByText('Default → unresolved')).toBeDefined();
+    expect(within(row('CS_A')).getByText('Baseline: Fixed')).toBeDefined();
+    expect(within(row('R2_B')).getByText('Baseline: Fit')).toBeDefined();
+    expect(within(row('PB')).getByText('Not resolved yet')).toBeDefined();
+    // The duplicated "omitted from ROLES" text is gone.
+    expect(screen.queryByText(/omitted from ROLES/)).toBeNull();
   });
 
   it('is fully disabled when read-only', () => {

@@ -8,6 +8,7 @@
  * it is invalid, e.g. after a role change) with a one-click "Add FIT rule".
  */
 
+import { searchAxisDomId } from '../../lib/parameterRoleView';
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Clock, Dices, Grid3x3, Info, Plus, RotateCcw, Shuffle, Trash2, Wrench } from 'lucide-react';
 import type { SearchAxis, SearchFunction, SearchMode, Step, StepSearch } from '../../lib/methodConfig';
@@ -346,7 +347,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                       const pts = search.mode === 'grid' ? axisPoints(axis) : [];
                       const status = resolved?.axes[idx];
                       return (
-                        <tr key={axis.id} className="align-top">
+                        <tr key={axis.id} id={searchAxisDomId(axis.id)} className="align-top">
                           <td className="py-2 px-2 font-mono text-slate-400">{idx + 1}</td>
                           <td className="py-2 px-2 min-w-[14rem]">
                             <SelectorBuilder

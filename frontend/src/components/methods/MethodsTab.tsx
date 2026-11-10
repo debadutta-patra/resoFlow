@@ -18,8 +18,11 @@ import StepStatisticsSection from './StepStatisticsSection';
 import StepSearchSection from './StepSearchSection';
 import StepRolesSection from './StepRolesSection';
 import ResolvedRolesSummary from './ResolvedRolesSummary';
-import { chemexLocation, errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName, stepBadge, type StepBadge } from '../../lib/resolvedRoles';
+import { errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName, stepBadge, type StepBadge } from '../../lib/resolvedRoles';
 import MethodTomlPanel from './MethodTomlPanel';
+import MethodIssueBanner from './MethodIssueBanner';
+import SequenceImportModal from './SequenceImportModal';
+import { itemHasType, labelWithSequence } from '../../lib/sequence';
 import { stepDisplayName } from '../../lib/methodSteps';
 import {
   ChemexModalShell,
@@ -27,7 +30,6 @@ import {
   RawModeToggleButton,
   RawTomlEditor,
   UnparsedLinesNotice,
-  ValidationBanner,
   actionBtnAccent,
   actionBtnNeutral,
   chemexBtnPrimary,
@@ -63,6 +65,14 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showSequence, setShowSequence] = useState(false);
+  const { sequence, settings: projectSettings } = editor.projectSettings;
+  /** Chips carry the residue type from assignment names, else from the project sequence. */
+  const labeledResidues = useMemo(
+    () => labelWithSequence(residueItems, sequence, projectSettings.sequence_offset),
+    [residueItems, sequence, projectSettings.sequence_offset]
+  );
+  const residueTypesKnown = useMemo(() => labeledResidues.some(itemHasType), [labeledResidues]);
   const { methodConfig, activeStep } = editor;
   const { report, stale } = editor.resolvedRoles;
   const resolvedStep = report?.steps.find(s => s.name.toUpperCase() === (activeStep.name || '').trim().toUpperCase());
@@ -142,19 +152,12 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
         </div>
       )}
 
-      <ValidationBanner
-        title="Method Validation Issues"
-        items={editor.validationErrors.map(err => (
-          <>
-            <strong>[{err.stepName}]</strong>{' '}
-            {err.origin === 'chemex' && err.source && (
-              <span className="font-mono text-[11px] opacity-80">
-                ChemEx · {chemexLocation({ message: err.message, type: '', source: err.source }).replace(/^\[[^\]]*\]\s*/, '') || 'step'}:{' '}
-              </span>
-            )}
-            {err.message}
-          </>
-        ))}
+      <MethodIssueBanner
+        issues={editor.validationErrors}
+        dismissed={editor.dismissedIssues}
+        onApplyFix={editor.applyQuickFix}
+        onRestore={editor.restoreIssue}
+        readOnly={readOnly}
       />
 
       {!editor.isRawEditMode && (
@@ -209,6 +212,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               startingProvenance={startingProvenance}
               readOnly={readOnly}
               resolvedCounts={resolvedCounts}
+              resolvedParams={resolvedStep?.parameters}
               onShowRules={showRules}
             />
           </div>
@@ -243,7 +247,9 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
           />
 
           <ResidueSelector
-            residues={residueItems}
+            residues={labeledResidues}
+            residueTypesKnown={residueTypesKnown}
+            onImportSequence={() => setShowSequence(true)}
             mode={activeStep.residueMode || 'all'}
             selectedIds={activeStep.residues || []}
             onModeChange={residueMode => editor.handleStepChange({ ...activeStep, residueMode })}
@@ -284,6 +290,8 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             checking: editor.resolvedRoles.loading,
             known: !!report && !stale,
             errors: editor.blockingErrors.length,
+            warnings: editor.validationErrors.filter(e => e.severity === 'warning').length,
+            notes: editor.validationErrors.filter(e => e.severity === 'info').length,
           }}
           onCopied={notify}
         />
@@ -299,6 +307,15 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             setShowTemplates(false);
           }}
           additionTarget={t => additionTarget(t, methodConfig, editor.activeStepIdx)}
+        />
+      )}
+      {showSequence && (
+        <SequenceImportModal
+          initialSequence={sequence}
+          initialOffset={projectSettings.sequence_offset}
+          sampleResidue={residueItems[0]?.number}
+          onClose={() => setShowSequence(false)}
+          onSave={(seq, offset) => editor.projectSettings.saveSequence(seq, offset)}
         />
       )}
       {showImport && (

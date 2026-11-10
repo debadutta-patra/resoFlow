@@ -6,6 +6,16 @@ import re
 from typing import List
 from .. import models, schemas, database, security
 from ..services.json_sync import sync_project_to_json, load_project_from_json
+from ..services.project_settings import (
+    ProjectSettings,
+    ProjectSettingsUpdate,
+    UserPreferences,
+    UserPreferencesUpdate,
+    load_project_settings,
+    load_user_preferences,
+    merge_project_settings,
+    merge_user_preferences,
+)
 from ..services.path_utils import to_container_path
 from ..services.cleanup import delete_directory_safely, cleanup_spectrum_files
 from .deps import get_project, get_spectrum
@@ -13,6 +23,7 @@ from ..services.spectrum import plotting
 from ..services.fitting.io import BrukerUC
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+users_router = APIRouter(prefix="/api/users", tags=["users"])
 
 def extract_b0(file_path: str):
     """Extract B0 (magnetic field) from FT2 or Bruker file using nmrglue."""
@@ -103,6 +114,45 @@ def update_project(project_update: schemas.ProjectUpdate, project: models.Projec
     sync_project_to_json(db, project)
     
     return project
+
+@users_router.get("/me/preferences", response_model=UserPreferences)
+def get_user_preferences(current_user: models.User = Depends(security.get_current_user)):
+    """User-level resoFlow preferences (e.g. method templates shown in every project)."""
+    return load_user_preferences(current_user.preferences)
+
+
+@users_router.patch("/me/preferences", response_model=UserPreferences)
+def update_user_preferences(
+    update: UserPreferencesUpdate,
+    current_user: models.User = Depends(security.get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    merged = merge_user_preferences(current_user.preferences, update)
+    current_user.preferences = merged.model_dump()
+    db.commit()
+    return merged
+
+
+@router.get("/{project_uuid}/settings", response_model=ProjectSettings)
+def get_project_settings(project: models.Project = Depends(get_project)):
+    """resoFlow-only Methods-page metadata shared by every viewer of the project."""
+    return load_project_settings(project.settings)
+
+
+@router.patch("/{project_uuid}/settings", response_model=ProjectSettings)
+def update_project_settings(
+    update: ProjectSettingsUpdate,
+    project: models.Project = Depends(get_project),
+    db: Session = Depends(database.get_db),
+):
+    """Partial update: each top-level key given replaces only that key."""
+    merged = merge_project_settings(project.settings, update)
+    project.settings = merged.model_dump()
+    db.commit()
+    db.refresh(project)
+    sync_project_to_json(db, project)
+    return merged
+
 
 @router.post("/{project_uuid}/spectra", response_model=schemas.Spectrum)
 def add_spectrum_to_project(spectrum: schemas.SpectrumCreate, project: models.Project = Depends(get_project), db: Session = Depends(database.get_db)):
@@ -350,6 +400,8 @@ def import_project(
         existing_project.protein_sequence = project_data.get("protein_sequence")
         existing_project.molecular_weight = project_data.get("molecular_weight")
         existing_project.experiments = project_data.get("experiments")
+        if isinstance(project_data.get("settings"), dict):
+            existing_project.settings = load_project_settings(project_data["settings"]).model_dump()
         if p_uuid and not existing_project.project_uuid:
             existing_project.project_uuid = p_uuid
         db_project = existing_project
@@ -362,6 +414,7 @@ def import_project(
             protein_sequence=project_data.get("protein_sequence"),
             molecular_weight=project_data.get("molecular_weight"),
             experiments=project_data.get("experiments"),
+            settings=load_project_settings(project_data["settings"]).model_dump() if isinstance(project_data.get("settings"), dict) else None,
             user_id=current_user.id
         )
         db.add(db_project)

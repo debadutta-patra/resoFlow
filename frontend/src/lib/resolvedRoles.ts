@@ -46,6 +46,8 @@ export interface ResolvedParameter {
   decided_by: 'rule' | 'baseline' | 'model';
   rule: RuleRef | null;
   protected: boolean;
+  /** Parameters-file (or ChemEx default) value at the start of the method; null when unset. */
+  value?: number | null;
 }
 
 /** One GRID axis / DE coordinate resolved against the step's final roles. */

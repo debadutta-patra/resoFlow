@@ -158,6 +158,11 @@ export interface Step {
   roleRules?: RoleRule[];
   search?: StepSearch;
   statistics?: StatisticsConfig;
+  /**
+   * resoFlow-only: keys of validation notes the user dismissed for this step
+   * (see lib/methodQuickFixes). Never emitted to method.toml.
+   */
+  dismissedIssues?: string[];
 }
 
 export interface MethodConfig {

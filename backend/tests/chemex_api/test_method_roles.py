@@ -228,3 +228,14 @@ COORDINATES = [
     assert single["error"] is None and single["coordinates"] == ["__DW_AB_26N"]
     assert "not a final independent FIT coordinate" in fixed["error"]["message"]
     assert "outside physical bounds" in wide["error"]["message"]
+
+
+def test_resolved_parameters_carry_starting_value(resolve):
+    """Each resolved parameter reports its parameters-file (or ChemEx default) value, for the Fixed setting column."""
+    report = resolve('FORMAT_VERSION = 2\n\n[STEP]\nROLES = [{ FIT = ["PB"] }, { FIX = ["KEX_AB"] }]\n')
+    assert report["valid"], report["errors"]
+    p = _by_id(report["steps"][0])
+    assert p["__PB"]["value"] == pytest.approx(0.015)
+    assert p["__KEX_AB"]["value"] == pytest.approx(70.0)
+    cs = [q for q in report["steps"][0]["parameters"] if q["name"] == "CS_A" and q["spin"].startswith("13N")]
+    assert cs and cs[0]["value"] == pytest.approx(108.207)

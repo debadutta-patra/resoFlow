@@ -3,7 +3,8 @@ import type { Step, ParamSetting, ParamMode } from '../../lib/methodConfig';
 import type { StartingProvenance } from '../../lib/parameterConfig';
 import { baselineRoleLabel } from '../../lib/baselineRoles';
 import type { BaselineRolesState } from '../../hooks/useBaselineRoles';
-import { resolvedCountsLabel, rulesByTargetName, type ResolvedRole } from '../../lib/resolvedRoles';
+import { resolvedCountsLabel, rulesByTargetName, type ResolvedParameter, type ResolvedRole } from '../../lib/resolvedRoles';
+import { expressionRhs, idNameMap, roleView, searchAxisDomId, type RoleView } from '../../lib/parameterRoleView';
 import { checkConstraintRhs, parseConstraint } from '../../lib/methodGrammar';
 import {
   ChevronDown,
@@ -124,6 +125,8 @@ interface ParameterTableProps {
   resolvedCounts?: Record<string, Record<ResolvedRole, number>>;
   /** Show and highlight the ordered rules that target this parameter name. */
   onShowRules?: (name: string) => void;
+  /** Every resolved parameter copy of this step (ChemEx), for the role-dependent setting column. */
+  resolvedParams?: ResolvedParameter[];
 }
 
 const MODE_LABELS: Record<ParamMode, string> = { default: 'Default', fit: 'Fit', fix: 'Fix', constrain: 'Constrain', grid: 'Fit' };
@@ -193,6 +196,81 @@ const StartingValueNote: React.FC<{
   );
 };
 
+const SEARCH_LABEL = { grid: 'Grid axis', de: 'DE range' } as const;
+
+/** Setting column content for the parameter's resolved role (see lib/parameterRoleView). */
+const SettingCell: React.FC<{
+  view: RoleView;
+  baseline: string | null;
+  baselineLoading: boolean;
+  valueNote: (label: string) => React.ReactNode;
+  onShowAxis: (axisId: string) => void;
+}> = ({ view, baseline, baselineLoading, valueNote, onShowAxis }) => {
+  const muted = 'text-xs text-slate-600 dark:text-slate-300';
+  switch (view.kind) {
+    case 'grid':
+    case 'de':
+      return (
+        <div className="space-y-1" data-testid="setting-search">
+          <button
+            type="button"
+            onClick={() => onShowAxis(view.axis.id)}
+            className="text-xs text-left text-amber-800 dark:text-amber-700 hover:underline"
+            title={
+              view.kind === 'grid'
+                ? 'Held at each grid point while the other FIT coordinates are optimised. Click to edit the axis.'
+                : 'Searched by differential evolution; the best candidate seeds a TRF that releases every FIT coordinate. Click to edit.'
+            }
+          >
+            {SEARCH_LABEL[view.kind]} · <span className="font-mono">{view.text}</span>
+            {view.partial && <span className="font-mono"> · {view.axis.qualifier}</span>}
+          </button>
+          {view.partial && valueNote(view.kind === 'de' ? 'Starting (used for non-DE coords only):' : 'Starting (used for non-grid coords only):')}
+        </div>
+      );
+    case 'fit':
+      return <div data-testid="setting-fit">{valueNote('Starting:')}</div>;
+    case 'fix':
+      return view.text ? (
+        <div className={`${muted} py-1`} data-testid="setting-fix">
+          <span className="font-semibold">Fixed at </span>
+          <span className="font-mono">{view.text}</span>
+        </div>
+      ) : (
+        <div className="py-1" data-testid="setting-fix">
+          {valueNote('Held at:')}
+        </div>
+      );
+    case 'derived':
+      return (
+        <div className={`${muted} py-1 flex flex-wrap items-center gap-1.5`} data-testid="setting-derived">
+          <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">{view.expression ? expressionRhs(view.expression) : 'derived'}</span>
+          {view.modelOwned ? (
+            <span title="Model-derived, cannot be changed">· model-derived</span>
+          ) : view.defaultConstraint ? (
+            <span title="Set by ChemEx's baseline parameterisation for these experiments; choosing Fit, Fix or Constrain overrides it.">
+              · default constraint (Fit / Fix / Constrain overrides it)
+            </span>
+          ) : (
+            <span>· constrained by a rule</span>
+          )}
+        </div>
+      );
+    case 'mixed':
+      return (
+        <div className={`${muted} py-1`} data-testid="setting-mixed">
+          Copies differ: {resolvedCountsLabel({ fit: 0, fix: 0, constrained: 0, derived: 0, ...view.counts })}
+        </div>
+      );
+    default:
+      return (
+        <div className={`${muted} py-1`} data-testid="setting-unresolved">
+          {baseline ? `Baseline: ${baseline}` : baselineLoading ? 'Resolving with ChemEx…' : 'Not resolved yet'}
+        </div>
+      );
+  }
+};
+
 export const ParameterTable: React.FC<ParameterTableProps> = ({
   step,
   onChange,
@@ -208,8 +286,17 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
   baselineRoles,
   resolvedCounts,
   onShowRules,
+  resolvedParams,
 }) => {
   const rulesByName = useMemo(() => rulesByTargetName(step), [step]);
+  const resolvedByName = useMemo(() => {
+    const out: Record<string, ResolvedParameter[]> = {};
+    for (const p of resolvedParams ?? []) (out[p.name.toUpperCase()] ??= []).push(p);
+    return out;
+  }, [resolvedParams]);
+  const idNames = useMemo(() => idNameMap(resolvedParams), [resolvedParams]);
+  const scrollToAxis = (axisId: string) =>
+    document.getElementById(searchAxisDomId(axisId))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const [expandedMixed, setExpandedMixed] = useState<Set<string>>(() => new Set());
   const toggleMixed = (name: string) =>
     setExpandedMixed(prev => {
@@ -354,9 +441,6 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
             {visibleParams.map(({ meta, setting }) => {
               const startVal = startingValues[setting.name.toLowerCase()] ?? startingValues[setting.name.toUpperCase()];
-              const isDefault = setting.mode === 'default';
-              const isFitted = setting.mode === 'fit';
-              const isFixed = setting.mode === 'fix';
               const isConstrained = setting.mode === 'constrain';
               const searchKind = searchTargets[setting.name.toUpperCase()];
               const uName = setting.name.toUpperCase();
@@ -366,6 +450,17 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
               const isProtected = !!catalogEntry?.protected;
               const mixedRules = rulesByName[uName] ?? [];
               const resolvedLabel = resolvedCountsLabel(resolvedCounts?.[uName]);
+              const view: RoleView = roleView({
+                name: uName,
+                step,
+                tableMode: setting.mode,
+                resolved: resolvedByName[uName],
+                stepIndex,
+                previousStepName,
+                committedPrevious: committed,
+                sourceLabel: startingProvenance[uName]?.source,
+                idNames,
+              });
               const valueNote = (label: string) => (
                 <StartingValueNote
                   label={label}
@@ -419,6 +514,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
 
                   {/* Treatment: segmented control, or Mixed / Protected */}
                   <td className="py-3.5 px-4 align-top">
+                    <div className="flex flex-wrap items-center gap-2">
                     {(() => {
                       const control = (
                         <div className="inline-flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700/80">
@@ -449,7 +545,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                           <div className="space-y-1">
                             <span
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
-                              title="Model-owned parameter: ChemEx derives it from the kinetic model, so method roles cannot change it."
+                              title="Model-derived, cannot be changed"
                             >
                               <Lock className="w-3 h-3" /> Model-derived · protected
                             </span>
@@ -494,61 +590,45 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                       }
                       return control;
                     })()}
-                    {resolvedLabel && (
-                      <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500" title={`Resolved by ChemEx for step ${step.name} (all ROLES applied)`}>
-                        Resolved: {resolvedLabel}
-                      </div>
+                    {resolvedLabel && !isProtected && (
+                      <span
+                        data-testid={`resolved-${uName}`}
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                        title={`Resolved by ChemEx for step ${step.name} (all ROLES applied)`}
+                      >
+                        → {resolvedLabel}
+                      </span>
                     )}
+                    </div>
                   </td>
 
                   {/* Value / Expression / Grid Column */}
                   <td className="py-3.5 px-4 align-top">
-                    {/* DEFAULT Mode */}
-                    {isDefault && (
-                      <div className="flex flex-wrap items-center gap-1.5 text-slate-400 dark:text-slate-500 text-xs py-1">
-                        <span
-                          className="font-semibold"
-                          title={
-                            baseline
-                              ? 'Role ChemEx assigns when ROLES does not mention this parameter (resolved for the loaded experiments and model).'
-                              : baselineRoles?.loading
-                                ? 'Resolving the baseline role with ChemEx…'
-                                : `Baseline role unknown${baselineRoles?.error ? `: ${baselineRoles.error}` : ''}`
-                          }
-                        >
-                          Default → {baseline ?? (baselineRoles?.loading ? '…' : 'unresolved')}
-                        </span>
-                        <span className="italic">
-                          {searchKind ? '· search target: must resolve to FIT (see the search section)' : '· omitted from ROLES'}
-                        </span>
-                      </div>
+                    {!isConstrained && (
+                      <SettingCell
+                        view={view}
+                        baseline={baseline}
+                        baselineLoading={!!baselineRoles?.loading}
+                        valueNote={valueNote}
+                        onShowAxis={scrollToAxis}
+                      />
                     )}
-                    {/* FIT Mode */}
-                    {isFitted && (
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        {valueNote('Starting:')}
-
-                        {setting.bounds && setting.bounds.trim() && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
-                            <span title="v1 inequality constraints are not supported by ChemEx v2 method files">
-                              Legacy bound "{setting.bounds}" ignored in v2
-                            </span>
-                            {!readOnly && (
-                              <button
-                                type="button"
-                                onClick={() => updateParamSetting(meta.name, { bounds: undefined })}
-                                className="underline hover:text-amber-700"
-                              >
-                                remove
-                              </button>
-                            )}
-                          </div>
+                    {setting.mode === 'fit' && setting.bounds && setting.bounds.trim() && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-700">
+                        <span title="v1 inequality constraints are not supported by ChemEx v2 method files">
+                          Legacy bound "{setting.bounds}" ignored in v2
+                        </span>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => updateParamSetting(meta.name, { bounds: undefined })}
+                            className="underline hover:text-amber-800"
+                          >
+                            remove
+                          </button>
                         )}
                       </div>
                     )}
-
-                    {/* FIX Mode */}
-                    {isFixed && <div className="py-1">{valueNote('Held at:')}</div>}
 
                     {/* CONSTRAIN Mode */}
                     {isConstrained && (

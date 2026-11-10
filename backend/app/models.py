@@ -16,6 +16,8 @@ class User(Base):
     full_name = Column(String, index=True)
     is_active = Column(Boolean, default=False)
     is_superuser = Column(Boolean, default=False)
+    # User-level preferences, e.g. method templates (see services/project_settings.py).
+    preferences = Column(JSON, nullable=True)
 
     projects = relationship("Project", back_populates="owner")
 
@@ -34,6 +36,8 @@ class Project(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user_id = Column(Integer, ForeignKey("users.id"))
     is_archived = Column(Boolean, default=False, index=True)
+    # resoFlow-only Methods-page metadata (see services/project_settings.py).
+    settings = Column(JSON, nullable=True)
 
     owner = relationship("User", back_populates="projects")
     spectra = relationship("Spectrum", back_populates="project", cascade="all, delete-orphan")

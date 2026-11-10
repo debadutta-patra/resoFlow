@@ -110,6 +110,7 @@ def sync_project_to_json(db: Session, project: models.Project):
         "protein_sequence": project.protein_sequence,
         "molecular_weight": project.molecular_weight,
         "experiments": project.experiments,
+        "settings": project.settings,
         "created_at": project.created_at.isoformat() if project.created_at else None,
         "spectra_count": len(project.spectra),
         "spectra_files": spectra_files,

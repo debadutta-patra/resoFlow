@@ -150,7 +150,7 @@ describe('parameter table quick view', () => {
     expect(onShowRules).toHaveBeenCalledWith('DW_AB');
     fireEvent.click(within(dw).getByRole('button', { name: /table action: Fix \(applied first\)/ }));
     expect(within(dw).getByRole('button', { name: 'Fix' })).toBeDefined();
-    expect(within(dw).getByText('Resolved: Fit 1 · Constrained 1')).toBeDefined();
+    expect(within(dw).getByText('→ Fit 1 · Constrained 1')).toBeDefined();
 
     expect(within(row('KAB')).getByText(/Model-derived · protected/)).toBeDefined();
     expect(within(row('KAB')).queryByRole('button', { name: 'Fit' })).toBeNull();

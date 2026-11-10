@@ -7,16 +7,60 @@ import { rolesFromError, stepNameError } from './methodSteps';
 import { rulesByTargetName, type ChemexSource } from './resolvedRoles';
 import { constraintTargetName, parseConstraint, parseSelector, selectorName } from './methodGrammar';
 import type { ParameterCatalog } from './baselineRoles';
+import { dismissFix, inheritRolesFix, issueKey, type QuickFix } from './methodQuickFixes';
+
+/**
+ * error: blocks Run (red) · warning: likely problem (amber) · info: note worth reading (blue).
+ * ChemEx's own validation failures are always errors.
+ */
+export type IssueSeverity = 'error' | 'warning' | 'info';
+
+export const SEVERITY_ORDER: Record<IssueSeverity, number> = { error: 0, warning: 1, info: 2 };
 
 export interface ValidationError {
   stepId: string;
   stepName: string;
   paramName?: string;
   message: string;
-  severity: 'error' | 'warning';
+  severity: IssueSeverity;
   /** 'chemex' for problems reported by ChemEx itself (with its location), else instant local checks. */
   origin?: 'local' | 'chemex';
   source?: ChemexSource;
+  /** Stable rule id; warnings/info with a code can be dismissed per step. */
+  code?: string;
+  /** Second line of explanation (e.g. the parameters concerned). */
+  detail?: string;
+  /** Config edits that resolve the issue (shown as buttons). */
+  actions?: QuickFix[];
+}
+
+/** Context the local checks use when available (all optional; checks degrade gracefully). */
+export interface ValidationContext {
+  /** Parameter names ChemEx fits with no ROLES actions (baseline FIT), for the no-FIT note. */
+  baselineFitNames?: string[];
+}
+
+/** Highest severity present, or null when there are no issues. */
+export function highestSeverity(issues: Array<{ severity: IssueSeverity }>): IssueSeverity | null {
+  let best: IssueSeverity | null = null;
+  for (const i of issues) if (best === null || SEVERITY_ORDER[i.severity] < SEVERITY_ORDER[best]) best = i.severity;
+  return best;
+}
+
+export function severityCounts(issues: Array<{ severity: IssueSeverity }>): Record<IssueSeverity, number> {
+  const out: Record<IssueSeverity, number> = { error: 0, warning: 0, info: 0 };
+  for (const i of issues) out[i.severity] += 1;
+  return out;
+}
+
+/** Whether a step runs any STATISTICS analysis. */
+export function hasStatistics(step: Step): boolean {
+  const st = step.statistics;
+  return !!(st?.mc?.enabled || st?.bs?.enabled || st?.bsn?.enabled || st?.mcmc?.enabled);
+}
+
+function isGridStep(step: Step | undefined): boolean {
+  return !!step?.search && step.search.mode === 'grid' && step.search.axes.length > 0;
 }
 
 export type MethodValidationError = ValidationError;
@@ -82,7 +126,8 @@ export function validateMethodConfig(
   knownParamNames: string[] = ['PB', 'PC', 'KEX_AB', 'KEX_AC', 'KEX_BC', 'CS_A', 'DW_AB', 'DW_AC', 'R1_A', 'R2_A', 'R1_B', 'R2_B', 'R1_C', 'R2_C', 'TAUC_A'],
   totalAvailableResiduesCount = 0,
   /** ChemEx parameter catalog (protection flags); omitted until inspection succeeds. */
-  catalog?: ParameterCatalog | null
+  catalog?: ParameterCatalog | null,
+  context: ValidationContext = {}
 ): ValidationError[] {
   const errors: ValidationError[] = [];
   const knownUpper = new Set(knownParamNames.map(n => n.toUpperCase()));
@@ -95,8 +140,18 @@ export function validateMethodConfig(
   config.steps.forEach((rawStep, i) => {
     const step: Step = normalizeStep(rawStep);
     const stepName = stepTomlName(step, i);
-    const push = (message: string, severity: 'error' | 'warning' = 'error', paramName?: string) =>
-      errors.push({ stepId: step.id, stepName, paramName, message, severity });
+    const push = (
+      message: string,
+      severity: IssueSeverity = 'error',
+      paramName?: string,
+      extra: { code?: string; detail?: string; actions?: QuickFix[]; dismissLabel?: string } = {}
+    ) => {
+      const { dismissLabel, ...rest } = extra;
+      const issue: ValidationError = { stepId: step.id, stepName, paramName, message, severity, ...rest };
+      const key = severity !== 'error' ? issueKey(issue) : null;
+      if (key) issue.actions = [...(issue.actions ?? []), dismissFix(step.id, key, dismissLabel)];
+      errors.push(issue);
+    };
 
     // ── Step name (TOML key and ChemEx output folder) ──
     const nameMsg = stepNameError(stepName, config.steps, i);
@@ -121,7 +176,7 @@ export function validateMethodConfig(
         if (prot) push(prot, 'error', uName);
       }
       if (param.mode !== 'default' && knownUpper.size > 0 && !knownUpper.has(uName)) {
-        push(`Unknown parameter "${uName}" for this model. Please check spelling.`, 'warning', uName);
+        push(`Unknown parameter "${uName}" for this model. Please check spelling.`, 'warning', uName, { code: 'unknown-param' });
       }
       if (param.mode === 'constrain') {
         const expr = (param.expression || '').trim();
@@ -141,7 +196,8 @@ export function validateMethodConfig(
         push(
           `Bound "${param.bounds.trim()}" on ${uName} is a v1 inequality constraint and is not part of ChemEx v2 method files; it is ignored. ChemEx's physical bounds apply.`,
           'warning',
-          uName
+          uName,
+          { code: 'legacy-bound' }
         );
       }
     }
@@ -150,7 +206,7 @@ export function validateMethodConfig(
     for (const [ri, rule] of (step.roleRules ?? []).entries()) {
       const entries = rule.entries.map(e => e.trim()).filter(Boolean);
       if (entries.length === 0) {
-        push(`Role rule #${ri + 1} (${rule.action}) is empty and will be skipped.`, 'warning');
+        push(`Role rule #${ri + 1} (${rule.action}) is empty and will be skipped.`, 'warning', undefined, { code: `empty-rule-${rule.id}` });
         continue;
       }
       for (const e of entries) {
@@ -166,8 +222,24 @@ export function validateMethodConfig(
     const hasFit = actions.some(a => a.action === 'FIT');
     const search = step.search;
     const searching = !!search && search.mode !== 'none' && search.axes.length > 0;
-    if (!hasFit && !step.rolesFromStepId && !step.rolesFrom) {
-      push(`Step "${stepName}" has no FIT action; ChemEx will fit the model's baseline parameters.`, 'warning');
+    // No FIT action and no ROLES_FROM: ChemEx fits the baseline FIT set. Usually deliberate
+    // right after a GRID step when the step only samples (refine-then-sample), so stay quiet there.
+    const prevStep = i > 0 ? normalizeStep(config.steps[i - 1]) : undefined;
+    if (!hasFit && !step.rolesFromStepId && !step.rolesFrom && !(isGridStep(prevStep) && hasStatistics(step))) {
+      const names = context.baselineFitNames ?? [];
+      push(
+        `Step "${stepName}" has no FIT action; ChemEx will fit the model's baseline FIT parameters.`,
+        'info',
+        undefined,
+        {
+          code: 'no-fit-action',
+          detail: names.length
+            ? `Baseline FIT: ${names.join(', ')}.`
+            : 'The baseline FIT set is shown once ChemEx has inspected the experiments.',
+          actions: prevStep ? [inheritRolesFix(step.id, config.steps[i - 1], i - 1)] : [],
+          dismissLabel: 'Mark as intentional',
+        }
+      );
     }
 
     // ── Deterministic search ──
@@ -222,12 +294,14 @@ export function validateMethodConfig(
         if (search.mode === 'grid' && /^(P[B-F]|KEX_[A-F]{2}|K[A-Z_]*|TAUC.*)$/.test(p)) globalProduct *= Math.max(1, axisPointCount(axis));
       }
       if (search.mode === 'grid' && globalProduct > 1000) {
-        push(`Global GRID axes span ${globalProduct} points; each point is a full profiled fit. Consider fewer points.`, 'warning');
+        push(`Global GRID axes span ${globalProduct} points; each point is a full profiled fit. Consider fewer points.`, 'warning', undefined, { code: 'grid-cost' });
       }
       if (searching && search.mode === 'grid' && i === config.steps.length - 1) {
         push(
           'The last step uses GRID: grid coordinates are never released by a final TRF and covariance errors are withheld. Add a following step without search to refine and obtain local uncertainties.',
-          'warning'
+          'warning',
+          undefined,
+          { code: 'grid-last-step' }
         );
       }
     }
@@ -255,7 +329,7 @@ export function validateMethodConfig(
         if (!conf.replicates || conf.replicates < 1 || !Number.isInteger(conf.replicates)) {
           push(`${label} replicate count must be a positive integer (>= 1).`);
         } else if (conf.replicates > 200) {
-          push(`${label} replicate count (${conf.replicates}) requires ${conf.replicates} full refits and may have high execution cost.`, 'warning');
+          push(`${label} replicate count (${conf.replicates}) requires ${conf.replicates} full refits and may have high execution cost.`, 'warning', undefined, { code: `stats-cost-${key}` });
         }
         const seedMsg = seedError(conf.seed);
         if (seedMsg) push(`${label}: ${seedMsg}`);
@@ -278,7 +352,7 @@ export function validateMethodConfig(
           m.update_parameters ? 'UPDATE_PARAMETERS' : null,
         ].filter(Boolean);
         if (legacy.length) {
-          push(`MCMC ${legacy.join(', ')} are v1-only controls and are not emitted (ChemEx v2 manages walkers; set workers with "chemex fit --workers").`, 'warning');
+          push(`MCMC ${legacy.join(', ')} are v1-only controls and are not emitted (ChemEx v2 manages walkers; set workers with "chemex fit --workers").`, 'warning', undefined, { code: 'mcmc-legacy' });
         }
       }
     }

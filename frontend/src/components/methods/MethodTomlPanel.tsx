@@ -18,7 +18,7 @@ export interface MethodTomlPanelProps {
   lastRunAt?: string | null;
   chemexVersion?: string | null;
   /** Live ChemEx validation state of the current text. */
-  validation: { checking: boolean; errors: number; known: boolean };
+  validation: { checking: boolean; errors: number; known: boolean; warnings?: number; notes?: number };
   onCopied?: (message: string) => void;
 }
 
@@ -119,7 +119,7 @@ export const MethodTomlPanel: React.FC<MethodTomlPanelProps> = ({
         </div>
       </div>
 
-      <footer className="px-3 py-2 text-[11px] border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-slate-500 dark:text-slate-400">
+      <footer className="px-3 py-2 text-xs border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-slate-500 dark:text-slate-400">
         <span className="font-mono">ChemEx {chemexVersion ?? '—'} · FORMAT_VERSION = 2</span>
         <span className="flex items-center gap-1" aria-live="polite">
           {validation.checking ? (
@@ -133,8 +133,9 @@ export const MethodTomlPanel: React.FC<MethodTomlPanelProps> = ({
               <XCircle className="w-3 h-3" /> {validation.errors} error{validation.errors === 1 ? '' : 's'} — Run is blocked
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-700 font-semibold" data-testid="toml-accepts">
               <CheckCircle2 className="w-3 h-3" /> ChemEx accepts this method
+              {acceptsQualifier(validation.warnings ?? 0, validation.notes ?? 0)}
             </span>
           )}
         </span>
@@ -142,5 +143,13 @@ export const MethodTomlPanel: React.FC<MethodTomlPanelProps> = ({
     </section>
   );
 };
+
+/** " · 1 warning · 2 notes" after the green tick, so an accepted method with open notes is not shown as clean. */
+function acceptsQualifier(warnings: number, notes: number): string {
+  const parts: string[] = [];
+  if (warnings) parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`);
+  if (notes) parts.push(`${notes} note${notes === 1 ? '' : 's'}`);
+  return parts.length ? ` · ${parts.join(' · ')}` : '';
+}
 
 export default MethodTomlPanel;

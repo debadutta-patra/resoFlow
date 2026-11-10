@@ -28,6 +28,10 @@ interface ResidueSelectorProps {
   /** Copy the previous step's selection (mode + residues); absent on the first step. */
   onCopyFromPrevious?: () => void;
   previousStepName?: string;
+  /** Residue types are known (from assignment names or the project sequence): enables type search. */
+  residueTypesKnown?: boolean;
+  /** Offer "Import sequence" when residue types are unknown. */
+  onImportSequence?: () => void;
 }
 
 export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
@@ -39,6 +43,8 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
   readOnly = false,
   onCopyFromPrevious,
   previousStepName,
+  residueTypesKnown = false,
+  onImportSequence,
 }) => {
   const [filterText, setFilterText] = useState('');
   const [onlyMinor, setOnlyMinor] = useState(false);
@@ -148,7 +154,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
   };
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
+    <section aria-label="Residue selection" className="space-y-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
       {/* Top Header & Mode Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
         <div>
@@ -200,7 +206,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             <button
               type="button"
               onClick={onCopyFromPrevious}
-              className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600"
+              className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400 hover:text-blue-600"
               title="Selection is step-local in ChemEx v2; this copies the previous step's INCLUDE/EXCLUDE once"
             >
               <Copy className="w-3 h-3" /> Copy from previous step{previousStepName ? ` (${previousStepName})` : ''}
@@ -219,11 +225,21 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             type="text"
             value={filterText}
             onChange={e => setFilterText(e.target.value)}
-            placeholder="Search residues (e.g. 14, G14, Gly)..."
+            placeholder={residueTypesKnown ? 'Search residues (e.g. 14, G14, Gly)...' : 'Search residues by number (e.g. 14)...'}
             className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
           />
+          {!residueTypesKnown && onImportSequence && !readOnly && (
+            <button
+              type="button"
+              onClick={onImportSequence}
+              className="mt-1 block text-xs text-blue-700 dark:text-blue-700 hover:underline"
+              title="Residue names in the data carry no residue type. Import the protein sequence to label chips G14 and search by type."
+            >
+              Import sequence…
+            </button>
+          )}
           {hasMinorData && (
-            <label className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 cursor-pointer" title="Residues where a minor-state (B) shift was picked in Pick CEST">
+            <label className="mt-1 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer" title="Residues where a minor-state (B) shift was picked in Pick CEST">
               <input type="checkbox" checked={onlyMinor} onChange={e => setOnlyMinor(e.target.checked)} />
               Only residues with a picked minor-state dip
             </label>
@@ -336,7 +352,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
         )}
       </div>
       </>)}
-    </div>
+    </section>
   );
 };
 export default ResidueSelector;
