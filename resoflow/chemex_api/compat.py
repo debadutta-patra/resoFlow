@@ -213,4 +213,23 @@ def verify_hooks() -> bool:
     if list(inspect.signature(_build_action_rules).parameters) != ["actions", "definitions"]:
         raise ChemExCompatError("Hook signature mismatch for parameterization._build_action_rules(actions, definitions).")
 
+    # 11. Default values and bounds (defaults.parameter_defaults): model and spin setting makers
+    try:
+        from chemex.models.factory import model_factory
+        from chemex.models.model import ModelSpec
+        from chemex.nmr.basis import Basis
+        from chemex.parameters.setting import ParamLocalSetting
+        from chemex.parameters.spins import create_base_param_settings
+    except (ImportError, AttributeError) as exc:
+        raise ChemExCompatError(f"Missing parameter-defaults hook: {exc}") from exc
+    if not hasattr(model_factory, "create_for_model") or not hasattr(ModelSpec, "from_name"):
+        raise ChemExCompatError("Missing parameter-defaults hook: model_factory.create_for_model / ModelSpec.from_name.")
+    if list(inspect.signature(create_base_param_settings).parameters) != ["basis", "state", "conditions"]:
+        raise ChemExCompatError("Hook signature mismatch for spins.create_base_param_settings(basis, state, conditions).")
+    if not {"type", "model", "extension", "spin_system"} <= set(getattr(Basis, "__dataclass_fields__", {})):
+        raise ChemExCompatError("Hook mismatch: nmr.basis.Basis fields (type, model, extension, spin_system).")
+    probe = ParamLocalSetting.__init__
+    if not {"value", "min", "max", "vary", "expr", "model_owned"} <= set(inspect.signature(probe).parameters):
+        raise ChemExCompatError("Hook mismatch: ParamLocalSetting(value, min, max, vary, expr, model_owned).")
+
     return True

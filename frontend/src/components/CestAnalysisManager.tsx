@@ -387,6 +387,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
 
   const runLocked = isRunActive(status, isRunning);
   const methodEditor = useMethodEditor({
+    onCatalog: parameterEditor.setCatalog,
     projectUuid,
     analysisUuid: analysis.analysis_uuid,
     family: cestPlugin.endpointFamily,

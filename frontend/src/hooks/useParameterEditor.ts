@@ -17,6 +17,7 @@ import {
   toggleExcludeResidue,
 } from '../lib/parameterConfig';
 import { DEFAULT_PARAMETER_CODEC, type ParameterCodec } from '../lib/parameterToml';
+import { defaultsLookupFromCatalog, type CatalogDefaultsRow } from '../lib/chemexDefaults';
 
 export type { ParameterCodec };
 
@@ -40,10 +41,14 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
   const [rawParamToml, setRawParamToml] = useState('');
   const [isRawParamEditMode, setIsRawParamEditMode] = useState(false);
   const [unparsedParamTomlLines, setUnparsedParamTomlLines] = useState<string[]>([]);
+  // ChemEx default values/bounds for the current model (backend catalogue; static table until loaded).
+  const [catalog, setCatalog] = useState<CatalogDefaultsRow[] | null>(null);
+  const defaults = useMemo(() => defaultsLookupFromCatalog(catalog), [catalog]);
+  const toToml = useCallback((cfg: ParameterConfig) => codec.toToml(cfg, { defaults }), [codec, defaults]);
 
   // ── Raw TOML mode ──
   const enterRawMode = () => {
-    setRawParamToml(codec.toToml(parameterConfig));
+    setRawParamToml(toToml(parameterConfig));
     setIsRawParamEditMode(true);
   };
   const toggleRawMode = () => (isRawParamEditMode ? setIsRawParamEditMode(false) : enterRawMode());
@@ -54,7 +59,7 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
     setIsRawParamEditMode(false);
   };
   const discardRawToml = () => {
-    setRawParamToml(codec.toToml(parameterConfig));
+    setRawParamToml(toToml(parameterConfig));
     setIsRawParamEditMode(false);
   };
 
@@ -62,11 +67,11 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
   const replaceConfig = useCallback(
     (next: ParameterConfig, unparsed?: string[]) => {
       setParameterConfig(next);
-      setRawParamToml(codec.toToml(next));
+      setRawParamToml(toToml(next));
       if (unparsed) setUnparsedParamTomlLines(unparsed);
       setIsRawParamEditMode(false);
     },
-    [codec]
+    [toToml]
   );
 
   // ── Residue exclusion (SpinSystemKey-aware, same rule on every page) ──
@@ -88,7 +93,7 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
   const startingValues = useMemo(() => startingValuesFromGlobals(parameterConfig), [parameterConfig]);
 
   // ── Persistence ──
-  const effectiveParameterToml = isRawParamEditMode ? rawParamToml : codec.toToml(parameterConfig);
+  const effectiveParameterToml = isRawParamEditMode ? rawParamToml : toToml(parameterConfig);
   const parameterConfigForSave: ParameterConfig = isRawParamEditMode
     ? { ...parameterConfig, rawOverride: rawParamToml }
     : parameterConfig;
@@ -106,7 +111,7 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
           setRawParamToml(override);
           setIsRawParamEditMode(true);
         } else {
-          setRawParamToml(codec.toToml(canon));
+          setRawParamToml(codec.toToml(canon)); // stable identity: restore must not change when the catalogue loads
           setIsRawParamEditMode(false);
         }
         return true;
@@ -144,7 +149,11 @@ export function useParameterEditor(opts: UseParameterEditorOptions) {
     startingValues,
     effectiveParameterToml,
     parameterConfigForSave,
-    toToml: codec.toToml,
+    toToml,
+    /** ChemEx default values/bounds lookup (catalogue-backed). */
+    defaults,
+    /** Feed the backend parameter catalogue (from useMethodEditor's `onCatalog`). */
+    setCatalog,
     restore,
   };
 }

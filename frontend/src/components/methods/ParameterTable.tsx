@@ -21,16 +21,29 @@ export interface AvailableParamMeta {
   gloss: string;
   scope: 'global' | 'residue';
   default_mode?: ParamMode;
-  default_bounds?: string;
+  /** Legacy v1 inequality (never sent by the ChemEx-derived catalogue). */
+  default_bounds?: string | null;
   default_expression?: string;
   category?: string;
   is_primary?: boolean;
+  /** ChemEx default starting value and safety bounds (null = none / unbounded). */
+  default_value?: number | null;
+  lower?: number | null;
+  upper?: number | null;
+  /** ChemEx's default role for the parameter. */
+  default_role?: 'fit' | 'fix' | 'derived' | 'protected';
+  derived?: boolean;
+  /** Model-owned constant (e.g. TREF): no bounds and no method role. */
+  protected?: boolean;
+  /** Defaults depend on the experimental conditions (shown for 25 °C / 600 MHz). */
+  condition_dependent?: boolean;
+  hint?: string;
 }
 
 export const DEFAULT_PARAM_METAS: AvailableParamMeta[] = [
   {
     name: 'PB',
-    gloss: 'Population of minor state B (0 - 0.5)',
+    gloss: 'Population of state B (0 - 1); nothing enforces PA > PB',
     scope: 'global',
     default_mode: 'default',
     category: 'kinetic',
@@ -96,7 +109,7 @@ export const DEFAULT_PARAM_METAS: AvailableParamMeta[] = [
   },
   {
     name: 'TAUC_A',
-    gloss: 'Rotational correlation time of state A (s)',
+    gloss: 'Rotational correlation time of state A (ns)',
     scope: 'global',
     default_mode: 'default',
     category: 'hydrodynamic',
@@ -478,7 +491,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
       const setting = stepParamMap.get(uName) || {
         name: uName,
         mode: meta.default_mode || 'default',
-        bounds: meta.default_bounds,
+        bounds: meta.default_bounds ?? undefined,
         expression: meta.default_expression,
       };
       list.push({ meta, setting });

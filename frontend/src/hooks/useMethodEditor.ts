@@ -63,6 +63,8 @@ export interface UseMethodEditorOptions {
   /** Current (possibly unsaved) parameters.toml, used for ChemEx inspection/resolution. */
   parameterToml?: string;
   notify?: (message: string) => void;
+  /** Receives the backend parameter catalogue whenever it is (re)fetched (e.g. for the Parameters tab's ChemEx defaults). */
+  onCatalog?: (rows: AvailableParamMeta[]) => void;
 }
 
 /** Undo history depth and the window within which consecutive edits (typing) coalesce. */
@@ -156,13 +158,20 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const canRedo = !opts.locked && historyDepth.future > 0;
 
   // ── Backend parameter catalogue (same source for every experiment) ──
+  const onCatalogRef = useRef(opts.onCatalog);
+  useEffect(() => {
+    onCatalogRef.current = opts.onCatalog;
+  });
   useEffect(() => {
     let cancelled = false;
     api
       .get(`${chemexAnalysisBase(projectUuid, analysisUuid, family)}/method-parameters`, { params: { model } })
       .then(res => {
         const list: AvailableParamMeta[] = res.data?.parameters || (Array.isArray(res.data) ? res.data : []);
-        if (!cancelled && list.length > 0) setAvailableParamsMeta(list);
+        if (!cancelled && list.length > 0) {
+          setAvailableParamsMeta(list);
+          onCatalogRef.current?.(list);
+        }
       })
       .catch(err => console.warn('Failed to fetch method parameters from backend', err));
     return () => {

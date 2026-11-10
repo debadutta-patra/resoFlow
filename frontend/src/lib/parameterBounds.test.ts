@@ -45,7 +45,7 @@ describe('chemexDefaults', () => {
   });
 
   it('prefers catalogue rows and falls back per name', () => {
-    const lookup = defaultsLookupFromCatalog([{ name: 'PB', default_value: 0.02, lower: 0, upper: 1, default_mode: 'fit' }]);
+    const lookup = defaultsLookupFromCatalog([{ name: 'PB', default_value: 0.02, lower: 0, upper: 1, default_role: 'fit' }]);
     expect(lookup('pb')).toMatchObject({ value: 0.02, vary: true });
     expect(lookup('KEX_AB')?.value).toBe(200);
   });

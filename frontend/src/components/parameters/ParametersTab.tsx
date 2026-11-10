@@ -90,8 +90,9 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
         availableResidues: profiles.map(p => p.residue),
         methodConfig,
         selectedModule,
+        defaults: editor.defaults,
       }),
-    [parameterConfig, profiles, methodConfig, selectedModule]
+    [parameterConfig, profiles, methodConfig, selectedModule, editor.defaults]
   );
 
   return (
@@ -192,6 +193,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
             onChange={editor.setParameterConfig}
             catalogGlobals={catalogGlobals}
             extraGlobals={capabilities.extraGlobals}
+            defaults={editor.defaults}
           />
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
@@ -212,6 +214,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
               pickedLabel={table.pickedLabel}
               staleLabel={table.staleLabel}
               renderProfile={capabilities.renderResidueProfile}
+              defaults={editor.defaults}
             />
           </div>
         </div>

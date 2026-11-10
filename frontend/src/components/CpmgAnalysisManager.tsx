@@ -229,6 +229,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
 
   const runLocked = isRunActive(status, isFitting);
   const methodEditor = useMethodEditor({
+    onCatalog: parameterEditor.setCatalog,
     projectUuid,
     analysisUuid: analysis.analysis_uuid,
     family: cpmgPlugin.endpointFamily,

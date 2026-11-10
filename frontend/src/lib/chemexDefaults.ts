@@ -76,6 +76,7 @@ export interface CatalogDefaultsRow {
   derived?: boolean;
   protected?: boolean;
   default_mode?: string;
+  default_role?: string;
 }
 
 /**
@@ -93,7 +94,7 @@ export function defaultsLookupFromCatalog(rows?: CatalogDefaultsRow[] | null): P
       value: r.default_value ?? null,
       lower: r.lower ?? null,
       upper: r.upper ?? null,
-      vary: r.default_mode === 'fit' ? true : fallbackDefaults(name)?.vary,
+      vary: r.default_role ? r.default_role === 'fit' : fallbackDefaults(name)?.vary,
       derived: !!r.derived,
       protected: !!r.protected,
     });
