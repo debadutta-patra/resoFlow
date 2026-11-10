@@ -1489,6 +1489,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
           residueLabels={Object.fromEntries(tableProfiles.map(p => [p.residue, residueMapping[p.residue] || p.full_residue || p.residue]))}
           methodConfig={methodConfig}
           activeStepIdx={methodEditor.activeStepIdx}
+              resolvedSteps={methodEditor.resolvedRoles.report?.steps}
           selectedModule={cestModuleName}
           catalogGlobals={catalogGlobals}
           onNavigateToMethods={() => setActiveTab('methods')}

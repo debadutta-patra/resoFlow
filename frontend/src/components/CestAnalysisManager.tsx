@@ -1411,6 +1411,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               residueLabels={analysisResults?.residue_mapping}
               methodConfig={methodConfig}
               activeStepIdx={methodEditor.activeStepIdx}
+              resolvedSteps={methodEditor.resolvedRoles.report?.steps}
               selectedModule={selectedModule}
               catalogGlobals={catalogGlobals}
               onNavigateToMethods={() => setActiveTab('methods')}

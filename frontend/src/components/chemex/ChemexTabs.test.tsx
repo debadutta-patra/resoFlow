@@ -57,7 +57,8 @@ describe.each([cestPlugin, cpmgPlugin, exchangePlugin])('Parameters tab on $id',
     expect(screen.getByRole('button', { name: new RegExp(plugin.parameters.resync.buttonLabel, 'i') })).toBeDefined();
     expect(screen.getByRole('button', { name: /Import TOML/i })).toBeDefined();
     expect(screen.getByRole('button', { name: /Edit Raw TOML/i })).toBeDefined();
-    expect(screen.getByText('Global Fit Settings')).toBeDefined();
+    expect(screen.getByText('Global starting values [GLOBAL]')).toBeDefined();
+    expect(screen.getByLabelText('Derived kinetic quantities').textContent).toContain('KAB = 10 s⁻¹'); // ChemEx defaults: 200 · 0.05
     expect(screen.getByLabelText(/p_b/i)).toBeDefined();
     expect(screen.getByText(plugin.parameters.residueTable.heading)).toBeDefined();
     expect(screen.getByText(/Generated parameters.toml Preview/i)).toBeDefined();

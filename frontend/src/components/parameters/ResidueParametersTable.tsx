@@ -32,6 +32,8 @@ import {
 } from '../../lib/parameterConfig';
 import { fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from '../../lib/chemexDefaults';
 import { NumericField } from './NumericField';
+import { residueTreatment, resolvedStepFor } from '../../lib/parameterRoleChip';
+import type { ResolvedStep } from '../../lib/resolvedRoles';
 import type { MethodConfig } from '../../lib/methodConfig';
 import type { ResidueProfileCell } from '../../lib/experimentPlugin';
 import { ParameterBadge } from './ParameterBadge';
@@ -64,6 +66,8 @@ export interface ResidueParametersTableProps {
   defaults?: ParamDefaultsLookup;
   /** |DW_AB| above which the cell is highlighted (nucleus-aware, from the module). */
   maxDwWarn?: number;
+  /** ChemEx-resolved roles per method step (authoritative for the Method Step column). */
+  resolvedSteps?: ResolvedStep[];
 }
 
 const BOUND_PARAMS: Array<{ key: 'cs_a' | 'dw_ab' | 'r1_a' | 'r2_a'; label: string }> = [
@@ -130,6 +134,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   onToggleExclude,
   defaults = fallbackDefaults,
   maxDwWarn = 15,
+  resolvedSteps,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
@@ -151,41 +156,19 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
     return map;
   }, [profiles]);
 
-  // Method treatment for active step
+  // Method treatment for the active step: ChemEx's resolved roles, else the step's table/rules.
   const activeStep = methodConfig?.steps?.[activeStepIdx];
+  const resolvedActive = resolvedStepFor(resolvedSteps, activeStep, activeStepIdx);
   const methodTreatmentMap = useMemo(() => {
     const map: Record<string, string> = {};
     if (!activeStep) return map;
-
-    const fitNames = activeStep.parameters.filter(p => p.mode === 'fit').map(p => p.name.toUpperCase());
-    const fixNames = activeStep.parameters.filter(p => p.mode === 'fix').map(p => p.name.toUpperCase());
-
-    const isFit = fitNames.includes('CS_A') || fitNames.includes('DW_AB');
-    const isFix = fixNames.includes('CS_A') && fixNames.includes('DW_AB');
-
-    const excludedSet = new Set(
-      activeStep.residueMode === 'exclude' ? (activeStep.residues || []) : []
-    );
-    const includedSet = new Set(
-      activeStep.residueMode === 'include' ? (activeStep.residues || []) : []
-    );
-
-    const allRes = Object.keys(config.residues || {});
-    for (const res of allRes) {
-      if (excludedSet.has(res)) {
-        map[res] = 'Excluded';
-      } else if (activeStep.residueMode === 'include' && includedSet.size > 0 && !includedSet.has(res)) {
-        map[res] = 'Excluded';
-      } else if (isFit) {
-        map[res] = 'Fit';
-      } else if (isFix) {
-        map[res] = 'Fixed';
-      } else {
-        map[res] = 'Active';
-      }
+    const keys = new Set([...Object.keys(config.residues || {}), ...profiles.map(p => p.residue)]);
+    for (const res of keys) {
+      const t = residueTreatment(activeStep, resolvedActive, res, defaults);
+      if (t) map[res] = t;
     }
     return map;
-  }, [activeStep, config.residues]);
+  }, [activeStep, resolvedActive, config.residues, profiles, defaults]);
 
   // Transform config & picks into deduplicated TableRowData
   const allRows = useMemo<TableRowData[]>(() => {

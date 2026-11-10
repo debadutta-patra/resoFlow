@@ -14,6 +14,8 @@ import type { MethodConfig } from '../../lib/methodConfig';
 import type { ParameterConfig, PickSetData, ProfileRef } from '../../lib/parameterConfig';
 import { isResidueExcluded, seedCsAFromProfiles, unsetStartingParams } from '../../lib/parameterConfig';
 import type { ParameterIssue } from '../../lib/parameterValidation';
+import { globalRoleChip, resolvedStepFor } from '../../lib/parameterRoleChip';
+import type { ResolvedStep } from '../../lib/resolvedRoles';
 import type { SourceRunSummary, TargetAnalysisMeta } from '../../lib/compatibility';
 import { validateParameterConfig } from '../../lib/parameterValidation';
 import { fmtDefault } from '../../lib/chemexDefaults';
@@ -52,6 +54,8 @@ export interface ParametersTabProps {
   selectedModule?: string;
   /** Names of [GLOBAL] parameters in the backend catalogue for the current model. */
   catalogGlobals?: string[];
+  /** ChemEx-resolved roles per method step (from useMethodEditor's resolvedRoles). */
+  resolvedSteps?: ResolvedStep[];
   onNavigateToMethods: () => void;
   /** Apply an inherited source run (parameters, and optionally method + picks). */
   onApplyInherited: (params: ParameterConfig, method?: MethodConfig, picks?: Record<string, PickSetData>) => void;
@@ -71,6 +75,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
   activeStepIdx,
   selectedModule,
   catalogGlobals,
+  resolvedSteps,
   onNavigateToMethods,
   onApplyInherited,
   notify,
@@ -120,6 +125,10 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
     }));
     notify?.(`${fix.label} applied`);
   };
+
+  const activeStep = methodConfig.steps[activeStepIdx];
+  const resolvedActive = resolvedStepFor(resolvedSteps, activeStep, activeStepIdx);
+  const roleChipFor = (key: string) => globalRoleChip(key, activeStep, resolvedActive, activeStepIdx, editor.defaults);
 
   const seed = capabilities.seedFromProfiles;
   const handleSeedFromProfiles = () => {
@@ -281,6 +290,9 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
             extraGlobals={capabilities.extraGlobals}
             defaults={editor.defaults}
             catalog={editor.catalog}
+            roleChip={roleChipFor}
+            onRoleClick={onNavigateToMethods}
+            model={targetAnalysis.model}
           />
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
@@ -303,6 +315,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
               renderProfile={capabilities.renderResidueProfile}
               defaults={editor.defaults}
               maxDwWarn={getNucleusInfoForModule(selectedModule ?? '').maxDwWarn}
+              resolvedSteps={resolvedSteps}
             />
           </div>
         </div>

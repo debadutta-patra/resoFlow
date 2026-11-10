@@ -2,6 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Layers, Info, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import type { AvailableParamMeta } from '../methods/ParameterTable';
 import { GLOBAL_PRECEDENCE_HELP, addableGlobals } from '../../lib/globalParams';
+import type { RoleChip } from '../../lib/parameterRoleChip';
+import { derivedKinetics } from '../../lib/kineticDerived';
+import { fmtNum } from '../../lib/parameterRoleView';
 import type { ExtraGlobalField, ParameterConfig, ParamValue } from '../../lib/parameterConfig';
 import { withBound, withValue } from '../../lib/parameterConfig';
 import { getUnitDef } from '../../lib/unitRegistry';
@@ -24,7 +27,21 @@ interface GlobalParametersCardProps {
   defaults?: ParamDefaultsLookup;
   /** Full backend catalogue for the model: source of "+ Add global parameter". */
   catalog?: AvailableParamMeta[] | null;
+  /** Role of each global (lower-case key) in the active method step; null = no chip (e.g. TREF). */
+  roleChip?: (key: string) => RoleChip | null;
+  /** Click on a role chip (e.g. open the Methods tab). */
+  onRoleClick?: () => void;
+  /** Kinetic model, for the derived PA/KAB/KBA/τ strip. */
+  model?: string;
 }
+
+const CHIP_TONES: Record<RoleChip['tone'], string> = {
+  fit: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
+  fix: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+  constrain: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800',
+  search: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800',
+  mixed: 'bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700',
+};
 
 const boundInputClass =
   'w-full text-xs px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800 dark:text-slate-200 font-mono';
@@ -47,6 +64,9 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
   extraGlobals = [],
   defaults = fallbackDefaults,
   catalog,
+  roleChip,
+  onRoleClick,
+  model,
 }) => {
   const globals = useMemo(() => config.globals || {}, [config.globals]);
   const [openBounds, setOpenBounds] = useState<Record<string, boolean>>({});
@@ -98,6 +118,9 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
   }, [catalogGlobals, extraGlobals, globals, defaults, added, catalog]);
 
   const candidates = addableGlobals(catalog, fields.map(f => f.key));
+  const derived = model
+    ? derivedKinetics(model, name => globals[name.toLowerCase()]?.value ?? defaults(name)?.value ?? null)
+    : null;
 
   const handleAdd = () => {
     if (!toAdd) return;
@@ -125,7 +148,7 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Layers className="w-4 h-4 text-blue-500" />
-          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Global Fit Settings</h4>
+          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Global starting values [GLOBAL]</h4>
         </div>
         <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1" title={GLOBAL_PRECEDENCE_HELP}>
           <Info className="w-3.5 h-3.5" />
@@ -147,6 +170,19 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
                   {f.label}
                 </label>
                 <span className="flex items-center gap-1">
+                  {(() => {
+                    const chip = roleChip?.(f.key);
+                    return chip ? (
+                      <button
+                        type="button"
+                        onClick={onRoleClick}
+                        title={`${chip.title}. Roles live in the method file, not in parameters.toml.`}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold tracking-wider border ${CHIP_TONES[chip.tone]}`}
+                      >
+                        {chip.label}
+                      </button>
+                    ) : null;
+                  })()}
                   <ParameterBadge source={param?.source} chemexDefault={f.chemexDefault} unit={f.unit} compact />
                   {f.removable && (
                     <button
@@ -237,6 +273,22 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
           );
         })}
       </div>
+
+      {derived && derived.length > 0 && (
+        <div
+          className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400"
+          aria-label="Derived kinetic quantities"
+          title="Read-only, derived from the starting values above (ChemEx defaults where unset): PA = 1 − ΣP, k_ij = KEX_ij·p_j/(p_i+p_j), τ_X = 1/Σk_Xj"
+        >
+          <span className="font-semibold text-slate-600 dark:text-slate-300">Derived</span>
+          {derived.map(q => (
+            <span key={q.key} className="font-mono">
+              {q.label} = {q.value === null ? '—' : fmtNum(q.value)}
+              {q.unit && q.value !== null ? ` ${q.unit}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
 
       {candidates.length > 0 && (
         <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2 text-xs">
