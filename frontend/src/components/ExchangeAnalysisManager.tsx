@@ -1,3 +1,5 @@
+import SaveButton from './chemex/SaveButton';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import StartingValuesMenu from './chemex/StartingValuesMenu';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -418,6 +420,9 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       methodEditor.restore(cfg);
     } catch (e) {
       console.warn("No previous exchange config loaded or error:", e);
+    } finally {
+      // Also when nothing was saved yet (early return above): the loaded state is the baseline.
+      markClean();
     }
   };
 
@@ -535,25 +540,28 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
   };
 
   // Save Configuration
+  const savePayload = {
+    spectrum_ids: selectedSpectrumIds,
+    use_height: useHeight,
+    cest_module_name: cestModuleName,
+    cpmg_module_name: cpmgModuleName,
+    b1_distribution: b1Distribution,
+    filter_offsets: filterOffsets,
+    filter_offsets_by_spectrum: filterOffsetsBySpectrum,
+    filter_planes: filterPlanes,
+    data_error: dataError,
+    cpmg_time_t2: cpmgTimeT2,
+    cpmg_carrier: cpmgCarrier,
+    picks,
+    ...chemexPayload(),
+    excluded_residues: parameterConfig.excludedResidues || [],
+  };
+  const { dirty: unsaved, markClean } = useUnsavedChanges(savePayload);
+
   const saveConfig = async () => {
     try {
-      const payload = {
-        spectrum_ids: selectedSpectrumIds,
-        use_height: useHeight,
-        cest_module_name: cestModuleName,
-        cpmg_module_name: cpmgModuleName,
-        b1_distribution: b1Distribution,
-        filter_offsets: filterOffsets,
-        filter_offsets_by_spectrum: filterOffsetsBySpectrum,
-        filter_planes: filterPlanes,
-        data_error: dataError,
-        cpmg_time_t2: cpmgTimeT2,
-        cpmg_carrier: cpmgCarrier,
-        picks,
-        ...chemexPayload(),
-        excluded_residues: parameterConfig.excludedResidues || [],
-      };
-      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/config`, payload);
+      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/exchange/config`, savePayload);
+      markClean();
       setSuccessMsg('Configuration saved successfully');
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
@@ -836,7 +844,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
             </button>
           )}
 
-          <button onClick={saveConfig} className={btnSecondary}>Save Config</button>
+          <SaveButton dirty={unsaved} onSave={saveConfig} className={btnSecondary} />
 
           <button
             onClick={handleStartFit}

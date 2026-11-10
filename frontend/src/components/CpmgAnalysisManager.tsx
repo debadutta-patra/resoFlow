@@ -1,3 +1,5 @@
+import SaveButton from './chemex/SaveButton';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import StartingValuesMenu from './chemex/StartingValuesMenu';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -383,6 +385,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     } catch {
       // ignore
     }
+    markClean();
   };
 
   const currentConfigHash = chemexConfigHash({
@@ -411,9 +414,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     last_run_timestamp: overrides.last_run_timestamp ?? lastRunTimestamp,
   });
 
-  const saveConfig = async () => {
-    try {
-      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/config`, {
+  const savePayload = {
         ...chemexPayload(),
         selectedSpectrumIds,
         selectedParentModule,
@@ -425,7 +426,13 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         setupValues,
         profiles,
         generatedExperiments,
-      });
+  };
+  const { dirty: unsaved, markClean } = useUnsavedChanges(savePayload);
+
+  const saveConfig = async () => {
+    try {
+      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cpmg/config`, savePayload);
+      markClean();
       notify("Configuration saved");
     } catch (e: any) {
       setError(e.response?.data?.detail || "Failed to save configuration");
@@ -710,7 +717,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
           )}
 
           {/* Fit Mode Switcher */}
-          <div title={FIT_MODE_HELP} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+          <div role="radiogroup" aria-labelledby="fit-mode-label" title={FIT_MODE_HELP} className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+            <span className="px-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300" id="fit-mode-label">Fit mode</span>
             <button
               onClick={() => setFitMode("global")}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
@@ -757,9 +765,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             </button>
           )}
 
-          <button onClick={saveConfig} className={btnSecondary}>
-            Save Config
-          </button>
+          <SaveButton dirty={unsaved} onSave={saveConfig} className={btnSecondary} />
 
           <button
             onClick={handleRunFitting}

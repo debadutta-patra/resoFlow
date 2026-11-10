@@ -5,6 +5,7 @@ import { baselineRoleLabel } from '../../lib/baselineRoles';
 import type { BaselineRolesState } from '../../hooks/useBaselineRoles';
 import { resolvedCountsLabel, rulesByTargetName, type ResolvedParameter, type ResolvedRole } from '../../lib/resolvedRoles';
 import { expressionRhs, idNameMap, roleView, searchAxisDomId, type RoleView } from '../../lib/parameterRoleView';
+import { residueOverride, setResidueOverride } from '../../lib/residueOverrides';
 import { committedSummary, fmtValue as fmtCommitted, type OverviewStep } from '../../lib/runOverview';
 import { checkConstraintRhs, parseConstraint } from '../../lib/methodGrammar';
 import {
@@ -134,6 +135,8 @@ interface ParameterTableProps {
   committedFromPreviousMethod?: boolean;
   /** Extra content per parameter name shown under the name (e.g. correlation notes). */
   nameNotes?: Record<string, React.ReactNode>;
+  /** Residues fitted in this step (for per-residue overrides of residue-level parameters). */
+  stepResidueIds?: string[];
 }
 
 const MODE_LABELS: Record<ParamMode, string> = { default: 'Default', fit: 'Fit', fix: 'Fix', constrain: 'Constrain', grid: 'Fit' };
@@ -161,12 +164,12 @@ const StartingValueNote: React.FC<{
 }> = ({ label, name, stepIndex, previousStepName, committed, startVal, provenance, onNavigateToParameters }) => {
   if (stepIndex > 0) {
     return (
-      <div className="flex flex-wrap items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs" title={PREVIOUS_STEP_TITLE}>
-        <Activity className="w-3.5 h-3.5 text-blue-500" />
+      <div className="flex flex-wrap items-center gap-1.5 text-slate-900 dark:text-slate-200 text-xs" title={PREVIOUS_STEP_TITLE}>
+        <Activity className="w-3.5 h-3.5 text-blue-700" />
         <span>{label}</span>
-        <span className="font-semibold text-slate-800 dark:text-slate-200">From previous step result</span>
+        <span className="font-semibold text-slate-900 dark:text-slate-200">From previous step result</span>
         {committed !== undefined && previousStepName && (
-          <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="font-mono text-xs text-slate-900 dark:text-slate-200">
             (last run, {previousStepName}: {fmtValue(committed)})
           </span>
         )}
@@ -175,16 +178,16 @@ const StartingValueNote: React.FC<{
   }
   const value = startVal ?? provenance?.value;
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs">
-      <Activity className="w-3.5 h-3.5 text-blue-500" />
+    <div className="flex flex-wrap items-center gap-1.5 text-slate-900 dark:text-slate-200 text-xs">
+      <Activity className="w-3.5 h-3.5 text-blue-700" />
       <span>{label}</span>
-      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+      <span className="font-mono font-semibold text-slate-900 dark:text-slate-200">
         {value !== undefined ? fmtValue(value) : 'Auto'}
       </span>
       {provenance?.source ? (
-        <span className="text-[11px] text-slate-400 dark:text-slate-500">· {provenance.source}</span>
+        <span className="text-xs text-slate-900 dark:text-slate-200">· {provenance.source}</span>
       ) : value === undefined ? (
-        <span className="text-[11px] text-slate-400 dark:text-slate-500" title={`No ${name} entry in parameters.toml`}>
+        <span className="text-xs text-slate-900 dark:text-slate-200" title={`No ${name} entry in parameters.toml`}>
           · ChemEx default
         </span>
       ) : null}
@@ -192,7 +195,7 @@ const StartingValueNote: React.FC<{
         <button
           type="button"
           onClick={onNavigateToParameters}
-          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 ml-1 text-[11px]"
+          className="text-blue-700 dark:text-blue-500 hover:underline flex items-center gap-0.5 ml-1 text-xs"
           title="Jump to the Parameters tab to adjust starting values"
         >
           <span>Params</span>
@@ -205,15 +208,78 @@ const StartingValueNote: React.FC<{
 
 const SEARCH_LABEL = { grid: 'Grid axis', de: 'DE range' } as const;
 
+const OVERRIDE_MODES = ['none', 'fit', 'fix', 'constrain'] as const;
+const OVERRIDE_LABEL: Record<(typeof OVERRIDE_MODES)[number], string> = { none: 'Default', fit: 'Fit', fix: 'Fix', constrain: 'Constrain' };
+
+/**
+ * Per-residue Fit / Fix / Constrain-to-another-residue controls. Each change rewrites a
+ * single-residue selector rule in the ordered rules (the source of truth; see lib/residueOverrides).
+ */
+const ResidueOverrides: React.FC<{ step: Step; name: string; residues: string[]; readOnly: boolean; onChange: (s: Step) => void }> = ({
+  step,
+  name,
+  residues,
+  readOnly,
+  onChange,
+}) => (
+  <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(17rem, 1fr))' }} aria-label={`${name} per residue`}>
+    {residues.map(res => {
+      const cur = residueOverride(step, name, res);
+      return (
+        <div key={res} className="flex items-center gap-1.5 text-xs" data-testid={`override-${name}-${res}`}>
+          <span className="w-12 font-mono font-semibold text-slate-900 dark:text-slate-200">{res}</span>
+          <div className="inline-flex rounded-md bg-slate-100 dark:bg-slate-800 p-0.5 border border-slate-200 dark:border-slate-700">
+            {OVERRIDE_MODES.map(mode => (
+              <button
+                key={mode}
+                type="button"
+                disabled={readOnly}
+                aria-pressed={cur.kind === mode}
+                onClick={() => {
+                  if (mode === cur.kind) return;
+                  const to = residues.find(r => r !== res) ?? res;
+                  onChange(setResidueOverride(step, name, res, mode === 'constrain' ? { kind: 'constrain', to } : { kind: mode }));
+                }}
+                className={`px-1.5 py-0.5 rounded font-semibold ${
+                  cur.kind === mode ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-700 shadow-sm' : 'text-slate-900 dark:text-slate-200'
+                } disabled:opacity-50`}
+              >
+                {OVERRIDE_LABEL[mode]}
+              </button>
+            ))}
+          </div>
+          {cur.kind === 'constrain' && (
+            <select
+              aria-label={`${name} ${res} constrained to`}
+              disabled={readOnly}
+              value={cur.to}
+              onChange={e => onChange(setResidueOverride(step, name, res, { kind: 'constrain', to: e.target.value }))}
+              className="px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono"
+            >
+              {residues
+                .filter(r => r !== res)
+                .map(r => (
+                  <option key={r} value={r}>
+                    = {r}
+                  </option>
+                ))}
+            </select>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
+
 /** Value ± error committed by this step in the last completed run; residue-level as median (range) with a per-residue popover. */
 const CommittedCell: React.FC<{ step: OverviewStep; name: string; previousMethod: boolean }> = ({ step, name, previousMethod }) => {
   const [open, setOpen] = useState(false);
   const summary = committedSummary(step, name);
-  if (!summary) return <span className="text-xs text-slate-500 dark:text-slate-400">—</span>;
+  if (!summary) return <span className="text-xs text-slate-900 dark:text-slate-200">—</span>;
   return (
-    <div className="relative text-xs text-slate-700 dark:text-slate-200" data-testid={`committed-${name}`}>
+    <div className="relative text-xs text-slate-900 dark:text-slate-200" data-testid={`committed-${name}`}>
       <div className="font-mono">{summary.text}</div>
-      <div className="text-slate-600 dark:text-slate-400">
+      <div className="text-slate-900 dark:text-slate-200">
         {step.name}
         {previousMethod && <span title="The method changed since this run"> (previous method)</span>}
       </div>
@@ -262,7 +328,7 @@ const SettingCell: React.FC<{
   valueNote: (label: string) => React.ReactNode;
   onShowAxis: (axisId: string) => void;
 }> = ({ view, baseline, baselineLoading, valueNote, onShowAxis }) => {
-  const muted = 'text-xs text-slate-600 dark:text-slate-300';
+  const muted = 'text-xs text-slate-900 dark:text-slate-200';
   switch (view.kind) {
     case 'grid':
     case 'de':
@@ -300,7 +366,7 @@ const SettingCell: React.FC<{
     case 'derived':
       return (
         <div className={`${muted} py-1 flex flex-wrap items-center gap-1.5`} data-testid="setting-derived">
-          <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">{view.expression ? expressionRhs(view.expression) : 'derived'}</span>
+          <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{view.expression ? expressionRhs(view.expression) : 'derived'}</span>
           {view.modelOwned ? (
             <span title="Model-derived, cannot be changed">· model-derived</span>
           ) : view.defaultConstraint ? (
@@ -346,7 +412,16 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
   committedStep,
   committedFromPreviousMethod = false,
   nameNotes = {},
+  stepResidueIds = [],
 }) => {
+  const [expandedResidues, setExpandedResidues] = useState<Set<string>>(() => new Set());
+  const toggleResidues = (name: string) =>
+    setExpandedResidues(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   const rulesByName = useMemo(() => rulesByTargetName(step), [step]);
   const resolvedByName = useMemo(() => {
     const out: Record<string, ResolvedParameter[]> = {};
@@ -491,7 +566,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400">
+            <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/60 text-slate-900 dark:text-slate-200">
               <th className="py-3 px-4 font-semibold uppercase tracking-wider w-1/4">Parameter</th>
               <th className="py-3 px-4 font-semibold uppercase tracking-wider w-1/4">Treatment</th>
               <th className={`py-3 px-4 font-semibold uppercase tracking-wider ${committedStep ? 'w-1/3' : 'w-1/2'}`}>Setting / Expression / Grid</th>
@@ -538,9 +613,12 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                 />
               );
 
+              const canOverride = meta.scope === 'residue' && !isProtected && stepResidueIds.length > 0;
+              const overridesOpen = expandedResidues.has(uName);
+              const overrideCount = canOverride ? stepResidueIds.filter(r => residueOverride(step, uName, r).kind !== 'none').length : 0;
               return (
+                <React.Fragment key={meta.name}>
                 <tr
-                  key={meta.name}
                   className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
                 >
                   {/* Name Column */}
@@ -552,27 +630,37 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                             {meta.name}
                           </span>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                            className={`px-1.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
                               meta.scope === 'global'
-                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                                : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-500'
+                                : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-500'
                             }`}
                           >
                             {meta.scope}
                           </span>
                           {searchKind && (
                             <span
-                              className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                              className="px-1.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400"
                               title={searchKind === 'grid' ? 'Scanned by this step\'s GRID search (must already be FIT)' : 'DE coordinate in this step (must already be FIT)'}
                             >
                               {searchKind === 'grid' ? 'Grid' : 'DE'}
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 max-w-xs leading-snug">
+                        <p className="text-xs text-slate-900 dark:text-slate-200 mt-0.5 max-w-xs leading-snug">
                           {meta.gloss}
                         </p>
                         {nameNotes[uName]}
+                        {canOverride && (
+                          <button
+                            type="button"
+                            aria-expanded={overridesOpen}
+                            onClick={() => toggleResidues(uName)}
+                            className="mt-1 text-xs text-blue-700 dark:text-blue-700 hover:underline"
+                          >
+                            per residue{overrideCount ? ` · ${overrideCount} override${overrideCount === 1 ? '' : 's'}` : ''} {overridesOpen ? '▴' : '▾'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -595,8 +683,8 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                                 onClick={() => handleModeChange(meta.name, mode)}
                                 className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
                                   isActive
-                                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/80 dark:border-slate-600'
-                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                    ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-500 shadow-sm border border-slate-200/80 dark:border-slate-600'
+                                    : 'text-slate-900 dark:text-slate-200 hover:text-slate-900 dark:hover:text-slate-200'
                                 } disabled:opacity-50`}
                               >
                                 {MODE_LABELS[mode]}
@@ -609,13 +697,13 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                         return (
                           <div className="space-y-1">
                             <span
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
                               title="Model-derived, cannot be changed"
                             >
                               <Lock className="w-3 h-3" /> Model-derived · protected
                             </span>
                             {setting.mode !== 'default' && (
-                              <p className="text-[11px] text-red-600 dark:text-red-400">
+                              <p className="text-xs text-red-600 dark:text-red-500">
                                 The table sets {MODE_LABELS[setting.mode]}, which ChemEx rejects.{' '}
                                 {!readOnly && (
                                   <button type="button" className="underline" onClick={() => handleModeChange(meta.name, 'default')}>
@@ -635,7 +723,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onShowRules?.(uName)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-amber-100"
                                 title="Ordered rules change this parameter for some or all of its copies. Click to show them."
                               >
                                 Mixed · {mixedRules.length} rule{mixedRules.length > 1 ? 's' : ''}
@@ -644,7 +732,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                                 type="button"
                                 onClick={() => toggleMixed(uName)}
                                 aria-expanded={open}
-                                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600 underline-offset-2 hover:underline"
+                                className="text-xs text-slate-900 dark:text-slate-200 hover:text-blue-600 underline-offset-2 hover:underline"
                               >
                                 table action: {setting.mode === 'default' ? 'none' : MODE_LABELS[setting.mode]} (applied first)
                               </button>
@@ -658,7 +746,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                     {resolvedLabel && !isProtected && (
                       <span
                         data-testid={`resolved-${uName}`}
-                        className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
                         title={`Resolved by ChemEx for step ${step.name} (all ROLES applied)`}
                       >
                         → {resolvedLabel}
@@ -699,7 +787,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                     {isConstrained && (
                       <div className="space-y-1.5 max-w-md relative">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-slate-400">[{meta.name}] =</span>
+                          <span className="font-mono text-xs text-slate-900">[{meta.name}] =</span>
                           <div className="relative flex-grow">
                             <input
                               type="text"
@@ -709,13 +797,13 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                               onBlur={() => setTimeout(() => setActiveAutocompleteParam(null), 200)}
                               onChange={e => updateParamSetting(meta.name, { expression: e.target.value })}
                               placeholder="e.g. 0.5 * [R2_A] or [R1_A]"
-                              className="w-full text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"
+                              className="w-full text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
 
                             {/* Autocomplete Dropdown */}
                             {activeAutocompleteParam === meta.name && (
                               <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-20 max-h-36 overflow-y-auto py-1">
-                                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
+                                <div className="px-2 py-1 text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
                                   Insert Parameter Reference:
                                 </div>
                                 {effectiveAvailableParams
@@ -731,10 +819,10 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                                           expression: current ? `${current} ${ref}` : ref,
                                         });
                                       }}
-                                      className="w-full text-left px-3 py-1 text-xs font-mono text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-between"
+                                      className="w-full text-left px-3 py-1 text-xs font-mono text-slate-900 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-between"
                                     >
                                       <span>[{p.name}]</span>
-                                      <span className="text-[10px] font-sans text-slate-400">{p.gloss.slice(0, 24)}...</span>
+                                      <span className="text-xs font-sans text-slate-900">{p.gloss.slice(0, 24)}...</span>
                                     </button>
                                   ))}
                               </div>
@@ -749,7 +837,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                             : full
                               ? parseConstraint(expr).error?.message
                               : checkConstraintRhs(expr).error?.message;
-                          return err ? <p className="text-[11px] text-red-600 dark:text-red-400">{err}</p> : null;
+                          return err ? <p className="text-xs text-red-600 dark:text-red-500">{err}</p> : null;
                         })()}
                       </div>
                     )}
@@ -761,6 +849,20 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                     </td>
                   )}
                 </tr>
+                {canOverride && overridesOpen && (
+                  <tr className="bg-slate-50/60 dark:bg-slate-800/30">
+                    <td colSpan={committedStep ? 4 : 3} className="px-4 pb-3 pt-1">
+                      <ResidueOverrides
+                        step={step}
+                        name={uName}
+                        residues={stepResidueIds}
+                        readOnly={readOnly}
+                        onChange={onChange}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -773,7 +875,7 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
           <button
             type="button"
             onClick={() => setShowAllParams(!showAllParams)}
-            className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-400 transition-all"
+            className="text-xs font-semibold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-400 transition-all"
           >
             {showAllParams ? (
               <>

@@ -16,14 +16,14 @@ import { chemexLocation } from '../../lib/resolvedRoles';
 export const SEVERITY_STYLE: Record<IssueSeverity, { box: string; text: string; icon: string; chip: string }> = {
   error: {
     box: 'bg-red-50 border-red-200 dark:border-red-300',
-    text: 'text-red-800 dark:text-red-700',
+    text: 'text-red-800 dark:text-red-600',
     icon: 'text-red-600 dark:text-red-500',
-    chip: 'bg-red-100 text-red-800 dark:bg-red-200 dark:text-red-700',
+    chip: 'bg-red-100 text-red-800 dark:bg-red-200 dark:text-red-600',
   },
   warning: {
     box: 'bg-amber-50 border-amber-200 dark:border-amber-300',
     text: 'text-amber-900 dark:text-amber-700',
-    icon: 'text-amber-700 dark:text-amber-500',
+    icon: 'text-amber-800 dark:text-amber-500',
     chip: 'bg-amber-100 text-amber-900 dark:bg-amber-200 dark:text-amber-700',
   },
   info: {
@@ -63,7 +63,7 @@ export const QuickFixButtons: React.FC<{ actions?: QuickFix[]; onApply: (fix: Qu
           disabled={disabled}
           title={fix.title}
           onClick={() => onApply(fix)}
-          className="px-2 py-0.5 rounded-md text-xs font-semibold border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-2 py-0.5 rounded-md text-xs font-semibold border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {fix.label}
         </button>
@@ -117,7 +117,7 @@ export const MethodIssueBanner: React.FC<MethodIssueBannerProps> = ({ issues, di
       data-severity={top ?? 'none'}
       className={`p-4 rounded-xl border space-y-2 ${top ? style.box : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700'}`}
     >
-      <div className={`flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider ${top ? style.text : 'text-slate-600 dark:text-slate-300'}`}>
+      <div className={`flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider ${top ? style.text : 'text-slate-900 dark:text-slate-200'}`}>
         {top && <SeverityIcon severity={top} className="w-4 h-4" />}
         <span>Method checks</span>
         {(['error', 'warning', 'info'] as IssueSeverity[])
@@ -164,7 +164,7 @@ export const MethodIssueBanner: React.FC<MethodIssueBannerProps> = ({ issues, di
             type="button"
             aria-expanded={showDismissed}
             onClick={() => setShowDismissed(v => !v)}
-            className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:underline"
+            className="flex items-center gap-1 text-xs text-slate-900 dark:text-slate-200 hover:underline"
           >
             {showDismissed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             {dismissed.length} dismissed
@@ -172,7 +172,7 @@ export const MethodIssueBanner: React.FC<MethodIssueBannerProps> = ({ issues, di
           {showDismissed && (
             <ul className="mt-1.5 space-y-1">
               {dismissed.map(d => (
-                <li key={`${d.stepId}-${d.dismissKey}`} className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <li key={`${d.stepId}-${d.dismissKey}`} className="flex flex-wrap items-center gap-2 text-xs text-slate-900 dark:text-slate-200">
                   <span>
                     <strong>[{d.stepName}]</strong> {d.message}
                   </span>

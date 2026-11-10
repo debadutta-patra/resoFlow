@@ -28,14 +28,14 @@ interface StepStatisticsSectionProps {
 type ResamplingKey = 'mc' | 'bs' | 'bsn';
 
 const RESAMPLING: Array<{ key: ResamplingKey; code: string; title: string; hint: string; accent: string; on: string }> = [
-  { key: 'mc', code: 'MC', title: 'Monte Carlo', hint: 'Synthetic noise added to the profiles, then refit', accent: 'text-blue-600 dark:text-blue-400', on: 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/80' },
-  { key: 'bs', code: 'BS', title: 'Bootstrap', hint: 'Points resampled with replacement within each profile, then refit', accent: 'text-emerald-600 dark:text-emerald-400', on: 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/80' },
-  { key: 'bsn', code: 'BSN', title: 'Nucleus bootstrap', hint: 'Profiles resampled grouped by nucleus, then refit', accent: 'text-amber-600 dark:text-amber-400', on: 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/80' },
+  { key: 'mc', code: 'MC', title: 'Monte Carlo', hint: 'Synthetic noise added to the profiles, then refit', accent: 'text-blue-700 dark:text-blue-500', on: 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/80' },
+  { key: 'bs', code: 'BS', title: 'Bootstrap', hint: 'Points resampled with replacement within each profile, then refit', accent: 'text-emerald-800 dark:text-emerald-500', on: 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/80' },
+  { key: 'bsn', code: 'BSN', title: 'Nucleus bootstrap', hint: 'Profiles resampled grouped by nucleus, then refit', accent: 'text-amber-800 dark:text-amber-400', on: 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/80' },
 ];
 
 const OFF = 'bg-slate-50/50 dark:bg-slate-800/30 border-slate-200/70 dark:border-slate-800';
 const fieldCls =
-  'px-2 py-1 font-mono text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:border-blue-500 disabled:opacity-60';
+  'px-2 py-1 font-mono text-xs rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:border-blue-500 disabled:opacity-60';
 const SEED_PLACEHOLDER = 'ChemEx generates and records one';
 
 const SeedField: React.FC<{ id: string; value?: string; onChange: (v: string | undefined) => void; readOnly: boolean }> = ({ id, value, onChange, readOnly }) => {
@@ -43,8 +43,8 @@ const SeedField: React.FC<{ id: string; value?: string; onChange: (v: string | u
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between gap-2">
-        <label htmlFor={id} className="text-slate-600 dark:text-slate-400 font-medium">
-          Seed <span className="font-normal text-slate-400">(optional)</span>
+        <label htmlFor={id} className="text-slate-900 dark:text-slate-200 font-medium">
+          Seed <span className="font-normal text-slate-900">(optional)</span>
         </label>
         <div className="flex items-center gap-1">
           <input
@@ -57,12 +57,12 @@ const SeedField: React.FC<{ id: string; value?: string; onChange: (v: string | u
             disabled={readOnly}
             className={`${fieldCls} w-56 ${err ? 'border-red-400 dark:border-red-500' : ''}`}
           />
-          <button type="button" disabled={readOnly} onClick={() => onChange(randomSeed())} className="p-1 text-slate-400 hover:text-blue-500 rounded disabled:opacity-40" title="Draw a random 64-bit seed" aria-label={`Random seed for ${id}`}>
+          <button type="button" disabled={readOnly} onClick={() => onChange(randomSeed())} className="p-1 text-slate-900 hover:text-blue-500 rounded disabled:opacity-40" title="Draw a random 64-bit seed" aria-label={`Random seed for ${id}`}>
             <Dices className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
-      {err && <p className="text-[11px] text-red-600 dark:text-red-400 text-right">{err}</p>}
+      {err && <p className="text-xs text-red-600 dark:text-red-500 text-right">{err}</p>}
     </div>
   );
 };
@@ -106,18 +106,18 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           aria-expanded={isOpen}
-          className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
         >
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           <Activity className="w-4 h-4 text-purple-500" />
           <span>Statistics (MC, BS, BSN, MCMC)</span>
           {statIssues.length > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 font-bold">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-500 font-bold">
               {statIssues.length} ChemEx error{statIssues.length > 1 ? 's' : ''}
             </span>
           )}
           {anyActive && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono font-bold">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-mono font-bold">
               {[stats.mc?.enabled && 'MC', stats.bs?.enabled && 'BS', stats.bsn?.enabled && 'BSN', stats.mcmc?.enabled && 'MCMC'].filter(Boolean).join(' + ')}
             </span>
           )}
@@ -126,11 +126,11 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
         {(estimate.refits > 0 || estimate.mcmcSeconds) && (
           <div
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-              highCost ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              highCost ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200'
             }`}
             title="Every MC/BS/BSN replicate is one full refit of this step"
           >
-            <Flame className={`w-3.5 h-3.5 ${highCost ? 'text-amber-500' : 'text-slate-400'}`} />
+            <Flame className={`w-3.5 h-3.5 ${highCost ? 'text-amber-800' : 'text-slate-900'}`} />
             <span>
               {estimate.refits > 0 && `${estimate.refits} refits`}
               {totalSeconds > 0 && ` ≈ ${formatDuration(totalSeconds)}`}
@@ -141,8 +141,8 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
 
       {isOpen && (
         <div className="p-4 space-y-3 text-xs">
-          <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
-            Statistics run once after <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{step.name}</span>'s deterministic fit is
+          <p className="text-slate-900 dark:text-slate-200 leading-relaxed">
+            Statistics run once after <span className="font-mono font-bold text-slate-900 dark:text-slate-200">{step.name}</span>'s deterministic fit is
             committed and never change its central values. Walkers and parallelism are ChemEx policy (set workers globally with{' '}
             <code className="font-mono">chemex fit --workers</code>).
           </p>
@@ -169,16 +169,16 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
               return (
                 <div key={key} className={`p-3 rounded-xl border transition-all ${conf?.enabled ? `${on} shadow-sm` : `${OFF} opacity-80`}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                    <label className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-200 cursor-pointer">
                       <input type="checkbox" checked={!!conf?.enabled} onChange={() => toggleResampling(key)} disabled={readOnly} className="w-4 h-4 rounded" />
                       {title} (<span className={`font-mono ${accent}`}>{code}</span>)
                     </label>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 text-right max-w-[45%]">{hint}</span>
+                    <span className="text-xs text-slate-900 dark:text-slate-200 text-right max-w-[45%]">{hint}</span>
                   </div>
                   {conf?.enabled && (
                     <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
                       <div className="flex items-center justify-between gap-2">
-                        <label htmlFor={`${id}-reps`} className="text-slate-600 dark:text-slate-400 font-medium">
+                        <label htmlFor={`${id}-reps`} className="text-slate-900 dark:text-slate-200 font-medium">
                           Replicates
                         </label>
                         <input
@@ -201,16 +201,16 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
 
             <div className={`p-3 rounded-xl border transition-all ${m?.enabled ? 'bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800/80 shadow-sm' : `${OFF} opacity-80`}`}>
               <div className="flex items-center justify-between mb-2">
-                <label className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200 cursor-pointer">
+                <label className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-200 cursor-pointer">
                   <input type="checkbox" checked={!!m?.enabled} onChange={toggleMcmc} disabled={readOnly} className="w-4 h-4 rounded" />
                   MCMC posterior (<span className="font-mono text-purple-600 dark:text-purple-400">MCMC</span>)
                 </label>
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">Ensemble sampler</span>
+                <span className="text-xs text-slate-900 dark:text-slate-200">Ensemble sampler</span>
               </div>
               {m?.enabled && (
                 <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
                   <div className="flex items-center justify-between gap-2">
-                    <label htmlFor={`mcmc-steps-${step.id}`} className="text-slate-600 dark:text-slate-400 font-medium">
+                    <label htmlFor={`mcmc-steps-${step.id}`} className="text-slate-900 dark:text-slate-200 font-medium">
                       STEPS
                     </label>
                     <input
@@ -225,8 +225,8 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
                     />
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <label htmlFor={`mcmc-burn-${step.id}`} className="text-slate-600 dark:text-slate-400 font-medium">
-                      BURN <span className="font-normal text-slate-400">(optional)</span>
+                    <label htmlFor={`mcmc-burn-${step.id}`} className="text-slate-900 dark:text-slate-200 font-medium">
+                      BURN <span className="font-normal text-slate-900">(optional)</span>
                     </label>
                     <input
                       id={`mcmc-burn-${step.id}`}
@@ -240,11 +240,11 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
                       className={`${fieldCls} w-44 ${burnError ? 'border-red-400 dark:border-red-500' : ''}`}
                     />
                   </div>
-                  {burnError && <p className="text-[11px] text-red-600 dark:text-red-400 text-right">{burnError}</p>}
+                  {burnError && <p className="text-xs text-red-600 dark:text-red-500 text-right">{burnError}</p>}
                   <SeedField id={`mcmc-seed-${step.id}`} value={m.seed} onChange={seed => patchMcmc({ seed })} readOnly={readOnly} />
 
                   {((m.thin && m.thin > 1) || m.walkers || m.workers || m.update_parameters) && (
-                    <div className="pt-2 mt-1 border-t border-slate-200 dark:border-slate-700/60 text-[10px] space-y-1 text-amber-600 dark:text-amber-400">
+                    <div className="pt-2 mt-1 border-t border-slate-200 dark:border-slate-700/60 text-xs space-y-1 text-amber-800 dark:text-amber-400">
                       <div className="flex items-center justify-between font-semibold uppercase tracking-wider">
                         <span>Legacy v1 settings (ignored by ChemEx v2)</span>
                         {!readOnly && (
@@ -265,7 +265,7 @@ export const StepStatisticsSection: React.FC<StepStatisticsSectionProps> = ({ st
           </div>
 
           {anyActive && (
-            <div className="space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="space-y-1 text-xs text-slate-900 dark:text-slate-200">
               <p>
                 {estimate.refits > 0 && (
                   <>

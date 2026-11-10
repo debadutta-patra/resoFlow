@@ -253,7 +253,7 @@ describe('ExchangeAnalysisManager', () => {
 
   it('calls exchange/config endpoint when Save Config is clicked', async () => {
     const api = (await import('../services/api')).default;
-    render(
+    const { container } = render(
       <ExchangeAnalysisManager
         projectUuid="proj-123"
         analysis={baseAnalysis}
@@ -262,13 +262,22 @@ describe('ExchangeAnalysisManager', () => {
       />
     );
 
-    const saveBtn = screen.getByRole('button', { name: /Save Config/i });
-    fireEvent.click(saveBtn);
+    // Save is disabled until something changed (baseline captured after loading the config).
+    await new Promise(r => setTimeout(r, 500));
+    const saveBtn = screen.getByRole('button', { name: /^Save/ }) as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(true);
+    expect(screen.queryByTestId('unsaved-dot')).toBeNull();
+
+    const intensity = Array.from(container.querySelectorAll('select')).find(sel => (sel as HTMLSelectElement).value === 'height') as HTMLSelectElement;
+    fireEvent.change(intensity, { target: { value: 'amp' } });
+    expect(screen.getByTestId('unsaved-dot')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /Save \(unsaved changes\)/ }));
 
     expect(api.put).toHaveBeenCalledWith(
       '/api/projects/proj-123/analysis/test-uuid-123/exchange/config',
       expect.objectContaining({
         model: '2st',
+        use_height: false,
         cest_module_name: 'cest_15n',
         cpmg_module_name: 'cpmg_15n_ip',
       })

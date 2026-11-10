@@ -18,10 +18,10 @@ import {
 } from '../../lib/resolvedRoles';
 
 const ROLE_STYLE: Record<ResolvedRole, string> = {
-  fit: 'text-blue-700 bg-blue-50 dark:text-blue-300 dark:bg-blue-900/30',
-  fix: 'text-slate-600 bg-slate-100 dark:text-slate-300 dark:bg-slate-800',
+  fit: 'text-blue-700 bg-blue-50 dark:text-blue-500 dark:bg-blue-900/30',
+  fix: 'text-slate-900 bg-slate-100 dark:text-slate-200 dark:bg-slate-800',
   constrained: 'text-purple-700 bg-purple-50 dark:text-purple-300 dark:bg-purple-900/30',
-  derived: 'text-slate-500 bg-slate-50 dark:text-slate-400 dark:bg-slate-800/60',
+  derived: 'text-slate-900 bg-slate-50 dark:text-slate-200 dark:bg-slate-800/60',
 };
 
 const MAX_ROWS = 400;
@@ -83,13 +83,13 @@ export const ResolvedRolesSummary: React.FC<{ state: ResolvedRolesState; stepNam
     });
 
   let headline: React.ReactNode;
-  if (disabledReason) headline = <span className="text-slate-400">{disabledReason}</span>;
-  else if (!report && loading) headline = <span className="text-slate-400">Resolving with ChemEx…</span>;
-  else if (!report && error) headline = <span className="text-amber-600 dark:text-amber-400">Could not resolve roles: {error}</span>;
-  else if (summary) headline = <span className="font-mono text-slate-700 dark:text-slate-200">{upper}: {stepSummaryText(summary)}</span>;
-  else if (step?.error) headline = <span className="text-amber-600 dark:text-amber-400">{step.error.message}</span>;
-  else if (report) headline = <span className="text-slate-400">Not resolved (see errors below)</span>;
-  else headline = <span className="text-slate-400">—</span>;
+  if (disabledReason) headline = <span className="text-slate-900">{disabledReason}</span>;
+  else if (!report && loading) headline = <span className="text-slate-900">Resolving with ChemEx…</span>;
+  else if (!report && error) headline = <span className="text-amber-800 dark:text-amber-400">Could not resolve roles: {error}</span>;
+  else if (summary) headline = <span className="font-mono text-slate-900 dark:text-slate-200">{upper}: {stepSummaryText(summary)}</span>;
+  else if (step?.error) headline = <span className="text-amber-800 dark:text-amber-400">{step.error.message}</span>;
+  else if (report) headline = <span className="text-slate-900">Not resolved (see errors below)</span>;
+  else headline = <span className="text-slate-900">—</span>;
 
   const errors = [...globalErrors, ...stepErrors];
 
@@ -102,24 +102,24 @@ export const ResolvedRolesSummary: React.FC<{ state: ResolvedRolesState; stepNam
         disabled={!step}
         className="w-full p-3.5 bg-slate-50/80 dark:bg-slate-800/60 flex flex-wrap items-center gap-2 text-left text-xs disabled:cursor-default"
       >
-        {open ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
-        <ScanSearch className="w-4 h-4 text-emerald-500" />
-        <span className="font-bold text-slate-700 dark:text-slate-300">Resolved roles (ChemEx)</span>
+        {open ? <ChevronUp className="w-4 h-4 text-slate-900" /> : <ChevronDown className="w-4 h-4 text-slate-900" />}
+        <ScanSearch className="w-4 h-4 text-emerald-800" />
+        <span className="font-bold text-slate-900 dark:text-slate-200">Resolved roles (ChemEx)</span>
         {headline}
         {(loading || stale) && report && (
-          <span className="flex items-center gap-1 text-[10px] text-slate-400">
+          <span className="flex items-center gap-1 text-xs text-slate-900">
             <Loader2 className="w-3 h-3 animate-spin" /> updating
           </span>
         )}
         {errors.length > 0 && (
-          <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-red-600 dark:text-red-400">
+          <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-500">
             <AlertTriangle className="w-3.5 h-3.5" /> {errors.length} ChemEx error{errors.length > 1 ? 's' : ''}
           </span>
         )}
       </button>
 
       {errors.length > 0 && (
-        <ul className="px-4 py-2 space-y-0.5 border-t border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/20 text-[11px] text-red-700 dark:text-red-300">
+        <ul className="px-4 py-2 space-y-0.5 border-t border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/20 text-xs text-red-700 dark:text-red-500">
           {errors.map((e, i) => (
             <li key={i}>
               <span className="font-mono text-red-500/80">{chemexErrorLocation(e)}</span> {e.message}
@@ -137,7 +137,7 @@ export const ResolvedRolesSummary: React.FC<{ state: ResolvedRolesState; stepNam
               onChange={e => setQuery(e.target.value)}
               placeholder="Filter (name, spin, id, expression)…"
               aria-label="Filter resolved parameters"
-              className="w-56 text-xs px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-56 text-xs px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
             />
             {(['fit', 'fix', 'constrained', 'derived'] as ResolvedRole[]).map(r => (
               <label key={r} className="flex items-center gap-1 cursor-pointer">
@@ -145,13 +145,13 @@ export const ResolvedRolesSummary: React.FC<{ state: ResolvedRolesState; stepNam
                 <span className={`px-1.5 rounded ${ROLE_STYLE[r]}`}>{r}</span>
               </label>
             ))}
-            <span className="ml-auto text-slate-400">
+            <span className="ml-auto text-slate-900">
               {rows.length} of {step.parameters.length} · {step.profiles ?? 0} profiles
             </span>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
-            <table className="w-full text-left text-[11px]">
-              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-200">
                 <tr>
                   <th className="py-1.5 px-2 font-semibold">Parameter</th>
                   <th className="py-1.5 px-2 font-semibold">Spin</th>
@@ -164,19 +164,19 @@ export const ResolvedRolesSummary: React.FC<{ state: ResolvedRolesState; stepNam
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
                 {rows.slice(0, MAX_ROWS).map(p => (
                   <tr key={p.id}>
-                    <td className="py-1 px-2 font-bold text-slate-800 dark:text-slate-200">{p.name}</td>
-                    <td className="py-1 px-2 text-slate-600 dark:text-slate-300">{p.spin || <span className="text-slate-400">global</span>}</td>
-                    <td className="py-1 px-2 text-slate-500">{conditionsText(p.conditions)}</td>
+                    <td className="py-1 px-2 font-bold text-slate-900 dark:text-slate-200">{p.name}</td>
+                    <td className="py-1 px-2 text-slate-900 dark:text-slate-200">{p.spin || <span className="text-slate-900">global</span>}</td>
+                    <td className="py-1 px-2 text-slate-900">{conditionsText(p.conditions)}</td>
                     <td className="py-1 px-2">
                       <span className={`px-1.5 rounded ${ROLE_STYLE[p.role]}`}>{p.role}</span>
                     </td>
-                    <td className="py-1 px-2 font-sans text-slate-500 dark:text-slate-400">{decidedBy(p)}</td>
-                    <td className="py-1 px-2 text-slate-600 dark:text-slate-300 break-all">{p.expression}</td>
+                    <td className="py-1 px-2 font-sans text-slate-900 dark:text-slate-200">{decidedBy(p)}</td>
+                    <td className="py-1 px-2 text-slate-900 dark:text-slate-200 break-all">{p.expression}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {rows.length > MAX_ROWS && <p className="p-2 text-[11px] text-slate-400">Showing the first {MAX_ROWS}; refine the filter to see more.</p>}
+            {rows.length > MAX_ROWS && <p className="p-2 text-xs text-slate-900">Showing the first {MAX_ROWS}; refine the filter to see more.</p>}
           </div>
         </div>
       )}

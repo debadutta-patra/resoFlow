@@ -15,7 +15,7 @@ export const ParameterSparkline: React.FC<ParameterSparklineProps> = ({
 }) => {
   if (!counts || counts.length === 0) {
     return (
-      <div className="w-16 h-5 rounded bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center text-[9px] text-slate-400">
+      <div className="w-16 h-5 rounded bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center text-xs text-slate-900">
         —
       </div>
     );
@@ -58,7 +58,7 @@ export const ParameterSparkline: React.FC<ParameterSparklineProps> = ({
       </svg>
       {isSkewed && (
         <span
-          className="text-[9px] px-1 py-0.2 rounded font-bold font-mono bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+          className="text-xs px-1 py-0.2 rounded font-bold font-mono bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
           title="Skewed distribution (|skew| > 0.45): asymmetric intervals provide more accurate coverage than symmetric ±σ."
         >
           skew

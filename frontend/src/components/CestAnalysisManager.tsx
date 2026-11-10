@@ -1,3 +1,5 @@
+import SaveButton from './chemex/SaveButton';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import StartingValuesMenu from './chemex/StartingValuesMenu';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -562,6 +564,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         methodEditor.restore(c);
       }
     } catch { /* no saved config */ }
+    markClean();
   };
 
   useEffect(() => {
@@ -649,22 +652,26 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     last_run_timestamp: overrides.last_run_timestamp ?? lastRunTimestamp,
   });
 
+  const savePayload = {
+    ...chemexPayload(),
+    picks,
+    spectrum_ids: selectedSpectrumIds,
+    generatedExperiments,
+    selected_module: selectedModule,
+    module_extra_values: moduleExtraValues,
+    module_flags: moduleFlags,
+    b1_distribution: b1Distribution,
+    filter_offsets_by_spectrum: filterOffsetsBySpectrum,
+    filter_offsets: filterOffsetsBySpectrum,
+    filter_planes: filterPlanes,
+    data_error: dataError,
+  };
+  const { dirty: unsaved, markClean } = useUnsavedChanges(savePayload);
+
   const saveConfig = async () => {
     try {
-      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/config`, {
-        ...chemexPayload(),
-        picks,
-        spectrum_ids: selectedSpectrumIds,
-        generatedExperiments,
-        selected_module: selectedModule,
-        module_extra_values: moduleExtraValues,
-        module_flags: moduleFlags,
-        b1_distribution: b1Distribution,
-        filter_offsets_by_spectrum: filterOffsetsBySpectrum,
-        filter_offsets: filterOffsetsBySpectrum,
-        filter_planes: filterPlanes,
-        data_error: dataError,
-      });
+      await api.put(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/config`, savePayload);
+      markClean();
       setSuccessMsg('Configuration saved');
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (e: any) {
@@ -981,7 +988,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               <Square size={13} fill="currentColor" /> {isCancelling || status === 'CANCELLING' ? 'Cancelling...' : 'Stop Run'}
             </button>
           )}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700" title={FIT_MODE_HELP}>
+          <div role="radiogroup" aria-labelledby="fit-mode-label" className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700" title={FIT_MODE_HELP}>
+            <span className="px-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300" id="fit-mode-label">Fit mode</span>
             <button onClick={() => setFitMode('global')} className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${fitMode === 'global' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 hover:text-slate-700'}`}>Global</button>
             <button onClick={() => setFitMode('individual')} className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${fitMode === 'individual' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 hover:text-slate-700'}`}>Individual</button>
             <FitModeHelp />
@@ -1010,7 +1018,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             </button>
           )}
 
-          <button onClick={saveConfig} className={btnSecondary}>Save Config</button>
+          <SaveButton dirty={unsaved} onSave={saveConfig} className={btnSecondary} />
 
           <button
             onClick={handleRun}

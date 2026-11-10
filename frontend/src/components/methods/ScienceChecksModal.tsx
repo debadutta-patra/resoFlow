@@ -56,12 +56,12 @@ export const ScienceChecksModal: React.FC<{
                 className="mt-0.5"
               />
               <span>
-                <span className="block font-semibold text-slate-800 dark:text-slate-100">{c.label}</span>
-                <span className="block text-slate-600 dark:text-slate-400">{c.description}</span>
+                <span className="block font-semibold text-slate-900 dark:text-slate-100">{c.label}</span>
+                <span className="block text-slate-900 dark:text-slate-200">{c.description}</span>
               </span>
             </label>
             {c.threshold && (
-              <label className="mt-1 ml-6 flex items-center gap-2 text-slate-700 dark:text-slate-300">
+              <label className="mt-1 ml-6 flex items-center gap-2 text-slate-900 dark:text-slate-200">
                 {c.threshold.label}
                 <input
                   type="number"

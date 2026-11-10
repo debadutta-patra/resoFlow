@@ -384,7 +384,7 @@ def test_step_timings_endpoint(db_session, test_project, auth_headers):
     """Durations come back with each step's fit count, recomputed once from the run's method snapshot."""
     analysis = _make_analysis(db_session, test_project, "analysis-timings")
     url = _url(test_project, analysis.analysis_uuid, "step-timings")
-    assert client.get(url, headers=auth_headers).json() == {"state": None, "steps": [], "workers": None}
+    assert client.get(url, headers=auth_headers).json() == {"state": None, "steps": [], "workers": None, "test": None}
     run_dir = Path(test_project.local_directory_path) / "cest_fitting" / analysis.analysis_uuid
     (run_dir / "Methods").mkdir()
     (run_dir / "Methods" / "method.toml").write_text(

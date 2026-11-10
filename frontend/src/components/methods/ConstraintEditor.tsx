@@ -14,7 +14,7 @@ import { rhsSuggestions, type Suggestion } from '../../lib/referenceAutocomplete
 import SelectorBuilder from './SelectorBuilder';
 
 const inputCls =
-  'w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
+  'w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
 
 /** Split "[target] = rhs" structurally (null when the text is not in that shape). */
 function splitConstraint(text: string): { target: string; rhs: string } | null {
@@ -67,13 +67,13 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
             type="button"
             disabled={readOnly || parts === null}
             onClick={() => setRaw(false)}
-            className="p-1 rounded text-slate-400 hover:text-blue-500 disabled:opacity-40"
+            className="p-1 rounded text-slate-900 hover:text-blue-500 disabled:opacity-40"
             title={parts === null ? 'Write it as "[TARGET] = expression" to use the builder' : 'Switch to the constraint builder'}
           >
             <Code className="w-3.5 h-3.5" />
           </button>
         </div>
-        {(fullError || externalError) && <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400">{fullError || externalError}</p>}
+        {(fullError || externalError) && <p className="mt-0.5 text-xs text-red-600 dark:text-red-500">{fullError || externalError}</p>}
       </div>
     );
   }
@@ -99,7 +99,7 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
   return (
     <div className="flex-grow min-w-0">
       <div className="flex flex-wrap items-start gap-1">
-        <span className="font-mono text-slate-400 pt-1">[</span>
+        <span className="font-mono text-slate-900 pt-1">[</span>
         <SelectorBuilder
           value={parts.target}
           onChange={t => set(t, parts.rhs)}
@@ -109,7 +109,7 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
           readOnly={readOnly}
           ariaLabel="Constraint target"
         />
-        <span className="font-mono text-slate-400 pt-1">] =</span>
+        <span className="font-mono text-slate-900 pt-1">] =</span>
         <div className="relative flex-grow min-w-[12rem]">
           <input
             ref={rhsRef}
@@ -158,10 +158,10 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
                     }}
                     className={`w-full text-left px-3 py-1 text-xs font-mono flex justify-between ${
                       i === active ? 'bg-blue-50 dark:bg-blue-900/40' : 'hover:bg-slate-50 dark:hover:bg-slate-700/60'
-                    } text-slate-700 dark:text-slate-200`}
+                    } text-slate-900 dark:text-slate-200`}
                   >
                     <span>{s.label}</span>
-                    {s.hint && <span className="text-[10px] font-sans text-slate-400">{s.hint}</span>}
+                    {s.hint && <span className="text-xs font-sans text-slate-900">{s.hint}</span>}
                   </button>
                 </li>
               ))}
@@ -172,7 +172,7 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
           type="button"
           disabled={readOnly}
           onClick={() => setRaw(true)}
-          className="p-1 rounded text-slate-400 hover:text-blue-500 disabled:opacity-40"
+          className="p-1 rounded text-slate-900 hover:text-blue-500 disabled:opacity-40"
           title="Edit the whole equation as raw text"
           aria-label="Edit constraint as raw text"
         >
@@ -180,7 +180,7 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
         </button>
       </div>
       {rhsError && parts.rhs && (
-        <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400 flex flex-wrap items-center gap-1.5">
+        <p className="mt-0.5 text-xs text-red-600 dark:text-red-500 flex flex-wrap items-center gap-1.5">
           <span>
             {rhsError.message}
             {!rhsError.suggestion && rhsError.end > rhsError.start && (
@@ -199,9 +199,9 @@ export const ConstraintEditor: React.FC<ConstraintEditorProps> = ({ value, onCha
         </p>
       )}
       {!rhsError && unknownRefs.length > 0 && (
-        <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">No parameter named {unknownRefs.join(', ')} for this model.</p>
+        <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-400">No parameter named {unknownRefs.join(', ')} for this model.</p>
       )}
-      {!rhsError && externalError && <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400">{externalError}</p>}
+      {!rhsError && externalError && <p className="mt-0.5 text-xs text-red-600 dark:text-red-500">{externalError}</p>}
     </div>
   );
 };

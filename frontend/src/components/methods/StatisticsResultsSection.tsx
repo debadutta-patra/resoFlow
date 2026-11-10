@@ -236,12 +236,12 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
     const isGridWithheld = /grid/i.test(reason);
     return (
       <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 flex gap-3 text-xs">
-        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+        <AlertTriangle className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <div className="font-bold text-amber-800 dark:text-amber-300">
+          <div className="font-bold text-amber-800 dark:text-amber-400">
             No uncertainty estimates for this step
           </div>
-          <div className="text-amber-700 dark:text-amber-400">
+          <div className="text-amber-800 dark:text-amber-400">
             Covariance errors {covStatus?.terminal === 'withheld' ? 'were withheld' : 'are unavailable'}: {reason.replace(/^withheld:\s*/i, '')}.
           </div>
           {isGridWithheld && (
@@ -422,17 +422,17 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
       {/* Section Header */}
       <div className="p-4 bg-gradient-to-r from-indigo-50/80 via-purple-50/60 to-slate-50/80 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-slate-900/50 border-b border-indigo-100 dark:border-indigo-900/50 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+          <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-800 dark:text-indigo-500">
             <Activity className="w-5 h-5" />
           </div>
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span>Step Uncertainty & Sampling Statistics</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/70 text-indigo-700 dark:text-indigo-300 font-mono">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/70 text-indigo-800 dark:text-indigo-500 font-mono">
                 Post-Fit Analysis
               </span>
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-900 dark:text-slate-200">
               Rigorous parameter uncertainties, 95% equal-tailed intervals, and pairwise correlations.
             </p>
           </div>
@@ -453,7 +453,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isActive
                       ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                      : 'text-slate-900 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50'
                   }`}
                 >
                   {m.method_name}
@@ -468,7 +468,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   isComparisonTab
                     ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                    : 'text-slate-900 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50'
                 }`}
               >
                 Comparison
@@ -481,11 +481,11 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
             <button
               type="button"
               onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200/80 dark:border-slate-700 transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 text-xs font-semibold border border-slate-200/80 dark:border-slate-700 transition-colors shadow-xs"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export</span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
+              <ChevronDown className="w-3 h-3 text-slate-900" />
             </button>
 
             {exportDropdownOpen && (
@@ -493,24 +493,24 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                 <button
                   type="button"
                   onClick={() => handleDownload('csv')}
-                  className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 flex items-center gap-2"
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-900 dark:text-slate-200 flex items-center gap-2"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-800" />
                   <span>Download Replicates (.csv)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleDownload('npz')}
-                  className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 flex items-center gap-2"
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-900 dark:text-slate-200 flex items-center gap-2"
                 >
-                  <FileArchive className="w-4 h-4 text-indigo-500" />
+                  <FileArchive className="w-4 h-4 text-indigo-800" />
                   <span>Download Archive (.npz)</span>
                 </button>
                 {activeMethod?.has_plots_pdf && (
                   <button
                     type="button"
                     onClick={() => handleDownload('pdf')}
-                    className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700"
+                    className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-900 dark:text-slate-200 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700"
                   >
                     <FileText className="w-4 h-4 text-rose-500" />
                     <span>Download ChemEx Report (.pdf)</span>
@@ -537,8 +537,8 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
           <>
             {/* Incomplete Banner */}
             {isIncomplete && (
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-400 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-800 shrink-0 mt-0.5" />
                 <div className="text-xs space-y-1">
                   <h4 className="font-bold">Partial Replicates Retained — Summary Withheld</h4>
                   <p className="leading-relaxed">
@@ -565,10 +565,10 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                 {/* Table Control Bar: Search & Category Filter */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200 uppercase tracking-wider">
                       Parameter Uncertainty & Distributions
                     </h4>
-                    <span className="text-xs text-slate-400 font-mono">
+                    <span className="text-xs text-slate-900 font-mono">
                       ({filteredParameters.length} of {totalNonExcludedCount})
                     </span>
                   </div>
@@ -576,25 +576,25 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                   <div className="flex items-center gap-2">
                     {/* Search Bar */}
                     <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-900" />
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Search parameter, residue..."
-                        className="pl-8 pr-3 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 w-44 sm:w-56"
+                        className="pl-8 pr-3 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 w-44 sm:w-56"
                       />
                     </div>
 
                     {/* Category Filter Pills */}
-                    <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-medium">
+                    <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium">
                       <button
                         type="button"
                         onClick={() => setCategoryFilter('all')}
                         className={`px-2 py-0.5 rounded-md transition-colors ${
                           categoryFilter === 'all'
                             ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                            : 'text-slate-900 hover:text-slate-800 dark:hover:text-slate-200'
                         }`}
                       >
                         All
@@ -606,7 +606,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                           className={`px-2 py-0.5 rounded-md transition-colors ${
                             categoryFilter === 'global'
                               ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                              : 'text-slate-900 hover:text-slate-800 dark:hover:text-slate-200'
                           }`}
                         >
                           Globals
@@ -619,7 +619,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                           className={`px-2 py-0.5 rounded-md transition-colors ${
                             categoryFilter === 'chemical_shift'
                               ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                              : 'text-slate-900 hover:text-slate-800 dark:hover:text-slate-200'
                           }`}
                         >
                           δ / Δω
@@ -632,7 +632,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                           className={`px-2 py-0.5 rounded-md transition-colors ${
                             categoryFilter === 'relaxation'
                               ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                              : 'text-slate-900 hover:text-slate-800 dark:hover:text-slate-200'
                           }`}
                         >
                           R₁ / R₂
@@ -645,7 +645,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                             className={`px-2 py-0.5 rounded-md transition-colors ${
                               categoryFilter === 'rates'
                                 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                : 'text-slate-900 hover:text-slate-800 dark:hover:text-slate-200'
                             }`}
                           >
                             {paramTypes.rateName}
@@ -657,7 +657,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                               className={`px-2 py-0.5 rounded-md transition-colors ${
                                 categoryFilter === 'amplitudes'
                                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
-                                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                  : 'text-slate-900 hover:text-slate-800 dark:hover:text-slate-200'
                               }`}
                             >
                               Amplitudes (I₀)
@@ -673,13 +673,13 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                 <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
+                      <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-200 font-semibold border-b border-slate-200 dark:border-slate-800">
                         <th className="py-2.5 px-3">Parameter</th>
                         <th className="py-2.5 px-3">Residue</th>
                         <th className="py-2.5 px-3">Field</th>
                         <th className="py-2.5 px-3">Deterministic</th>
                         <th className="py-2.5 px-3">Median (50%)</th>
-                        <th className="py-2.5 px-3 font-bold text-indigo-700 dark:text-indigo-400" title="Standard deviation of the replicate distribution">
+                        <th className="py-2.5 px-3 font-bold text-indigo-800 dark:text-indigo-500" title="Standard deviation of the replicate distribution">
                           {methodTechniqueLabel}
                         </th>
                         <th className="py-2.5 px-3">
@@ -715,24 +715,24 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                                 <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                   {parsed.displaySymbol}
                                 </span>
-                                <span className="text-[10px] text-slate-400 font-normal">
+                                <span className="text-xs text-slate-900 font-normal">
                                   ({parsed.unit || '—'})
                                 </span>
                               </div>
                             </td>
 
                             {/* Residue */}
-                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
+                            <td className="py-2.5 px-3 text-slate-900 dark:text-slate-200">
                               {parsed.residue}
                             </td>
 
                             {/* Field */}
-                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
+                            <td className="py-2.5 px-3 text-slate-900 dark:text-slate-200">
                               {parsed.field}
                             </td>
 
                             {/* Deterministic Fit */}
-                            <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300">
+                            <td className="py-2.5 px-3 text-slate-900 dark:text-slate-200">
                               {pData.deterministic_value !== undefined
                                 ? formatUncertainty(pData.deterministic_value, null).formatted
                                 : '—'}
@@ -744,12 +744,12 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                             </td>
 
                             {/* SD (technique) */}
-                            <td className="py-2.5 px-3 font-bold text-indigo-600 dark:text-indigo-400">
+                            <td className="py-2.5 px-3 font-bold text-indigo-800 dark:text-indigo-500">
                               {formatUncertainty(pData.median, sd).errorStr || '—'}
                             </td>
 
                             {/* 95% Interval */}
-                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
+                            <td className="py-2.5 px-3 text-slate-900 dark:text-slate-200">
                               {low !== undefined && high !== undefined
                                 ? `[${formatUncertainty(low, null).formatted}, ${formatUncertainty(high, null).formatted}]`
                                 : '—'}
@@ -781,15 +781,15 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                 <div className="space-y-3 pt-2">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200 uppercase tracking-wider">
                         Pairwise Correlation Matrix (Lower Triangle)
                       </h4>
-                      <p className="text-[11px] text-slate-400">
+                      <p className="text-xs text-slate-900">
                         Click any cell to open interactive 2D joint density distribution.
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-3 text-[11px] font-medium text-slate-500">
+                    <div className="flex items-center gap-3 text-xs font-medium text-slate-900">
                       <div className="flex items-center gap-1">
                         <span className="w-2.5 h-2.5 rounded-xs bg-rose-500/80"></span>
                         <span>Positive (+1)</span>
@@ -813,7 +813,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                   <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 max-w-full">
                     <table className="w-full text-left text-xs border-collapse font-mono">
                       <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
+                        <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-200 font-semibold border-b border-slate-200 dark:border-slate-800">
                           <th className="py-2 px-3 sticky left-0 bg-slate-50 dark:bg-slate-800/80 z-10"></th>
                           {activeCorrelations.parameters.map(p => {
                             const parsed = parseParameterLabel(p);
@@ -852,7 +852,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
                                   return (
                                     <td
                                       key={pCol}
-                                      className="py-2 px-2.5 bg-slate-50/30 dark:bg-slate-900/30 text-slate-200 dark:text-slate-800 text-center select-none"
+                                      className="py-2 px-2.5 bg-slate-50/30 dark:bg-slate-900/30 text-slate-900 dark:text-slate-200 text-center select-none"
                                     >
                                       —
                                     </td>
@@ -868,11 +868,11 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
 
                                 let bgStyle = '';
                                 if (isDiag) {
-                                  bgStyle = 'bg-slate-100/80 dark:bg-slate-800/60 font-bold text-slate-500';
+                                  bgStyle = 'bg-slate-100/80 dark:bg-slate-800/60 font-bold text-slate-900';
                                 } else if (val > 0) {
                                   bgStyle = 'text-rose-700 dark:text-rose-300 hover:ring-2 hover:ring-rose-400 font-semibold';
                                 } else {
-                                  bgStyle = 'text-blue-700 dark:text-blue-300 hover:ring-2 hover:ring-blue-400 font-semibold';
+                                  bgStyle = 'text-blue-700 dark:text-blue-500 hover:ring-2 hover:ring-blue-400 font-semibold';
                                 }
 
                                 return (

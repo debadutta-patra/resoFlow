@@ -198,7 +198,7 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
+            <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-500 border border-indigo-100 dark:border-indigo-900">
               <BarChart2 className="w-5 h-5" />
             </div>
             <div>
@@ -207,17 +207,17 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                   {parsedLabel.displaySymbol}
                 </h3>
                 {parsedLabel.residue !== '—' && parsedLabel.residue !== 'Global' && (
-                  <span className="px-2 py-0.5 text-xs font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  <span className="px-2 py-0.5 text-xs font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200">
                     {parsedLabel.residue}
                   </span>
                 )}
                 {parsedLabel.field !== '—' && parsedLabel.field !== 'Global' && (
-                  <span className="px-2 py-0.5 text-xs font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  <span className="px-2 py-0.5 text-xs font-semibold rounded-md bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200">
                     {parsedLabel.field}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">{parsedLabel.raw}</p>
+              <p className="text-xs text-slate-900 font-mono mt-0.5">{parsedLabel.raw}</p>
             </div>
           </div>
 
@@ -229,7 +229,7 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                 className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${
                   unitModeHz
                     ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >
                 {unitModeHz ? 'Units: Hz (600 MHz)' : 'Units: ppm'}
@@ -238,7 +238,7 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="p-1.5 text-slate-900 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -248,8 +248,8 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
         {/* Content */}
         <div className="p-6 overflow-y-auto space-y-5">
           {loading && (
-            <div className="h-72 flex flex-col items-center justify-center gap-3 text-slate-400">
-              <Activity className="w-6 h-6 animate-spin text-indigo-500" />
+            <div className="h-72 flex flex-col items-center justify-center gap-3 text-slate-900">
+              <Activity className="w-6 h-6 animate-spin text-indigo-800" />
               <p className="text-sm font-medium">Loading marginal distribution & Freedman–Diaconis bins...</p>
             </div>
           )}
@@ -267,18 +267,18 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-xs bg-indigo-500"></span>
-                    <span className="text-slate-600 dark:text-slate-300 font-medium">95% Interval Band</span>
+                    <span className="text-slate-900 dark:text-slate-200 font-medium">95% Interval Band</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-3.5 h-0.5 bg-emerald-500"></span>
-                    <span className="text-slate-600 dark:text-slate-300 font-medium">Median</span>
+                    <span className="text-slate-900 dark:text-slate-200 font-medium">Median</span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 font-mono">
                   <span>N = {data.sample_count}</span>
                   {isSkewed && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                    <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
                       Skewed (γ₁ = {skewVal?.toFixed(2)})
                     </span>
                   )}
@@ -293,7 +293,7 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
               {/* Statistics Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/50">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-900 block mb-1">
                     Median (50%)
                   </span>
                   <span className="text-sm font-semibold font-mono text-slate-900 dark:text-white">
@@ -302,7 +302,7 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/50">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-900 block mb-1">
                     SD ({methodName})
                   </span>
                   <span className="text-sm font-semibold font-mono text-slate-900 dark:text-white">
@@ -311,10 +311,10 @@ export const MarginalDistributionModal: React.FC<MarginalDistributionModalProps>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/50">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-900 block mb-1">
                     95% Equal-Tailed
                   </span>
-                  <span className="text-xs font-semibold font-mono text-indigo-600 dark:text-indigo-400">
+                  <span className="text-xs font-semibold font-mono text-indigo-800 dark:text-indigo-500">
                     [{formatUncertainty(data.percentile_95_lower * scale, null).formatted},{' '}
                     {formatUncertainty(data.percentile_95_upper * scale, null).formatted}]
                   </span>

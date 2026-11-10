@@ -54,7 +54,7 @@ interface StepSearchSectionProps {
 }
 
 const inputCls =
-  'w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
+  'w-full text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
 
 const MODE_INFO: Record<SearchMode, { label: string; text: string }> = {
   none: {
@@ -104,7 +104,7 @@ const AxisStatus: React.FC<{ axis: ResolvedAxis; mode: 'grid' | 'de'; onAddFit?:
   if (axis.error) {
     const fitProblem = /FIT coordinate/.test(axis.error.message);
     return (
-      <div className="text-[11px] text-red-600 dark:text-red-400 flex flex-wrap items-center gap-1.5">
+      <div className="text-xs text-red-600 dark:text-red-500 flex flex-wrap items-center gap-1.5">
         <span>{axis.error.message}</span>
         {fitProblem && onAddFit && !readOnly && (
           <button type="button" onClick={onAddFit} className="inline-flex items-center gap-0.5 px-1.5 rounded border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30">
@@ -115,13 +115,13 @@ const AxisStatus: React.FC<{ axis: ResolvedAxis; mode: 'grid' | 'de'; onAddFit?:
     );
   }
   const n = axis.coordinates.length;
-  if (mode === 'de') return <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono">→ {axis.coordinates[0]}</div>;
+  if (mode === 'de') return <div className="text-xs text-emerald-800 dark:text-emerald-500 font-mono">→ {axis.coordinates[0]}</div>;
   const replaced = n - (axis.owned ?? n);
   return (
-    <div className="text-[11px] text-emerald-600 dark:text-emerald-400" title={axis.coordinates.join(', ')}>
+    <div className="text-xs text-emerald-800 dark:text-emerald-500" title={axis.coordinates.join(', ')}>
       → {n} FIT coordinate{n === 1 ? '' : 's'}
-      {replaced > 0 && <span className="text-slate-500 dark:text-slate-400"> · {replaced} replaced by a later axis</span>}
-      {replaced === n && n > 0 && <span className="text-amber-600 dark:text-amber-400"> (this axis has no effect)</span>}
+      {replaced > 0 && <span className="text-slate-900 dark:text-slate-200"> · {replaced} replaced by a later axis</span>}
+      {replaced === n && n > 0 && <span className="text-amber-800 dark:text-amber-400"> (this axis has no effect)</span>}
     </div>
   );
 };
@@ -236,18 +236,18 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           aria-expanded={isOpen}
-          className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+          className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400"
         >
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          <Grid3x3 className="w-4 h-4 text-amber-500" />
+          <Grid3x3 className="w-4 h-4 text-amber-800" />
           <span>Deterministic Search (SEARCH.GRID / SEARCH.DE)</span>
           {searchIssues.length > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 font-bold">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-500 font-bold">
               {searchIssues.length} ChemEx error{searchIssues.length > 1 ? 's' : ''}
             </span>
           )}
           {active && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 font-mono font-bold">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-400 font-mono font-bold">
               {search.mode === 'grid'
                 ? evaluations
                   ? `GRID · ${evaluations.toLocaleString()} profiled evaluations`
@@ -265,8 +265,8 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
               onClick={() => setMode(m)}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
                 search.mode === m
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/80 dark:border-slate-600'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-500 shadow-sm border border-slate-200/80 dark:border-slate-600'
+                  : 'text-slate-900 dark:text-slate-200 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               {MODE_INFO[m].label}
@@ -277,7 +277,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
 
       {isOpen && (
         <div className="p-4 space-y-3 text-xs">
-          <p className="text-slate-500 dark:text-slate-400 leading-relaxed">{MODE_INFO[search.mode].text}</p>
+          <p className="text-slate-900 dark:text-slate-200 leading-relaxed">{MODE_INFO[search.mode].text}</p>
           <ChemexIssueList issues={generalIssues} />
 
           {search.mode === 'grid' && (
@@ -310,7 +310,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <label className="font-semibold text-slate-600 dark:text-slate-300" htmlFor={`de-seed-${step.id}`}>
+                <label className="font-semibold text-slate-900 dark:text-slate-200" htmlFor={`de-seed-${step.id}`}>
                   SEED (required):
                 </label>
                 <input
@@ -328,12 +328,12 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                   type="button"
                   disabled={readOnly}
                   onClick={() => setSearch({ ...search, seed: randomSeed() })}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-slate-500 hover:text-blue-600 border border-slate-200 dark:border-slate-700"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-slate-900 hover:text-blue-600 border border-slate-200 dark:border-slate-700"
                   title="Draw a new random 64-bit seed"
                 >
                   <Dices className="w-3.5 h-3.5" /> Re-roll
                 </button>
-                {seedMsg && <span className="text-[11px] text-red-600 dark:text-red-400">{seedMsg}</span>}
+                {seedMsg && <span className="text-xs text-red-600 dark:text-red-500">{seedMsg}</span>}
               </div>
             </>
           )}
@@ -342,7 +342,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
             <>
               <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400">
+                  <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-900 dark:text-slate-200">
                     <tr>
                       <th className="py-2 px-2 font-semibold w-6">#</th>
                       <th className="py-2 px-2 font-semibold">Target (FIT coordinate selector)</th>
@@ -358,7 +358,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                       const status = resolved?.axes[idx];
                       return (
                         <tr key={axis.id} id={searchAxisDomId(axis.id)} className="align-top">
-                          <td className="py-2 px-2 font-mono text-slate-400">{idx + 1}</td>
+                          <td className="py-2 px-2 font-mono text-slate-900">{idx + 1}</td>
                           <td className="py-2 px-2 min-w-[14rem]">
                             <SelectorBuilder
                               value={axisSelector(axis)}
@@ -421,8 +421,8 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                                 )}
                               </div>
                             )}
-                            <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500 space-y-0.5">
-                              <div className={d.generic ? 'text-amber-600 dark:text-amber-400' : ''}>
+                            <div className="mt-1 text-xs text-slate-900 dark:text-slate-200 space-y-0.5">
+                              <div className={d.generic ? 'text-amber-800 dark:text-amber-400' : ''}>
                                 Default: {d.hint}
                                 {!d.generic && ` → ${d.fn}(${fmt(d.low)}, ${fmt(d.high)}${search.mode === 'grid' ? `, ${d.count}` : ''})`}
                               </div>
@@ -431,22 +431,22 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                                   {pts.map(fmt).join(', ')}
                                 </div>
                               )}
-                              <div className="font-mono text-slate-500 dark:text-slate-400">{formatAxis(axis, search.mode as 'grid' | 'de')}</div>
+                              <div className="font-mono text-slate-900 dark:text-slate-200">{formatAxis(axis, search.mode as 'grid' | 'de')}</div>
                             </div>
                           </td>
                           <td className="py-2 px-2 whitespace-nowrap">
                             {!readOnly && (
                               <div className="flex items-center gap-0.5">
-                                <button type="button" onClick={() => moveAxis(idx, -1)} className="p-1 text-slate-400 hover:text-blue-500" aria-label={`Move axis ${idx + 1} up`} title="Move up">
+                                <button type="button" onClick={() => moveAxis(idx, -1)} className="p-1 text-slate-900 hover:text-blue-500" aria-label={`Move axis ${idx + 1} up`} title="Move up">
                                   <ChevronUp className="w-3.5 h-3.5" />
                                 </button>
-                                <button type="button" onClick={() => moveAxis(idx, 1)} className="p-1 text-slate-400 hover:text-blue-500" aria-label={`Move axis ${idx + 1} down`} title="Move down">
+                                <button type="button" onClick={() => moveAxis(idx, 1)} className="p-1 text-slate-900 hover:text-blue-500" aria-label={`Move axis ${idx + 1} down`} title="Move down">
                                   <ChevronDown className="w-3.5 h-3.5" />
                                 </button>
-                                <button type="button" onClick={() => resetAxis(axis)} className="p-1 text-slate-400 hover:text-blue-500" title="Reset to physical default range" aria-label={`Reset axis ${idx + 1}`}>
+                                <button type="button" onClick={() => resetAxis(axis)} className="p-1 text-slate-900 hover:text-blue-500" title="Reset to physical default range" aria-label={`Reset axis ${idx + 1}`}>
                                   <RotateCcw className="w-3.5 h-3.5" />
                                 </button>
-                                <button type="button" onClick={() => setSearch({ ...search, axes: search.axes.filter(a => a.id !== axis.id) })} className="p-1 text-slate-400 hover:text-red-500" title="Remove" aria-label={`Remove axis ${idx + 1}`}>
+                                <button type="button" onClick={() => setSearch({ ...search, axes: search.axes.filter(a => a.id !== axis.id) })} className="p-1 text-slate-900 hover:text-red-500" title="Remove" aria-label={`Remove axis ${idx + 1}`}>
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
@@ -479,7 +479,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
               </div>
 
               {search.mode === 'grid' && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-slate-300">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-900 dark:text-slate-200">
                   {resolved && evaluations ? (
                     <span>
                       {resolved.global_points ?? 1} global point{(resolved.global_points ?? 1) === 1 ? '' : 's'}
@@ -491,7 +491,7 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                   ) : (
                     <span>{naivePoints.toLocaleString()} grid points before factorisation (resolving with ChemEx…)</span>
                   )}
-                  <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1 text-slate-900 dark:text-slate-200">
                     <Clock className="w-3 h-3" />
                     {estimate
                       ? `≈ ${formatDuration(estimate.seconds)} — ${estimate.proxy ? `rough, using last run's ${estimate.basedOn}` : `last run's ${estimate.basedOn}`} took ${estimate.secondsPerFit.toFixed(2)} s per fit`
@@ -515,14 +515,14 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                   <button
                     type="button"
                     onClick={addAxis}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-blue-400 hover:text-blue-600"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-200 hover:border-blue-400 hover:text-blue-600"
                   >
                     {search.mode === 'grid' ? <Plus className="w-3.5 h-3.5" /> : <Shuffle className="w-3.5 h-3.5" />}
                     <span>{search.mode === 'grid' ? 'Add grid axis' : 'Add DE coordinate'}</span>
                   </button>
                 </div>
               )}
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              <p className="text-xs text-slate-900 dark:text-slate-200 leading-relaxed">
                 Targets must already be FIT coordinates of this step (set them in the table or rules above) — GRID and DE never change roles.
                 {search.mode === 'grid' &&
                   ' Axes apply top to bottom: a later, more specific axis (e.g. DW_AB, NUC->G24N) replaces an earlier broad one (DW_AB) for the coordinates it matches.'}

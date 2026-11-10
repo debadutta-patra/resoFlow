@@ -28,7 +28,7 @@ from ..services.fitting.method_resolution import (
     validate_method_for_analysis,
 )
 from ..services.fitting.run_dirs import load_chemex_config
-from .deps import get_analysis
+from .deps import get_analysis, get_project
 from resoflow.chemex_api.session import inspect_parameters
 from resoflow.chemex_api.spec import FitJobSpec
 
@@ -232,8 +232,18 @@ def get_last_run_method(analysis: models.Analysis = Depends(get_analysis)) -> di
 def get_step_timings(analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
     """Per-step wall-clock durations of the analysis's last ChemEx run, with the number of
     fits each step performed (for runtime / cost estimates of the next run)."""
+    from ..services.fitting.test_run import latest_status
+
     model = (load_chemex_config(analysis) or {}).get("model") or "2st"
-    return step_timings_with_evaluations(_run_dir(analysis), model=model, experiments=_configured_experiments(analysis))
+    out = step_timings_with_evaluations(_run_dir(analysis), model=model, experiments=_configured_experiments(analysis))
+    # Latest completed quick test (1 residue, reduced grid, no statistics): a fallback for estimates.
+    test = latest_status(_run_dir(analysis))
+    out["test"] = (
+        {"residue": test.get("residue"), "finished_at": test.get("finished_at"), "steps": test.get("steps", [])}
+        if test and test.get("state") == "done"
+        else None
+    )
+    return out
 
 
 @router.get(f"{ANALYSIS_CHEMEX}/run-overview")
@@ -267,3 +277,60 @@ def get_grid_surface(step_name: str, x: str, y: str, analysis: models.Analysis =
     if surface is None:
         raise HTTPException(status_code=404, detail=f"No GRID surface for {x}/{y} in step {step_name}")
     return surface
+
+
+class TestRunRequest(BaseModel):
+    method_toml: str
+    residue: str
+    parameter_toml: Optional[str] = None
+    model: str = "2st"
+
+
+@router.post(f"{ANALYSIS_CHEMEX}/test-run")
+def start_test_run(req: TestRunRequest, analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    """Run the current method on one residue (no statistics, ≤ 3 grid points per axis) in an isolated
+    workspace; never changes the analysis's results or status."""
+    from ..services.fitting.test_run import queue_test_run
+
+    if (analysis.status or "").upper() in {"RUNNING", "PENDING", "CANCELLING"}:
+        raise HTTPException(status_code=409, detail="A run is in progress for this analysis.")
+    if not req.residue.strip():
+        raise HTTPException(status_code=400, detail="Choose a residue.")
+    try:
+        return queue_test_run(
+            _run_dir(analysis),
+            method_toml=req.method_toml,
+            parameter_toml=req.parameter_toml,
+            model=req.model,
+            residue=req.residue.strip(),
+            experiments=_configured_experiments(analysis),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get(f"{ANALYSIS_CHEMEX}/test-run/latest")
+def get_latest_test_run(analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    from ..services.fitting.test_run import latest_status
+
+    return {"test": latest_status(_run_dir(analysis))}
+
+
+@router.get(f"{ANALYSIS_CHEMEX}/test-run/{{test_id}}")
+def get_test_run(test_id: str, analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    from ..services.fitting.test_run import read_status
+
+    if not test_id.isalnum():
+        raise HTTPException(status_code=400, detail="Invalid test id")
+    status = read_status(_run_dir(analysis), test_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Test run not found")
+    return status
+
+
+@router.get("/api/projects/{project_uuid}/chemex/method-history")
+def get_method_history(family: str, project: models.Project = Depends(get_project)) -> dict[str, Any]:
+    """Completed runs (and their backups) of this family in the project, with the method each used."""
+    from ..services.fitting.method_history import method_history
+
+    return {"runs": method_history(list(project.analyses), lambda a: _run_dir(a), family)}

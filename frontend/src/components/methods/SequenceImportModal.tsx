@@ -49,7 +49,7 @@ export const SequenceImportModal: React.FC<{
       }
     >
       <div className="space-y-3 text-xs">
-        <label className="block font-bold text-slate-700 dark:text-slate-300" htmlFor="seq-input">
+        <label className="block font-bold text-slate-900 dark:text-slate-200" htmlFor="seq-input">
           FASTA or one-letter sequence
         </label>
         <textarea
@@ -60,7 +60,7 @@ export const SequenceImportModal: React.FC<{
           placeholder={'>my_protein\nMKVLAAGIVG...'}
           className={`${chemexInputCls} font-mono text-xs`}
         />
-        <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+        <label className="flex items-center gap-2 text-slate-900 dark:text-slate-200">
           Numbering offset
           <input
             type="number"
@@ -69,11 +69,11 @@ export const SequenceImportModal: React.FC<{
             className={`${chemexInputCls} w-24`}
             aria-label="Numbering offset"
           />
-          <span className="text-slate-600 dark:text-slate-400">first letter = residue {1 + offset}</span>
+          <span className="text-slate-900 dark:text-slate-200">first letter = residue {1 + offset}</span>
         </label>
-        {parsed?.error && <p className="text-red-700 dark:text-red-700">{parsed.error}</p>}
+        {parsed?.error && <p className="text-red-700 dark:text-red-600">{parsed.error}</p>}
         {range && (
-          <p className="text-slate-700 dark:text-slate-300" data-testid="sequence-preview">
+          <p className="text-slate-900 dark:text-slate-200" data-testid="sequence-preview">
             {parsed?.sequence.length} residues, numbered {range[0]}–{range[1]}
             {sampleResidue ? ` · residue ${sampleResidue} → ${sampleType ? `${sampleType}${sampleResidue}` : 'outside the sequence'}` : ''}
           </p>

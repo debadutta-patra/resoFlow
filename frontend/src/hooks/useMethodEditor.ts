@@ -7,7 +7,7 @@
  * user switches tabs.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
 import type { ChemexEndpointFamily } from '../lib/experimentPlugin';
 import type { MethodConfig, Step } from '../lib/methodConfig';
@@ -65,6 +65,10 @@ export interface UseMethodEditorOptions {
   notify?: (message: string) => void;
 }
 
+/** Undo history depth and the window within which consecutive edits (typing) coalesce. */
+export const HISTORY_LIMIT = 100;
+export const COALESCE_MS = 600;
+
 const newStepId = () => `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
 export function useMethodEditor(opts: UseMethodEditorOptions) {
@@ -88,11 +92,68 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   });
 
 
-  /** Replace the structured config and keep the TOML mirror in sync. */
-  const setMethodConfig = useCallback((next: MethodConfig) => {
+  // ── Undo / redo ──
+  // Every user edit goes through setMethodConfig, which records the previous state. Edits
+  // within COALESCE_MS of each other (typing, dragging) collapse into one history entry.
+  const configRef = useRef(methodConfig);
+  const lockedRef = useRef(!!opts.locked);
+  useLayoutEffect(() => {
+    configRef.current = methodConfig;
+    lockedRef.current = !!opts.locked;
+  });
+  const history = useRef<{ past: MethodConfig[]; future: MethodConfig[]; lastAt: number }>({ past: [], future: [], lastAt: 0 });
+  const [historyDepth, setHistoryDepth] = useState({ past: 0, future: 0 });
+  const syncDepth = () => setHistoryDepth({ past: history.current.past.length, future: history.current.future.length });
+  const record = useCallback(() => {
+    const h = history.current;
+    const now = Date.now();
+    if (now - h.lastAt > COALESCE_MS || h.past.length === 0) {
+      h.past.push(configRef.current);
+      if (h.past.length > HISTORY_LIMIT) h.past.shift();
+    }
+    h.lastAt = now;
+    h.future = [];
+    syncDepth();
+  }, []);
+  const resetHistory = useCallback(() => {
+    history.current = { past: [], future: [], lastAt: 0 };
+    syncDepth();
+  }, []);
+
+  /** Replace the structured config (a user edit: undoable) and keep the TOML mirror in sync. */
+  const setMethodConfig = useCallback(
+    (next: MethodConfig) => {
+      if (next !== configRef.current) record();
+      setMethodConfigState(next);
+      setMethodToml(configToToml(next));
+    },
+    [record]
+  );
+
+  const undo = useCallback(() => {
+    const h = history.current;
+    if (lockedRef.current || h.past.length === 0) return;
+    const prev = h.past.pop() as MethodConfig;
+    h.future.push(configRef.current);
+    h.lastAt = 0;
+    setActiveStepIdx(i => Math.max(0, Math.min(i, prev.steps.length - 1)));
+    setMethodConfigState(prev);
+    setMethodToml(configToToml(prev));
+    syncDepth();
+  }, []);
+  const redo = useCallback(() => {
+    const h = history.current;
+    if (lockedRef.current || h.future.length === 0) return;
+    const next = h.future.pop() as MethodConfig;
+    h.past.push(configRef.current);
+    h.lastAt = 0;
+    setActiveStepIdx(i => Math.max(0, Math.min(i, next.steps.length - 1)));
     setMethodConfigState(next);
     setMethodToml(configToToml(next));
+    syncDepth();
   }, []);
+  const canUndo = !opts.locked && historyDepth.past > 0;
+  const canRedo = !opts.locked && historyDepth.future > 0;
 
   // ── Backend parameter catalogue (same source for every experiment) ──
   useEffect(() => {
@@ -143,9 +204,11 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     [methodConfig, setMethodConfig]
   );
 
+  /** Replace the step being shown (activeStep falls back to the first step when the index is stale). */
   const handleStepChange = (updated: Step) => {
     const steps = [...methodConfig.steps];
-    steps[activeStepIdx] = updated;
+    const idx = activeStepIdx >= 0 && activeStepIdx < steps.length ? activeStepIdx : 0;
+    steps[idx] = updated;
     updateSteps(steps);
   };
 
@@ -243,6 +306,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
       notify?.(`Cannot parse method.toml: ${err instanceof Error ? err.message : String(err)}`);
       return;
     }
+    record();
     setMethodConfigState(normalizeMethodConfig(parsed.config));
     setUnparsedTomlLines(parsed.unparsed);
     setActiveStepIdx(0);
@@ -276,6 +340,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     try {
       const parsed = tomlToConfig(text);
       const cfg = normalizeMethodConfig(parsed.config);
+      record();
       setMethodConfigState(cfg);
       // Show the canonical v2 rendering (legacy v1 input is migrated).
       setMethodToml(configToToml(cfg));
@@ -318,9 +383,11 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const lastRunMethod = useLastRunMethod(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
 
   /** Last run's per-step durations (refreshed when a run ends) for runtime estimates. */
-  const runTimings = useStepTimings(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
+  const [timingsNonce, setTimingsNonce] = useState(0);
+  const runTimings = useStepTimings(projectUuid, analysisUuid, `${opts.locked ? 'running' : 'idle'}|${timingsNonce}`);
   const stepTimings = runTimings.steps;
   const runWorkers = runTimings.workers;
+  const testTimings = runTimings.test;
 
   /** Last completed run per step (values, GRID landscape, MCMC flags), from the results bundle. */
   const runOverview = useRunOverview(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
@@ -394,6 +461,7 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
         setIsRawEditMode(false);
       }
       setActiveStepIdx(0);
+      resetHistory();
       return true;
     }
     if (saved.method_toml) {
@@ -407,16 +475,19 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
       }
       setMethodToml(saved.method_toml);
       setActiveStepIdx(0);
+      resetHistory();
       return true;
     }
     return false;
-  }, []);
+  }, [resetHistory]);
 
   return {
     projectUuid,
     analysisUuid,
     projectSettings,
     family,
+    model,
+    parameterToml: opts.parameterToml,
     methodConfig,
     setMethodConfig,
     methodToml,
@@ -439,6 +510,8 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     resolvedRoles,
     stepTimings,
     runWorkers,
+    testTimings,
+    refreshTimings: () => setTimingsNonce(n => n + 1),
     lastRunMethod,
     runOverview,
     previousMethod,
@@ -447,6 +520,10 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     dismissedIssues,
     applyQuickFix,
     restoreIssue,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     blockingErrors,
     effectiveMethodToml,
     methodConfigForSave,

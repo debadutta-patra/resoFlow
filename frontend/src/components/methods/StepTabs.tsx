@@ -57,7 +57,7 @@ export const StepResultRow: React.FC<{ result: StepResultBadge; onOpenMcmc?: () 
   return (
     <div className={`flex flex-wrap items-center gap-1.5 text-xs font-normal ${stale ? 'opacity-60' : ''}`} data-testid="step-result">
       <span className={`inline-block w-2 h-2 rounded-full ${DOT[result.state].cls}`} title={DOT[result.state].label} aria-label={DOT[result.state].label} />
-      {result.redchi !== null && <span className="font-mono text-slate-700 dark:text-slate-300" title="Reduced χ² of the last run">χ²ᵣ {fmtChi(result.redchi)}</span>}
+      {result.redchi !== null && <span className="font-mono text-slate-900 dark:text-slate-200" title="Reduced χ² of the last run">χ²ᵣ {fmtChi(result.redchi)}</span>}
       {m && (
         <button
           type="button"
@@ -81,7 +81,7 @@ export const StepResultRow: React.FC<{ result: StepResultBadge; onOpenMcmc?: () 
   );
 };
 
-const iconBtn = 'p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed';
+const iconBtn = 'p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed';
 
 export const StepTabs: React.FC<StepTabsProps> = ({
   steps,
@@ -162,17 +162,17 @@ export const StepTabs: React.FC<StepTabsProps> = ({
               }}
               className={`group relative flex flex-col gap-0.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer select-none ${
                 isActive
-                  ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-700/60 shadow-sm'
-                  : 'bg-slate-100/70 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200/80 dark:border-slate-800'
+                  ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-500 border-blue-200 dark:border-blue-700/60 shadow-sm'
+                  : 'bg-slate-100/70 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-800/60 text-slate-900 dark:text-slate-200 border-slate-200/80 dark:border-slate-800'
               } ${draggedIdx === idx ? 'opacity-50' : ''}`}
             >
               <div className="flex items-center gap-1.5">
                 {!readOnly && (
                   <span title="Drag to reorder step">
-                    <GripVertical className="w-3 h-3 text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <GripVertical className="w-3 h-3 text-slate-900 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity" />
                   </span>
                 )}
-                <span className="font-mono text-[10px] text-slate-400">{idx + 1}</span>
+                <span className="font-mono text-xs text-slate-900">{idx + 1}</span>
 
                 {editing ? (
                   <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
@@ -192,7 +192,7 @@ export const StepTabs: React.FC<StepTabsProps> = ({
                         renameError ? 'border-red-500' : 'border-blue-500'
                       }`}
                     />
-                    <button type="button" onMouseDown={e => e.preventDefault()} onClick={commitRename} disabled={!!renameError} className="text-emerald-600 hover:text-emerald-500 p-0.5 disabled:opacity-30" aria-label="Save step name">
+                    <button type="button" onMouseDown={e => e.preventDefault()} onClick={commitRename} disabled={!!renameError} className="text-emerald-800 hover:text-emerald-500 p-0.5 disabled:opacity-30" aria-label="Save step name">
                       <Check className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -203,7 +203,7 @@ export const StepTabs: React.FC<StepTabsProps> = ({
                 )}
 
                 {errors > 0 && (
-                  <span className="flex items-center gap-0.5 px-1.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 text-[10px] font-bold" title={`${errors} blocking error${errors > 1 ? 's' : ''} in this step`}>
+                  <span className="flex items-center gap-0.5 px-1.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-500 text-xs font-bold" title={`${errors} blocking error${errors > 1 ? 's' : ''} in this step`}>
                     <AlertCircle className="w-3 h-3" />
                     {errors}
                   </span>
@@ -244,23 +244,23 @@ export const StepTabs: React.FC<StepTabsProps> = ({
               </div>
 
               {/* Badges: resolved counts, search, statistics */}
-              <div className={`flex items-center gap-1.5 text-[10px] font-mono font-normal ${badgesStale ? 'opacity-50' : ''}`}>
-                <span className="text-slate-500 dark:text-slate-400" title="Independent FIT coordinates and residues in scope, as resolved by ChemEx">
+              <div className={`flex items-center gap-1.5 text-xs font-mono font-normal ${badgesStale ? 'opacity-50' : ''}`}>
+                <span className="text-slate-900 dark:text-slate-200" title="Independent FIT coordinates and residues in scope, as resolved by ChemEx">
                   {badgeText ?? '— coords'}
                 </span>
                 {badge?.coords === 0 && (
                   <span title="No FIT coordinates in this step">
-                    <AlertCircle className="w-3 h-3 text-amber-500" />
+                    <AlertCircle className="w-3 h-3 text-amber-800" />
                   </span>
                 )}
                 {badge?.search === 'grid' && (
                   <span title="SEARCH.GRID">
-                    <Grid3x3 className="w-3 h-3 text-amber-500" />
+                    <Grid3x3 className="w-3 h-3 text-amber-800" />
                   </span>
                 )}
                 {badge?.search === 'de' && (
                   <span title="SEARCH.DE">
-                    <Shuffle className="w-3 h-3 text-amber-500" />
+                    <Shuffle className="w-3 h-3 text-amber-800" />
                   </span>
                 )}
                 {badge && badge.statistics.length > 0 && (
@@ -276,10 +276,10 @@ export const StepTabs: React.FC<StepTabsProps> = ({
               )}
 
               {editing && (renameError || hasResults(name)) && (
-                <div className="absolute top-full left-0 mt-1 z-30 w-72 p-2 rounded-lg border shadow-lg text-[11px] font-normal bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
-                  {renameError && <p className="text-red-600 dark:text-red-400">{renameError}</p>}
+                <div className="absolute top-full left-0 mt-1 z-30 w-72 p-2 rounded-lg border shadow-lg text-xs font-normal bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+                  {renameError && <p className="text-red-600 dark:text-red-500">{renameError}</p>}
                   {hasResults(name) && (
-                    <p className="text-amber-700 dark:text-amber-300">
+                    <p className="text-amber-800 dark:text-amber-400">
                       The last run's results for this step stay under <span className="font-mono">{name}</span>; the Results tab keeps showing them by
                       that name until you re-run.
                     </p>
@@ -294,7 +294,7 @@ export const StepTabs: React.FC<StepTabsProps> = ({
           <button
             type="button"
             onClick={onAddStep}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-blue-600 dark:text-blue-400 border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-400 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-blue-700 dark:text-blue-500 border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-400 transition-colors shadow-sm"
             title="Add a new fitting step"
           >
             <Plus className="w-3.5 h-3.5" />

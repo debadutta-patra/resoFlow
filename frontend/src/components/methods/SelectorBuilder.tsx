@@ -21,7 +21,7 @@ import {
 } from '../../lib/methodGrammar';
 
 const selectorInputCls =
-  'text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
+  'text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
 
 export interface SelectorBuilderProps {
   value: string;
@@ -93,13 +93,13 @@ export const SelectorBuilder: React.FC<SelectorBuilderProps> = ({
             type="button"
             disabled={readOnly || structure === null}
             onClick={() => setRaw(false)}
-            className="p-1 rounded text-slate-400 hover:text-blue-500 disabled:opacity-40"
+            className="p-1 rounded text-slate-900 hover:text-blue-500 disabled:opacity-40"
             title={structure === null ? 'Fix the selector to switch back to the builder' : 'Switch to the selector builder'}
           >
             <Code className="w-3.5 h-3.5" />
           </button>
         </div>
-        {message && <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400">{message}</p>}
+        {message && <p className="mt-0.5 text-xs text-red-600 dark:text-red-500">{message}</p>}
       </div>
     );
   }
@@ -132,10 +132,10 @@ export const SelectorBuilder: React.FC<SelectorBuilderProps> = ({
           return (
             <span
               key={q.key}
-              className="inline-flex items-center gap-1 pl-1.5 pr-0.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 text-[11px]"
+              className="inline-flex items-center gap-1 pl-1.5 pr-0.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 text-xs"
               title={QUALIFIER_HELP[q.key]}
             >
-              <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300">{q.key}→</span>
+              <span className="font-mono font-bold text-indigo-800 dark:text-indigo-500">{q.key}→</span>
               <input
                 type="text"
                 list={listId}
@@ -146,7 +146,7 @@ export const SelectorBuilder: React.FC<SelectorBuilderProps> = ({
                 onChange={e =>
                   emit({ ...sel, qualifiers: sel.qualifiers.map((x, i) => (i === qi ? { ...x, value: e.target.value.replace(/,/g, '') } : x)) })
                 }
-                className="bg-transparent font-mono text-slate-800 dark:text-slate-100 outline-none min-w-0"
+                className="bg-transparent font-mono text-slate-900 dark:text-slate-100 outline-none min-w-0"
               />
               <datalist id={listId}>
                 {suggestions.map(s => (
@@ -158,7 +158,7 @@ export const SelectorBuilder: React.FC<SelectorBuilderProps> = ({
                   type="button"
                   aria-label={`Remove ${q.key}`}
                   onClick={() => emit({ ...sel, qualifiers: sel.qualifiers.filter((_, i) => i !== qi) })}
-                  className="p-0.5 rounded text-indigo-400 hover:text-red-500"
+                  className="p-0.5 rounded text-indigo-800 hover:text-red-500"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -168,7 +168,7 @@ export const SelectorBuilder: React.FC<SelectorBuilderProps> = ({
         })}
 
         {!readOnly && usedKeys.size < QUALIFIER_KEYS.length && (
-          <span className="inline-flex items-center gap-0.5 text-slate-400">
+          <span className="inline-flex items-center gap-0.5 text-slate-900">
             <Plus className="w-3 h-3" />
             <select
               aria-label="Add qualifier"
@@ -180,7 +180,7 @@ export const SelectorBuilder: React.FC<SelectorBuilderProps> = ({
                 const first = qualifierSuggestions(catalog, sel.name, key)[0] ?? '';
                 emit({ ...sel, qualifiers: [...sel.qualifiers, { key, value: first }] });
               }}
-              className="text-[11px] bg-transparent border-none outline-none text-slate-500 dark:text-slate-400 cursor-pointer"
+              className="text-xs bg-transparent border-none outline-none text-slate-900 dark:text-slate-200 cursor-pointer"
             >
               <option value="">qualifier</option>
               {QUALIFIER_KEYS.filter(k => !usedKeys.has(k)).map(k => {
@@ -200,14 +200,14 @@ export const SelectorBuilder: React.FC<SelectorBuilderProps> = ({
           type="button"
           disabled={readOnly}
           onClick={() => setRaw(true)}
-          className="p-1 rounded text-slate-400 hover:text-blue-500 disabled:opacity-40"
+          className="p-1 rounded text-slate-900 hover:text-blue-500 disabled:opacity-40"
           title="Edit as raw text"
           aria-label="Edit selector as raw text"
         >
           <Code className="w-3.5 h-3.5" />
         </button>
       </div>
-      {message && <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-400">{message}</p>}
+      {message && <p className="mt-0.5 text-xs text-red-600 dark:text-red-500">{message}</p>}
     </div>
   );
 };

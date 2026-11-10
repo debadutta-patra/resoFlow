@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlaskConical, Lock, Sparkles, Upload, Workflow } from 'lucide-react';
+import { BookmarkPlus, FlaskConical, FlaskRound, History, Lock, Redo2, Sparkles, Undo2, Upload, Workflow } from 'lucide-react';
 import type { StartingProvenance } from '../../lib/parameterConfig';
 import type { MethodEditor } from '../../hooks/useMethodEditor';
 import { METHOD_TEMPLATES, additionTarget, type MethodAdditionTemplate, type MethodTemplate } from '../../lib/methodTemplates';
@@ -26,6 +26,13 @@ import { overviewStep, stepResultBadge, type StepResultBadge } from '../../lib/r
 import McmcDiagnosticsTab from './McmcDiagnosticsTab';
 import { toMcmcMethodData } from './StatisticsResultsSection';
 import GridLandscape from './GridLandscape';
+import PipelineStrip from './PipelineStrip';
+import { LoadFromRunModal, SaveTemplateModal, TestRunModal } from './MethodWorkflowModals';
+import { useUserPreferences } from '../../hooks/useUserPreferences';
+import type { StoredMethodTemplate } from '../../hooks/useProjectSettings';
+import type { MethodConfig } from '../../lib/methodConfig';
+import { STEP_SECTIONS, sectionCounts, sectionDomId } from '../../lib/issueSections';
+import { methodRuntime, runtimeText, stepRuntime, stepSummaryText } from '../../lib/stepSummary';
 import ResiduePreview from './ResiduePreview';
 import { availableChipMetrics, chipMetricValues, gapNumbers, type ChipMetric, type PickLike } from '../../lib/residueMetrics';
 import { sequenceRange } from '../../lib/sequence';
@@ -95,6 +102,33 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
     () => labelWithSequence(residueItems, sequence, projectSettings.sequence_offset),
     [residueItems, sequence, projectSettings.sequence_offset]
   );
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [showLoadRun, setShowLoadRun] = useState(false);
+  const [showTestRun, setShowTestRun] = useState(false);
+  const userPrefs = useUserPreferences();
+  const userTemplates = useMemo(
+    () => [
+      ...projectSettings.method_templates.map(t => ({ ...t, scope: 'project' as const })),
+      ...userPrefs.prefs.method_templates.map(t => ({ ...t, scope: 'user' as const })),
+    ],
+    [projectSettings.method_templates, userPrefs.prefs.method_templates]
+  );
+  const saveTemplate = async ({ name, description, scope }: { name: string; description: string; scope: 'project' | 'user' }) => {
+    const entry: StoredMethodTemplate = {
+      id: `tmpl_${Date.now().toString(36)}`,
+      name,
+      description,
+      family: editor.family,
+      config: JSON.parse(JSON.stringify(editor.methodConfigForSave)),
+      created_at: new Date().toISOString(),
+    };
+    const ok =
+      scope === 'project'
+        ? await editor.projectSettings.update({ method_templates: [...projectSettings.method_templates.filter(t => t.name !== name), entry] })
+        : await userPrefs.update({ method_templates: [...userPrefs.prefs.method_templates.filter(t => t.name !== name), entry] });
+    if (ok) notify?.(`Saved template "${name}"`);
+    return ok;
+  };
   const residueTypesKnown = useMemo(() => labeledResidues.some(itemHasType), [labeledResidues]);
   const gaps = useMemo(
     () => gapNumbers(residueItems, sequence ? sequenceRange(sequence, projectSettings.sequence_offset) : null),
@@ -182,7 +216,52 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
     // τ is cached in the run overview (not in the parsed diagnostics model).
     return { ...data, diagnostics: { ...(data.diagnostics ?? {}), tau_max: ov?.tau_max ?? undefined } };
   }, [mcmcStep, resultsSteps, editor.runOverview.overview]);
+  // Residues fitted in the active step (per-residue overrides in the table).
+  const stepResidueIds = useMemo(() => {
+    const withData = residueItems.filter(r => r.hasData).map(r => r.id);
+    if (activeStep.residueMode === 'include') return withData.filter(id => activeStep.residues.includes(id));
+    if (activeStep.residueMode === 'exclude') return withData.filter(id => !activeStep.residues.includes(id));
+    return withData;
+  }, [residueItems, activeStep.residueMode, activeStep.residues]);
+  // E1/E2: generated step summary, per-step and whole-method runtime from the last run's timings.
+  const runtimes = useMemo(
+    () =>
+      methodConfig.steps.map((s, i) => {
+        const name = stepDisplayName(s, i);
+        const resolved = stale ? undefined : report?.steps.find(r => r.name === name);
+        return { name, resolved, runtime: stepRuntime(s, name, resolved, editor.stepTimings, editor.runWorkers, editor.testTimings) };
+      }),
+    [methodConfig.steps, report, stale, editor.stepTimings, editor.runWorkers, editor.testTimings]
+  );
+  const activeSummary = stepSummaryText(activeStep, runtimes[editor.activeStepIdx]?.resolved, runtimes[editor.activeStepIdx]?.runtime ?? null);
+  const totalRuntime = runtimeText(methodRuntime(methodConfig.steps.map((s, i) => ({ step: s, name: runtimes[i].name, resolved: runtimes[i].resolved })), editor.stepTimings, editor.runWorkers, editor.testTimings));
+  const pipelineInfo = runtimes.map(r => ({
+    residues: r.resolved && !r.resolved.error ? new Set(r.resolved.parameters.filter(p => p.spin).map(p => p.spin)).size : null,
+    runtime: runtimeText(r.runtime),
+  }));
+  const sectionIssueCounts = useMemo(() => sectionCounts(editor.validationErrors.filter(e => e.stepId === activeStep.id)), [editor.validationErrors, activeStep.id]);
   const stepsWithResults = useMemo(() => new Set(Object.keys(committedByStep ?? {})), [committedByStep]);
+
+  // Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z (and Ctrl+Y). Text fields keep their native undo.
+  const { undo, redo } = editor;
+  useEffect(() => {
+    if (readOnly || editor.isRawEditMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readOnly, editor.isRawEditMode, undo, redo]);
 
   // "Mixed · N rules" → highlight and scroll to the rules targeting that parameter.
   const [highlighted, setHighlighted] = useState<Set<string>>(() => new Set());
@@ -206,18 +285,56 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   return (
     <div className="space-y-6 animate-in fade-in">
       <ChemexTabHeader
-        icon={<Workflow className="w-5 h-5 text-blue-500" />}
+        icon={<Workflow className="w-5 h-5 text-blue-700" />}
         title="ChemEx Method Configuration"
         description="ChemEx v2 method (FORMAT_VERSION = 2): ordered steps with parameter roles, role inheritance, optional GRID/DE search, profile selection and statistics."
         actions={
           <>
             <button type="button" disabled={readOnly} onClick={() => setShowTemplates(true)} className={`${actionBtnAccent} disabled:opacity-50 disabled:cursor-not-allowed`}>
-              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+              <Sparkles className="w-3.5 h-3.5 text-blue-700" />
               <span>Templates</span>
             </button>
             <button type="button" disabled={readOnly} onClick={() => setShowImport(true)} className={`${actionBtnNeutral} disabled:opacity-50 disabled:cursor-not-allowed`}>
               <Upload className="w-3.5 h-3.5" />
               <span>Import TOML</span>
+            </button>
+            <button
+              type="button"
+              onClick={editor.undo}
+              disabled={readOnly || !editor.canUndo}
+              className={`${actionBtnNeutral} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title="Undo (Ctrl/Cmd+Z)"
+              aria-label="Undo"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={editor.redo}
+              disabled={readOnly || !editor.canRedo}
+              className={`${actionBtnNeutral} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title="Redo (Ctrl/Cmd+Shift+Z)"
+              aria-label="Redo"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+            <button type="button" disabled={readOnly} onClick={() => setShowSaveTemplate(true)} className={`${actionBtnNeutral} disabled:opacity-50`} title="Save the current method as a project or personal template">
+              <BookmarkPlus className="w-3.5 h-3.5" />
+              <span>Save as template</span>
+            </button>
+            <button type="button" disabled={readOnly} onClick={() => setShowLoadRun(true)} className={`${actionBtnNeutral} disabled:opacity-50`} title="Load the method a completed run used">
+              <History className="w-3.5 h-3.5" />
+              <span>Load from run…</span>
+            </button>
+            <button
+              type="button"
+              disabled={readOnly || editor.blockingErrors.length > 0 || residueItems.every(r => !r.hasData)}
+              onClick={() => setShowTestRun(true)}
+              className={`${actionBtnNeutral} disabled:opacity-50`}
+              title={editor.blockingErrors.length > 0 ? 'Fix the method errors first' : 'Run this method quickly on one residue (no statistics, ≤ 3 grid points per axis)'}
+            >
+              <FlaskRound className="w-3.5 h-3.5" />
+              <span>Test on 1 residue</span>
             </button>
             <button type="button" onClick={() => setShowChecks(true)} className={actionBtnNeutral} title="Scientific checks for this project">
               <FlaskConical className="w-3.5 h-3.5" />
@@ -231,7 +348,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
       {readOnly && (
         <div
           role="status"
-          className="flex items-center gap-2 p-3 rounded-xl border border-blue-200 dark:border-blue-800/80 bg-blue-50 dark:bg-blue-950/40 text-xs text-blue-800 dark:text-blue-200"
+          className="flex items-center gap-2 p-3 rounded-xl border border-blue-200 dark:border-blue-800/80 bg-blue-50 dark:bg-blue-950/40 text-xs text-blue-800 dark:text-blue-500"
         >
           <Lock className="w-3.5 h-3.5 flex-shrink-0" />
           <span>
@@ -270,7 +387,14 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
           readOnly={readOnly}
         />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
+          <PipelineStrip
+            steps={methodConfig.steps}
+            activeIdx={editor.activeStepIdx}
+            onSelect={editor.stepHandlers.onSelectStep}
+            info={pipelineInfo}
+            totalRuntime={totalRuntime}
+          />
           <StepTabs
             steps={methodConfig.steps}
             activeStepIdx={editor.activeStepIdx}
@@ -284,129 +408,169 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             onOpenMcmc={idx => setMcmcStep(stepDisplayName(methodConfig.steps[idx], idx))}
           />
 
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-              Parameters for Step: <span className="font-mono text-blue-600 dark:text-blue-400">{activeStep.name}</span>
-            </h4>
-            <ParameterTable
-              step={activeStep}
-              onChange={editor.handleStepChange}
-              availableParams={editor.availableParamsMeta}
-              startingValues={startingValues}
-              onNavigateToParameters={onNavigateToParameters}
-              searchTargets={searchTargets}
-              baselineRoles={editor.baselineRoles}
-              stepIndex={editor.activeStepIdx}
-              previousStepName={editor.activeStepIdx > 0 ? methodConfig.steps[editor.activeStepIdx - 1]?.name : undefined}
-              committedByStep={committedByStep}
-              startingProvenance={startingProvenance}
+          <nav
+            aria-label="Step sections"
+            className="sticky z-20 flex flex-wrap gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-2 py-1 text-xs"
+            style={{ top: 'env(safe-area-inset-top, 0px)' }}
+          >
+            {STEP_SECTIONS.map(sec => (
+              <a
+                key={sec.id}
+                href={`#${sectionDomId(sec.id)}`}
+                onClick={e => {
+                  e.preventDefault();
+                  document.getElementById(sectionDomId(sec.id))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="px-2 py-0.5 rounded-md text-slate-900 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                {sec.label}
+                {sectionIssueCounts[sec.id] > 0 && (
+                  <span className="ml-1 px-1.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-200 dark:text-amber-700 font-semibold" data-testid={`nav-count-${sec.id}`}>
+                    {sectionIssueCounts[sec.id]}
+                  </span>
+                )}
+              </a>
+            ))}
+          </nav>
+
+          <section id={sectionDomId('summary')} aria-label="Step summary" className="scroll-mt-12 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-900 dark:text-slate-200" data-testid="step-summary">
+            <span className="font-mono font-bold mr-2">{activeStep.name}</span>
+            {activeSummary}
+          </section>
+
+          <div id={sectionDomId('residues')} className="scroll-mt-12">
+            <ResidueSelector
+              residues={labeledResidues}
+              residueTypesKnown={residueTypesKnown}
+              onImportSequence={() => setShowSequence(true)}
+              gaps={gaps}
+              metric={metricOptions.length ? { options: metricOptions, active: chipMetric, values: chipValues, onChange: setChipMetricChoice } : undefined}
+              renderPreview={
+                profiles
+                  ? item => (
+                      <ResiduePreview
+                        projectUuid={editor.projectUuid}
+                        analysisUuid={analysisUuid}
+                        residue={item.id}
+                        stepName={metricRunStep?.name ?? null}
+                        profile={profileById.get(item.id)}
+                        csA={picks?.[item.id]?.cs_a ?? null}
+                        csB={picks?.[item.id]?.cs_b ?? null}
+                      />
+                    )
+                  : undefined
+              }
+              namedSelections={namedSelections}
+              onSaveSelection={(name, residues) =>
+                editor.projectSettings.update({
+                  named_selections: [
+                    ...namedSelections.filter(n => n.name !== name),
+                    { id: `sel_${Date.now().toString(36)}`, name, residues, created_at: new Date().toISOString() },
+                  ],
+                })
+              }
+              onDeleteSelection={id => editor.projectSettings.update({ named_selections: namedSelections.filter(n => n.id !== id) })}
+              mode={activeStep.residueMode || 'all'}
+              selectedIds={activeStep.residues || []}
+              onModeChange={residueMode => editor.handleStepChange({ ...activeStep, residueMode })}
+              onSelectionChange={residues => editor.handleStepChange({ ...activeStep, residues })}
               readOnly={readOnly}
-              resolvedCounts={resolvedCounts}
-              resolvedParams={resolvedStep?.parameters}
-              committedStep={activeOverview}
-              committedFromPreviousMethod={editor.previousMethod}
-              nameNotes={correlationNotes}
-              onShowRules={showRules}
+              onCopyFromPrevious={
+                editor.activeStepIdx > 0
+                  ? () => {
+                      const prev = methodConfig.steps[editor.activeStepIdx - 1];
+                      editor.handleStepChange({ ...activeStep, residueMode: prev.residueMode, residues: [...(prev.residues || [])] });
+                    }
+                  : undefined
+              }
+              previousStepName={editor.activeStepIdx > 0 ? methodConfig.steps[editor.activeStepIdx - 1]?.name : undefined}
             />
           </div>
 
-          <StepRolesSection
-            step={activeStep}
-            stepIdx={editor.activeStepIdx}
-            steps={methodConfig.steps}
-            onChange={editor.handleStepChange}
-            readOnly={readOnly}
-            paramNames={editor.knownParamNames}
-            catalog={editor.baselineRoles.catalog}
-            chemexErrors={chemexErrors}
-            highlightedRuleIds={highlighted}
-          />
+          <div id={sectionDomId('parameters')} className="scroll-mt-12 space-y-4">
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-200 uppercase tracking-wider">
+                Parameters for Step: <span className="font-mono text-blue-700 dark:text-blue-700">{activeStep.name}</span>
+              </h4>
+              <ParameterTable
+                step={activeStep}
+                onChange={editor.handleStepChange}
+                availableParams={editor.availableParamsMeta}
+                startingValues={startingValues}
+                onNavigateToParameters={onNavigateToParameters}
+                searchTargets={searchTargets}
+                baselineRoles={editor.baselineRoles}
+                stepIndex={editor.activeStepIdx}
+                previousStepName={editor.activeStepIdx > 0 ? methodConfig.steps[editor.activeStepIdx - 1]?.name : undefined}
+                committedByStep={committedByStep}
+                startingProvenance={startingProvenance}
+                readOnly={readOnly}
+                resolvedCounts={resolvedCounts}
+                resolvedParams={resolvedStep?.parameters}
+                committedStep={activeOverview}
+                committedFromPreviousMethod={editor.previousMethod}
+                nameNotes={correlationNotes}
+              stepResidueIds={stepResidueIds}
+                onShowRules={showRules}
+              />
+            </div>
+            <StepRolesSection
+              step={activeStep}
+              stepIdx={editor.activeStepIdx}
+              steps={methodConfig.steps}
+              onChange={editor.handleStepChange}
+              readOnly={readOnly}
+              paramNames={editor.knownParamNames}
+              catalog={editor.baselineRoles.catalog}
+              chemexErrors={chemexErrors}
+              highlightedRuleIds={highlighted}
+            />
+          </div>
 
-          <ResolvedRolesSummary state={editor.resolvedRoles} stepName={activeStep.name || ''} />
+          <div id={sectionDomId('resolved')} className="scroll-mt-12">
+            <ResolvedRolesSummary state={editor.resolvedRoles} stepName={activeStep.name || ''} />
+          </div>
 
-          <StepSearchSection
-            step={activeStep}
-            onChange={editor.handleStepChange}
-            family={editor.family}
-            availableParams={editor.availableParamsMeta}
-            startingValues={startingValues}
-            readOnly={readOnly}
-            catalog={editor.baselineRoles.catalog}
-            resolvedSearch={resolvedStep?.search ?? null}
-            resolvedStale={stale}
-            timings={editor.stepTimings}
-            onAddRefineStep={() => editor.stepHandlers.onAddRefineStep(editor.activeStepIdx)}
-            chemexIssues={activeChemexIssues}
-            runAxisIssues={editor.validationErrors.filter(e => e.stepId === activeStep.id && (e.code === 'grid-edge' || e.code === 'de-edge'))}
-            onApplyFix={editor.applyQuickFix}
-            landscape={
-              activeOverview?.grid ? (
-                <GridLandscape
-                  stepName={activeOverview.name}
-                  grid={activeOverview.grid}
-                  axes={activeStep.search?.axes ?? []}
-                  loadSurface={editor.runOverview.loadSurface}
-                  previousMethod={editor.previousMethod}
-                />
-              ) : undefined
-            }
-          />
+          <div id={sectionDomId('search')} className="scroll-mt-12">
+            <StepSearchSection
+              step={activeStep}
+              onChange={editor.handleStepChange}
+              family={editor.family}
+              availableParams={editor.availableParamsMeta}
+              startingValues={startingValues}
+              readOnly={readOnly}
+              catalog={editor.baselineRoles.catalog}
+              resolvedSearch={resolvedStep?.search ?? null}
+              resolvedStale={stale}
+              timings={editor.stepTimings}
+              onAddRefineStep={() => editor.stepHandlers.onAddRefineStep(editor.activeStepIdx)}
+              chemexIssues={activeChemexIssues}
+              runAxisIssues={editor.validationErrors.filter(e => e.stepId === activeStep.id && (e.code === 'grid-edge' || e.code === 'de-edge'))}
+              onApplyFix={editor.applyQuickFix}
+              landscape={
+                activeOverview?.grid ? (
+                  <GridLandscape
+                    stepName={activeOverview.name}
+                    grid={activeOverview.grid}
+                    axes={activeStep.search?.axes ?? []}
+                    loadSurface={editor.runOverview.loadSurface}
+                    previousMethod={editor.previousMethod}
+                  />
+                ) : undefined
+              }
+            />
+          </div>
 
-          <ResidueSelector
-            residues={labeledResidues}
-            residueTypesKnown={residueTypesKnown}
-            onImportSequence={() => setShowSequence(true)}
-            gaps={gaps}
-            metric={metricOptions.length ? { options: metricOptions, active: chipMetric, values: chipValues, onChange: setChipMetricChoice } : undefined}
-            renderPreview={
-              profiles
-                ? item => (
-                    <ResiduePreview
-                      projectUuid={editor.projectUuid}
-                      analysisUuid={analysisUuid}
-                      residue={item.id}
-                      stepName={metricRunStep?.name ?? null}
-                      profile={profileById.get(item.id)}
-                      csA={picks?.[item.id]?.cs_a ?? null}
-                      csB={picks?.[item.id]?.cs_b ?? null}
-                    />
-                  )
-                : undefined
-            }
-            namedSelections={namedSelections}
-            onSaveSelection={(name, residues) =>
-              editor.projectSettings.update({
-                named_selections: [
-                  ...namedSelections.filter(n => n.name !== name),
-                  { id: `sel_${Date.now().toString(36)}`, name, residues, created_at: new Date().toISOString() },
-                ],
-              })
-            }
-            onDeleteSelection={id => editor.projectSettings.update({ named_selections: namedSelections.filter(n => n.id !== id) })}
-            mode={activeStep.residueMode || 'all'}
-            selectedIds={activeStep.residues || []}
-            onModeChange={residueMode => editor.handleStepChange({ ...activeStep, residueMode })}
-            onSelectionChange={residues => editor.handleStepChange({ ...activeStep, residues })}
-            readOnly={readOnly}
-            onCopyFromPrevious={
-              editor.activeStepIdx > 0
-                ? () => {
-                    const prev = methodConfig.steps[editor.activeStepIdx - 1];
-                    editor.handleStepChange({ ...activeStep, residueMode: prev.residueMode, residues: [...(prev.residues || [])] });
-                  }
-                : undefined
-            }
-            previousStepName={editor.activeStepIdx > 0 ? methodConfig.steps[editor.activeStepIdx - 1]?.name : undefined}
-          />
-
-          <StepStatisticsSection
-            step={activeStep}
-            onChange={editor.handleStepChange}
-            readOnly={readOnly}
-            timings={editor.stepTimings}
-            workers={editor.runWorkers}
-            chemexIssues={activeChemexIssues}
-          />
+          <div id={sectionDomId('statistics')} className="scroll-mt-12">
+            <StepStatisticsSection
+              step={activeStep}
+              onChange={editor.handleStepChange}
+              readOnly={readOnly}
+              timings={editor.stepTimings}
+              workers={editor.runWorkers}
+              chemexIssues={activeChemexIssues}
+            />
+          </div>
         </div>
       )}
       </div>
@@ -433,6 +597,12 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
 
       {showTemplates && (
         <MethodTemplatesModal
+          userTemplates={userTemplates}
+          onDeleteUserTemplate={t =>
+            t.scope === 'project'
+              ? editor.projectSettings.update({ method_templates: projectSettings.method_templates.filter(x => x.id !== t.id) })
+              : userPrefs.update({ method_templates: userPrefs.prefs.method_templates.filter(x => x.id !== t.id) })
+          }
           family={editor.family}
           onClose={() => setShowTemplates(false)}
           onApply={tmpl => {
@@ -440,6 +610,36 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             setShowTemplates(false);
           }}
           additionTarget={t => additionTarget(t, methodConfig, editor.activeStepIdx)}
+        />
+      )}
+      {showSaveTemplate && <SaveTemplateModal onClose={() => setShowSaveTemplate(false)} onSave={saveTemplate} />}
+      {showLoadRun && (
+        <LoadFromRunModal
+          projectUuid={editor.projectUuid}
+          family={editor.family}
+          currentToml={editor.effectiveMethodToml}
+          currentAnalysisUuid={analysisUuid}
+          onClose={() => setShowLoadRun(false)}
+          onLoad={(toml, label) => {
+            const err = editor.importToml(toml);
+            if (err) notify?.(err);
+            else {
+              notify?.(`Loaded the method of ${label}`);
+              setShowLoadRun(false);
+            }
+          }}
+        />
+      )}
+      {showTestRun && (
+        <TestRunModal
+          projectUuid={editor.projectUuid}
+          analysisUuid={analysisUuid}
+          methodToml={editor.effectiveMethodToml}
+          parameterToml={editor.parameterToml}
+          model={editor.model}
+          residues={(stepResidueIds.length ? stepResidueIds : residueItems.filter(r => r.hasData).map(r => r.id))}
+          onClose={() => setShowTestRun(false)}
+          onFinished={editor.refreshTimings}
         />
       )}
       {showChecks && (
@@ -473,7 +673,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             </button>
           }
         >
-          {mcmcData ? <McmcDiagnosticsTab mcmcData={mcmcData} /> : <p className="text-xs text-slate-600 dark:text-slate-300">No MCMC results stored for this step.</p>}
+          {mcmcData ? <McmcDiagnosticsTab mcmcData={mcmcData} /> : <p className="text-xs text-slate-900 dark:text-slate-200">No MCMC results stored for this step.</p>}
         </ChemexModalShell>
       )}
       {showSequence && (
@@ -502,12 +702,15 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
 // ── Templates modal ─────────────────────────────────────────────────────
 
 export const MethodTemplatesModal: React.FC<{
+  /** Project and personal templates (saved methods), shown beside the built-ins. */
+  userTemplates?: Array<StoredMethodTemplate & { scope: 'project' | 'user' }>;
+  onDeleteUserTemplate?: (t: StoredMethodTemplate & { scope: 'project' | 'user' }) => void;
   family?: string;
   onClose: () => void;
   onApply: (template: MethodTemplate) => void;
   /** For addition templates: where they will be added (e.g. "to STEP2"). */
   additionTarget?: (template: MethodAdditionTemplate) => string;
-}> = ({ family, onClose, onApply, additionTarget }) => {
+}> = ({ family, onClose, onApply, additionTarget, userTemplates = [], onDeleteUserTemplate }) => {
   const forFamily = (t: MethodTemplate) => !t.families || t.families.includes((family ?? '') as never);
   const ordered = [...METHOD_TEMPLATES].sort((a, b) => Number(forFamily(b)) - Number(forFamily(a)));
   const sections: Array<{ title: string; items: MethodTemplate[] }> = [
@@ -526,9 +729,40 @@ export const MethodTemplatesModal: React.FC<{
         </button>
       }
     >
+      {userTemplates.length > 0 && (
+        <div className="space-y-2" aria-label="Your templates">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200">Your templates</h4>
+          {userTemplates.map(t => (
+            <div key={`${t.scope}-${t.id}`} className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h5 className="text-sm font-bold text-slate-900 dark:text-white">{t.name}</h5>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-200">{t.scope === 'project' ? 'project' : 'mine'}</span>
+                  <span className="text-xs text-slate-900 dark:text-slate-200">{((t.config as unknown as MethodConfig).steps ?? []).length} step(s)</span>
+                </div>
+                {t.description && <p className="text-xs text-slate-900 dark:text-slate-200">{t.description}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                {onDeleteUserTemplate && (
+                  <button type="button" onClick={() => onDeleteUserTemplate(t)} className="px-2 py-1 text-xs text-red-700 dark:text-red-600 hover:underline">
+                    Delete
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onApply({ id: t.id, kind: 'method', name: t.name, description: t.description, config: t.config as unknown as MethodConfig })}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm whitespace-nowrap"
+                >
+                  Use template
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {sections.map(section => (
         <div key={section.title} className="space-y-2">
-          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{section.title}</h4>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200">{section.title}</h4>
           {section.items.map(tmpl => {
             const steps = tmpl.kind === 'method' ? tmpl.config.steps : [];
             const searchModes = Array.from(new Set(steps.map(s => s.search?.mode).filter(m => m && m !== 'none'))) as string[];
@@ -542,25 +776,25 @@ export const MethodTemplatesModal: React.FC<{
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{tmpl.name}</h4>
                     {tmpl.kind === 'method' && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-bold">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-500 font-bold">
                         {steps.length} step{steps.length > 1 ? 's' : ''}
                       </span>
                     )}
                     {searchModes.map(m => (
-                      <span key={m} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-bold uppercase">
+                      <span key={m} className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 font-bold uppercase">
                         {m}
                       </span>
                     ))}
                     {tmpl.model && tmpl.model !== '2st' && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 font-bold">model {tmpl.model}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 font-bold">model {tmpl.model}</span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">{tmpl.description}</p>
+                  <p className="text-xs text-slate-900 dark:text-slate-200 leading-relaxed max-w-lg">{tmpl.description}</p>
                   {fitParams.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1 pt-1">
-                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">Fitted:</span>
+                      <span className="text-xs text-slate-900 font-semibold uppercase tracking-wider mr-1">Fitted:</span>
                       {fitParams.map(p => (
-                        <span key={p} className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[10px] font-bold">
+                        <span key={p} className="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-200 font-mono text-xs font-bold">
                           {p}
                         </span>
                       ))}
@@ -621,7 +855,7 @@ export const MethodImportModal: React.FC<{
       }
     >
       <div className="space-y-3">
-        <label className="text-xs font-bold text-slate-600 dark:text-slate-400 block">Upload file or paste TOML:</label>
+        <label className="text-xs font-bold text-slate-900 dark:text-slate-200 block">Upload file or paste TOML:</label>
         <input
           type="file"
           accept=".toml,.txt"
@@ -636,7 +870,7 @@ export const MethodImportModal: React.FC<{
             };
             reader.readAsText(file);
           }}
-          className="block w-full text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/30 dark:file:text-blue-300"
+          className="block w-full text-xs text-slate-900 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/30 dark:file:text-blue-300"
         />
         <textarea
           aria-label="Method TOML"
@@ -650,12 +884,12 @@ export const MethodImportModal: React.FC<{
           className={`${chemexInputCls} font-mono text-xs`}
         />
 
-        {preview?.error && <p className="text-xs text-red-600 dark:text-red-400">Cannot parse: {preview.error}</p>}
+        {preview?.error && <p className="text-xs text-red-600 dark:text-red-500">Cannot parse: {preview.error}</p>}
 
         {result && (
           <div className="space-y-2 text-xs" aria-label="Import preview">
-            <p className="text-slate-700 dark:text-slate-300">
-              <span className={`mr-2 px-1.5 py-0.5 rounded font-bold text-[10px] ${result.format === 'v1' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+            <p className="text-slate-900 dark:text-slate-200">
+              <span className={`mr-2 px-1.5 py-0.5 rounded font-bold text-xs ${result.format === 'v1' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-500'}`}>
                 {result.format === 'v1' ? 'VERSION 1' : 'VERSION 2'}
               </span>
               {steps.length} step{steps.length === 1 ? '' : 's'}: <span className="font-mono">{steps.map(s => s.name).join(', ')}</span>
@@ -663,8 +897,8 @@ export const MethodImportModal: React.FC<{
 
             {result.migration.length > 0 && (
               <div className="p-2.5 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30">
-                <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Migration to v2 — what changes</p>
-                <ul className="list-disc pl-4 space-y-0.5 text-amber-900 dark:text-amber-200" aria-label="Migration summary">
+                <p className="font-semibold text-amber-800 dark:text-amber-400 mb-1">Migration to v2 — what changes</p>
+                <ul className="list-disc pl-4 space-y-0.5 text-amber-900 dark:text-amber-400" aria-label="Migration summary">
                   {result.migration.map((m, i) => (
                     <li key={i} className="break-words">
                       {m}
@@ -676,22 +910,22 @@ export const MethodImportModal: React.FC<{
 
             {result.unparsed.length > 0 && (
               <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <p className="font-semibold text-slate-900 dark:text-slate-200 mb-1">
                   {result.unparsed.length} line{result.unparsed.length === 1 ? '' : 's'} will not be in the structured method
                 </p>
-                <ul className="space-y-0.5 font-mono text-[11px] text-slate-600 dark:text-slate-400 max-h-40 overflow-y-auto" aria-label="Not imported">
+                <ul className="space-y-0.5 font-mono text-xs text-slate-900 dark:text-slate-200 max-h-40 overflow-y-auto" aria-label="Not imported">
                   {result.unparsed.map((l, i) => (
                     <li key={i} className="break-all">
                       {l}
                     </li>
                   ))}
                 </ul>
-                <p className="mt-1 text-[11px] text-slate-500">They stay listed above the editor after import; use raw mode to keep them verbatim.</p>
+                <p className="mt-1 text-xs text-slate-900">They stay listed above the editor after import; use raw mode to keep them verbatim.</p>
               </div>
             )}
           </div>
         )}
-        {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+        {error && <p className="text-xs text-red-600 dark:text-red-500">{error}</p>}
       </div>
     </ChemexModalShell>
   );

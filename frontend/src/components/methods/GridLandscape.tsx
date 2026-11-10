@@ -141,10 +141,10 @@ export const GridLandscape: React.FC<GridLandscapeProps> = ({ stepName, grid, ax
 
   return (
     <section aria-label="Last run χ² landscape" className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 space-y-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-900 dark:text-slate-200">
         <span className="font-bold">Last run χ² landscape · {stepName}</span>
         {grid.chisqr !== null && <span className="font-mono">χ²min {fmtValue(grid.chisqr)}</span>}
-        {previousMethod && <span className="text-slate-600 dark:text-slate-400">(previous method)</span>}
+        {previousMethod && <span className="text-slate-900 dark:text-slate-200">(previous method)</span>}
         {pairs.length > 1 && (
           <label className="ml-auto flex items-center gap-1">
             Pair
@@ -166,9 +166,9 @@ export const GridLandscape: React.FC<GridLandscapeProps> = ({ stepName, grid, ax
       {plot ? (
         <Plot data={plot.data as never[]} layout={plot.layout} config={{ displayModeBar: false, responsive: true }} useResizeHandler style={{ width: '100%' }} />
       ) : (
-        <p className="text-xs text-slate-600 dark:text-slate-400">{pair ? 'Loading surface…' : 'No χ² profile stored for this step.'}</p>
+        <p className="text-xs text-slate-900 dark:text-slate-200">{pair ? 'Loading surface…' : 'No χ² profile stored for this step.'}</p>
       )}
-      <p className="text-xs text-slate-600 dark:text-slate-400">
+      <p className="text-xs text-slate-900 dark:text-slate-200">
         <span className="text-red-600 dark:text-red-500">★</span> committed minimum
         {grid.axes.map(a => (a.best !== null ? ` · ${a.param} = ${fmtValue(a.best)}` : '')).join('')} ·{' '}
         <span className="text-amber-800 dark:text-amber-700">dashed</span>: ranges configured now

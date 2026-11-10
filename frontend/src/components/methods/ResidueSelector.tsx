@@ -204,11 +204,11 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             <h4 className="text-sm font-bold text-slate-900 dark:text-white">
               Residue Selection for this Step
             </h4>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200">
               {mode === 'all' ? `All ${availableResidues.length} profiles` : `${selectedIds.length} of ${availableResidues.length} ${mode === 'include' ? 'included' : 'excluded'}`}
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-900 dark:text-slate-200 mt-0.5">
             {mode === 'all'
               ? 'No INCLUDE/EXCLUDE: every profile is fitted in this step. Selection is never inherited from other steps.'
               : mode === 'include'
@@ -216,7 +216,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
                 : 'The selected residues are left out of this step (EXCLUDE).'}
           </p>
           {mode === 'include' && selectedIds.length === 0 && (
-            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">INCLUDE is empty: no profiles would be fitted. Select residues or choose "All profiles".</p>
+            <p className="text-xs text-red-600 dark:text-red-500 mt-0.5">INCLUDE is empty: no profiles would be fitted. Select residues or choose "All profiles".</p>
           )}
         </div>
 
@@ -236,7 +236,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
                 disabled={readOnly}
                 onClick={() => onModeChange(m)}
                 className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
-                  mode === m ? on : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  mode === m ? on : 'text-slate-900 dark:text-slate-200 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -248,7 +248,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             <button
               type="button"
               onClick={onCopyFromPrevious}
-              className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400 hover:text-blue-600"
+              className="flex items-center gap-1 text-xs text-slate-900 dark:text-slate-200 hover:text-blue-600"
               title="Selection is step-local in ChemEx v2; this copies the previous step's INCLUDE/EXCLUDE once"
             >
               <Copy className="w-3 h-3" /> Copy from previous step{previousStepName ? ` (${previousStepName})` : ''}
@@ -262,13 +262,13 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
         {/* Search Input */}
         <div className="md:col-span-4 relative">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-900" />
           <input
             type="text"
             value={filterText}
             onChange={e => setFilterText(e.target.value)}
             placeholder={residueTypesKnown ? 'Search residues (e.g. 14, G14, Gly)...' : 'Search residues by number (e.g. 14)...'}
-            className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
           />
           {!residueTypesKnown && onImportSequence && !readOnly && (
             <button
@@ -281,7 +281,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             </button>
           )}
           {hasMinorData && (
-            <label className="mt-1 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer" title="Residues where a minor-state (B) shift was picked in Pick CEST">
+            <label className="mt-1 flex items-center gap-1.5 text-xs text-slate-900 dark:text-slate-200 cursor-pointer" title="Residues where a minor-state (B) shift was picked in Pick CEST">
               <input type="checkbox" checked={onlyMinor} onChange={e => setOnlyMinor(e.target.checked)} />
               Only residues with a picked minor-state dip
             </label>
@@ -296,12 +296,12 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             value={rangeInput}
             onChange={e => setRangeInput(e.target.value)}
             placeholder="Range: 13-15, 25, 40-44"
-            className="flex-grow text-xs font-mono px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-grow text-xs font-mono px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
           />
           <button
             type="submit"
             disabled={readOnly || !rangeInput.trim()}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 whitespace-nowrap disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 whitespace-nowrap disabled:opacity-50 transition-colors"
           >
             Add Range
           </button>
@@ -313,7 +313,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             type="button"
             disabled={readOnly}
             onClick={handleSelectAll}
-            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700"
+            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700"
             title={filtering ? "Add the residues shown by the filter" : "Select all residues with data"}
           >
             <CheckSquare className="w-3.5 h-3.5" />
@@ -323,7 +323,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             type="button"
             disabled={readOnly}
             onClick={handleSelectNone}
-            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700"
+            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700"
             title="Clear Selection"
           >
             <Square className="w-3.5 h-3.5" />
@@ -333,7 +333,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             type="button"
             disabled={readOnly}
             onClick={handleInvert}
-            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700"
+            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700"
             title="Invert Selection"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -343,13 +343,13 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
       </div>
 
       {rangeError && (
-        <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-2 rounded-lg">
+        <div className="text-xs text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-2 rounded-lg">
           {rangeError}
         </div>
       )}
 
       {/* Named selections, shading legend, gap toggle, hover preview */}
-      <div className="flex flex-wrap items-start gap-3 text-xs text-slate-700 dark:text-slate-300">
+      <div className="flex flex-wrap items-start gap-3 text-xs text-slate-900 dark:text-slate-200">
         {(onSaveSelection || namedSelections.length > 0) && (
           <div className="relative">
             <button
@@ -362,7 +362,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             </button>
             {showSelections && (
               <div role="menu" aria-label="Named selections" className="absolute z-30 mt-1 w-72 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg p-2 space-y-1">
-                {namedSelections.length === 0 && <p className="text-slate-600 dark:text-slate-400">No saved selections in this project yet.</p>}
+                {namedSelections.length === 0 && <p className="text-slate-900 dark:text-slate-200">No saved selections in this project yet.</p>}
                 {namedSelections.map(sel => {
                   const usable = sel.residues.filter(r => availableResidues.some(a => a.id === r));
                   return (
@@ -379,12 +379,12 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
                         title={sel.residues.join(', ')}
                       >
                         <span className="font-semibold">{sel.name}</span>{' '}
-                        <span className="text-slate-600 dark:text-slate-400">
+                        <span className="text-slate-900 dark:text-slate-200">
                           {usable.length}/{sel.residues.length} res
                         </span>
                       </button>
                       {onDeleteSelection && !readOnly && (
-                        <button type="button" aria-label={`Delete selection ${sel.name}`} onClick={() => onDeleteSelection(sel.id)} className="p-1 text-slate-500 hover:text-red-600">
+                        <button type="button" aria-label={`Delete selection ${sel.name}`} onClick={() => onDeleteSelection(sel.id)} className="p-1 text-slate-900 hover:text-red-600">
                           <Trash2 className="w-3 h-3" />
                         </button>
                       )}
@@ -463,7 +463,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
       {/* Chip Grid with Accessible Checkmarks & Shift-click Contiguous Select */}
       <div className="flex flex-wrap gap-2 p-2 rounded-xl bg-slate-50/75 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 max-h-72 overflow-y-auto">
         {visibleResidues.length === 0 ? (
-          <div className="w-full text-center py-6 text-xs text-slate-400">
+          <div className="w-full text-center py-6 text-xs text-slate-900">
             No residues match the current filter.
           </div>
         ) : (
@@ -475,7 +475,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
                   data-testid="gap-chip"
                   aria-hidden="true"
                   title={`${entry.n}: no data (e.g. proline or unassigned)`}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-mono border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-500 select-none"
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-mono border border-dashed border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200 select-none"
                 >
                   {entry.n}
                 </span>
@@ -488,7 +488,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
             let chipCls = '';
             if (isDisabled) {
               chipCls =
-                'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed line-through';
+                'bg-slate-100 dark:bg-slate-800/50 text-slate-900 dark:text-slate-200 border-slate-200 dark:border-slate-800 cursor-not-allowed line-through';
             } else if (isSelected) {
               chipCls =
                 mode === 'include'
@@ -496,7 +496,7 @@ export const ResidueSelector: React.FC<ResidueSelectorProps> = ({
                   : 'bg-red-500 hover:bg-red-600 text-white border-red-600 shadow-sm';
             } else {
               chipCls =
-                'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+                'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 border-slate-200 dark:border-slate-700';
             }
 
             const mv = metric?.active ? metric.values[res.id] : undefined;

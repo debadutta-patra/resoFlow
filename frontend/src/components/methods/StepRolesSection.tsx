@@ -36,11 +36,11 @@ interface StepRolesSectionProps {
 }
 
 const selectCls =
-  'text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
+  'text-xs font-mono px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60';
 
 const ACTION_CLS: Record<RoleAction, string> = {
-  FIT: 'text-blue-600 dark:text-blue-400',
-  FIX: 'text-slate-600 dark:text-slate-300',
+  FIT: 'text-blue-700 dark:text-blue-500',
+  FIX: 'text-slate-900 dark:text-slate-200',
   CONSTRAIN: 'text-purple-600 dark:text-purple-400',
 };
 
@@ -108,12 +108,12 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
           type="button"
           onClick={() => setIsOpen(!open)}
           aria-expanded={open}
-          className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+          className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400"
         >
           {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          <ListOrdered className="w-4 h-4 text-indigo-500" />
+          <ListOrdered className="w-4 h-4 text-indigo-800" />
           <span>Ordered Roles (ROLES) — applied top to bottom, later entries win</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-500 font-mono font-bold">
             {rolesFrom.status === 'none' ? 'baseline' : `from ${rolesFrom.name}${rolesFrom.status === 'ok' ? '' : ' ⚠'}`} · {tableCount + rules.filter(r => r.entries.some(e => e.trim())).length} actions
           </span>
         </button>
@@ -122,7 +122,7 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
       {open && (
         <div className="p-4 space-y-4 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="font-semibold text-slate-600 dark:text-slate-300" htmlFor={`roles-from-${step.id}`}>
+            <label className="font-semibold text-slate-900 dark:text-slate-200" htmlFor={`roles-from-${step.id}`}>
               Start roles from:
             </label>
             <select
@@ -147,15 +147,15 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
                 </option>
               )}
             </select>
-            {rolesFromMsg && <p className="w-full text-[11px] text-red-600 dark:text-red-400">{rolesFromMsg}</p>}
+            {rolesFromMsg && <p className="w-full text-xs text-red-600 dark:text-red-500">{rolesFromMsg}</p>}
             {chemexErrors
               .filter(e => e.source?.field === 'ROLES_FROM')
               .map((e, i) => (
-                <p key={`rf-${i}`} className="w-full text-[11px] text-red-600 dark:text-red-400">
+                <p key={`rf-${i}`} className="w-full text-xs text-red-600 dark:text-red-500">
                   ChemEx: {e.message}
                 </p>
               ))}
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 max-w-xl">
+            <span className="text-xs text-slate-900 dark:text-slate-200 max-w-xl">
               Copies only roles and constraints — not values, residue selection, search, statistics or seeds. Values always continue from the
               latest committed fit.
             </span>
@@ -164,18 +164,18 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
           <ol className="space-y-2" aria-label="Ordered ROLES actions">
             {tableCount > 0 && (
               <li className="p-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30">
-                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">From the parameter table (applied first)</div>
+                <div className="text-xs font-semibold text-slate-900 dark:text-slate-200 mb-1">From the parameter table (applied first)</div>
                 <ul className="space-y-0.5">
                   {tableActions.map((a, i) => (
                     <li key={a.action} className="flex items-start gap-2 font-mono">
-                      <span className="text-slate-400 w-6 text-right">{i + 1}.</span>
+                      <span className="text-slate-900 w-6 text-right">{i + 1}.</span>
                       <span className={`font-bold w-20 ${ACTION_CLS[a.action]}`}>{a.action}</span>
-                      <span className="text-slate-700 dark:text-slate-300 break-all">{a.entries.join(', ')}</span>
+                      <span className="text-slate-900 dark:text-slate-200 break-all">{a.entries.join(', ')}</span>
                     </li>
                   ))}
                 </ul>
                 {tableErrors.map(m => (
-                  <p key={m} className="mt-1 text-[11px] text-red-600 dark:text-red-400">
+                  <p key={m} className="mt-1 text-xs text-red-600 dark:text-red-500">
                     {m}
                   </p>
                 ))}
@@ -223,7 +223,7 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
                 >
                   {!readOnly && (
                     <span
-                      className="pt-1 cursor-grab active:cursor-grabbing text-slate-400"
+                      className="pt-1 cursor-grab active:cursor-grabbing text-slate-900"
                       title="Drag to change precedence"
                       onMouseDown={() => setArmedId(rule.id)}
                       onMouseUp={() => setArmedId(null)}
@@ -231,7 +231,7 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
                       <GripVertical className="w-3.5 h-3.5" />
                     </span>
                   )}
-                  <span className="pt-1 font-mono text-slate-400 w-6 text-right" aria-label={`ROLES entry ${n}`}>
+                  <span className="pt-1 font-mono text-slate-900 w-6 text-right" aria-label={`ROLES entry ${n}`}>
                     {n}.
                   </span>
                   <select
@@ -271,7 +271,7 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
                               type="button"
                               aria-label={`Remove entry ${ei + 1} of rule ${n}`}
                               onClick={() => updateRule(rule.id, { entries: rule.entries.filter((_, k) => k !== ei) })}
-                              className="p-1 text-slate-400 hover:text-red-500"
+                              className="p-1 text-slate-900 hover:text-red-500"
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -283,23 +283,23 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
                       <button
                         type="button"
                         onClick={() => updateRule(rule.id, { entries: [...rule.entries, ''] })}
-                        className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-blue-600"
+                        className="flex items-center gap-1 text-xs text-slate-900 hover:text-blue-600"
                       >
                         <Plus className="w-3 h-3" /> {rule.action === 'CONSTRAIN' ? 'equation' : 'selector'}
                       </button>
                     )}
-                    {ruleErr && <p className="text-[11px] text-red-600 dark:text-red-400">{ruleErr}</p>}
+                    {ruleErr && <p className="text-xs text-red-600 dark:text-red-500">{ruleErr}</p>}
                   </div>
 
                   {!readOnly && (
                     <div className="flex flex-col">
-                      <button type="button" onClick={() => moveRule(idx, idx - 1)} disabled={idx === 0} className="p-1 text-slate-400 hover:text-blue-500 disabled:opacity-30" aria-label={`Move rule ${n} up`}>
+                      <button type="button" onClick={() => moveRule(idx, idx - 1)} disabled={idx === 0} className="p-1 text-slate-900 hover:text-blue-500 disabled:opacity-30" aria-label={`Move rule ${n} up`}>
                         <ChevronUp className="w-3.5 h-3.5" />
                       </button>
-                      <button type="button" onClick={() => moveRule(idx, idx + 1)} disabled={idx === rules.length - 1} className="p-1 text-slate-400 hover:text-blue-500 disabled:opacity-30" aria-label={`Move rule ${n} down`}>
+                      <button type="button" onClick={() => moveRule(idx, idx + 1)} disabled={idx === rules.length - 1} className="p-1 text-slate-900 hover:text-blue-500 disabled:opacity-30" aria-label={`Move rule ${n} down`}>
                         <ChevronDown className="w-3.5 h-3.5" />
                       </button>
-                      <button type="button" onClick={() => setRules(rules.filter(r => r.id !== rule.id))} className="p-1 text-slate-400 hover:text-red-500" aria-label={`Delete rule ${n}`}>
+                      <button type="button" onClick={() => setRules(rules.filter(r => r.id !== rule.id))} className="p-1 text-slate-900 hover:text-red-500" aria-label={`Delete rule ${n}`}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -311,7 +311,7 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
 
           {!readOnly && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-slate-500 dark:text-slate-400">Add rule:</span>
+              <span className="text-slate-900 dark:text-slate-200">Add rule:</span>
               {(['FIT', 'FIX', 'CONSTRAIN'] as RoleAction[]).map(a => (
                 <button
                   key={a}
@@ -323,7 +323,7 @@ export const StepRolesSection: React.FC<StepRolesSectionProps> = ({
                   {a}
                 </button>
               ))}
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-900 dark:text-slate-200">
                 e.g. FIX all DW_AB in the table, then FIT <code className="font-mono">DW_AB, NUC-&gt;G24N-H</code> here.
               </span>
             </div>

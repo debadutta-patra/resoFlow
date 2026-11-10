@@ -65,7 +65,7 @@ export const StartingValuesMenu: React.FC<StartingValuesMenuProps> = ({ overview
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-50"
         title="Write values from the last completed run into the next run's parameters file"
       >
         <ListRestart className="w-3.5 h-3.5" />
@@ -74,7 +74,7 @@ export const StartingValuesMenu: React.FC<StartingValuesMenuProps> = ({ overview
       </button>
       {open && (
         <div role="menu" className="absolute right-0 z-40 mt-1 w-80 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg py-1">
-          <p className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 border-b border-slate-100 dark:border-slate-700">
+          <p className="px-3 py-1.5 text-xs text-slate-900 dark:text-slate-200 border-b border-slate-100 dark:border-slate-700">
             Next run's parameters file. Within a run, every step already starts from the previous step's committed values.
           </p>
           {actions.map(a => (
@@ -86,7 +86,7 @@ export const StartingValuesMenu: React.FC<StartingValuesMenuProps> = ({ overview
               className="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700"
               title={a.description}
             >
-              <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">{a.label}</span>
+              <span className="block text-xs font-semibold text-slate-900 dark:text-slate-100">{a.label}</span>
             </button>
           ))}
           {onContinueFromRun && (
@@ -100,10 +100,10 @@ export const StartingValuesMenu: React.FC<StartingValuesMenuProps> = ({ overview
               className="w-full text-left px-3 py-1.5 border-t border-slate-100 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
               title="Creates a new analysis whose parameters file is this run's restart.toml (the final committed state); this analysis is unchanged."
             >
-              <span className="flex items-center gap-1 text-xs font-semibold text-slate-800 dark:text-slate-100">
+              <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-100">
                 <FastForward className="w-3 h-3" /> New analysis with {lastStep ?? 'final'} state → parameters
               </span>
-              <span className="block text-xs text-slate-600 dark:text-slate-400">Continue from Run (restart.toml)</span>
+              <span className="block text-xs text-slate-900 dark:text-slate-200">Continue from Run (restart.toml)</span>
             </button>
           )}
         </div>
@@ -135,12 +135,12 @@ export const StartingValuesMenu: React.FC<StartingValuesMenuProps> = ({ overview
           }
         >
           {pending.preview.changes.length === 0 ? (
-            <p className="text-xs text-slate-700 dark:text-slate-300">The parameters file already holds these values.</p>
+            <p className="text-xs text-slate-900 dark:text-slate-200">The parameters file already holds these values.</p>
           ) : (
             <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-xs" aria-label="Starting value changes">
                 <thead>
-                  <tr className="text-left text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                  <tr className="text-left text-slate-900 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700">
                     <th className="py-1 pr-2 font-semibold">Parameter</th>
                     <th className="py-1 pr-2 font-semibold text-right">Now</th>
                     <th className="py-1 font-semibold text-right">New</th>
@@ -149,15 +149,15 @@ export const StartingValuesMenu: React.FC<StartingValuesMenuProps> = ({ overview
                 <tbody className="font-mono">
                   {pending.preview.changes.map(c => (
                     <tr key={`${c.section}-${c.residue}-${c.key}`} className="border-b border-slate-100 dark:border-slate-800">
-                      <td className="py-1 pr-2 text-slate-800 dark:text-slate-200">{c.label}</td>
-                      <td className="py-1 pr-2 text-right text-red-700 dark:text-red-700">{c.oldValue === null ? 'unset' : fmtValue(c.oldValue)}</td>
-                      <td className="py-1 text-right text-emerald-700 dark:text-emerald-700">{fmtValue(c.newValue)}</td>
+                      <td className="py-1 pr-2 text-slate-900 dark:text-slate-200">{c.label}</td>
+                      <td className="py-1 pr-2 text-right text-red-700 dark:text-red-600">{c.oldValue === null ? 'unset' : fmtValue(c.oldValue)}</td>
+                      <td className="py-1 text-right text-emerald-800 dark:text-emerald-700">{fmtValue(c.newValue)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {pending.preview.unchanged > 0 && (
-                <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">{pending.preview.unchanged} value(s) already match.</p>
+                <p className="mt-2 text-xs text-slate-900 dark:text-slate-200">{pending.preview.unchanged} value(s) already match.</p>
               )}
             </div>
           )}

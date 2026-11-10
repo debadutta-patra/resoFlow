@@ -177,7 +177,7 @@ export const JointDistributionModal: React.FC<JointDistributionModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
+            <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-500 border border-indigo-100 dark:border-indigo-900">
               <Layers className="w-5 h-5" />
             </div>
             <div>
@@ -190,15 +190,15 @@ export const JointDistributionModal: React.FC<JointDistributionModalProps> = ({
                     isHighCorr
                       ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800'
                       : absR >= 0.4
-                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border-amber-300 dark:border-amber-800'
-                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-400 border-amber-300 dark:border-amber-800'
+                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-500 border-emerald-300 dark:border-emerald-800'
                   }`}
                 >
                   r = {rVal > 0 ? `+${rVal.toFixed(3)}` : rVal.toFixed(3)}
                   {isHighCorr && ' (High Correlation)'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">
+              <p className="text-xs text-slate-900 font-mono mt-0.5">
                 {labelX.raw} vs {labelY.raw}
               </p>
             </div>
@@ -207,7 +207,7 @@ export const JointDistributionModal: React.FC<JointDistributionModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-1.5 text-slate-900 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -216,8 +216,8 @@ export const JointDistributionModal: React.FC<JointDistributionModalProps> = ({
         {/* Content */}
         <div className="p-6 overflow-y-auto space-y-4">
           {loading && (
-            <div className="h-72 flex flex-col items-center justify-center gap-3 text-slate-400">
-              <Activity className="w-6 h-6 animate-spin text-indigo-500" />
+            <div className="h-72 flex flex-col items-center justify-center gap-3 text-slate-900">
+              <Activity className="w-6 h-6 animate-spin text-indigo-800" />
               <p className="text-sm font-medium">Computing 2D joint density matrix...</p>
             </div>
           )}
