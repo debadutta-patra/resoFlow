@@ -140,13 +140,9 @@ export function configToCpmgToml(config?: ParameterConfig, opts: TomlWriteOption
 
 /** CPMG parameters.toml reader: the shared reader with keys canonicalized. */
 export function cpmgTomlToConfig(tomlText: string): TomlParseResult {
+  // Values pass through unchanged: CPMG alone is insensitive to the sign of DW_AB, but the
+  // sign matters when CEST data is fitted with it, and imports must round-trip losslessly.
   const parsed = tomlToConfig(tomlText);
-  // CPMG dispersion is insensitive to the sign of Δω; keep magnitudes as before.
-  for (const params of Object.values(parsed.config.residues)) {
-    for (const [pKey, pVal] of Object.entries(params)) {
-      if (pKey.startsWith("dw_") && pVal) params[pKey] = { ...pVal, value: Math.abs(pVal.value) };
-    }
-  }
   return {
     config: canonicalizeCpmgResidues({
       ...parsed.config,

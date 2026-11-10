@@ -62,6 +62,8 @@ export interface ResidueParametersTableProps {
   onToggleExclude?: (resKey: string) => void;
   /** ChemEx default values and bounds (backend catalogue); defaults to the static table. */
   defaults?: ParamDefaultsLookup;
+  /** |DW_AB| above which the cell is highlighted (nucleus-aware, from the module). */
+  maxDwWarn?: number;
 }
 
 const BOUND_PARAMS: Array<{ key: 'cs_a' | 'dw_ab' | 'r1_a' | 'r2_a'; label: string }> = [
@@ -127,6 +129,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   renderProfile = defaultRenderProfile,
   onToggleExclude,
   defaults = fallbackDefaults,
+  maxDwWarn = 15,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
@@ -701,7 +704,9 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                   className="px-3 py-2.5 cursor-pointer hover:text-slate-900 dark:hover:text-white"
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>Δω_AB (ppm)</span>
+                    <span title="DW_AB = CS_B − CS_A (ppm). Negative values are valid: state B is upfield of A. CPMG alone is insensitive to the sign; CEST is not.">
+                      DW_AB (CS_B − CS_A, ppm)
+                    </span>
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </th>
@@ -817,7 +822,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                   : `Not in parameters.toml: ChemEx starts DW_AB at ${fmtDefault(defaults('dw_ab')?.value)} ppm`
                             }
                             className={`w-24 px-2 py-1 bg-white dark:bg-slate-950 border rounded text-xs font-mono font-semibold focus:ring-1 focus:ring-blue-500 ${
-                              row.dw_ab != null && Math.abs(row.dw_ab) > 6.0
+                              row.dw_ab != null && Math.abs(row.dw_ab) > maxDwWarn
                                 ? 'border-amber-400 text-amber-700 dark:text-amber-300'
                                 : 'border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
                             }`}

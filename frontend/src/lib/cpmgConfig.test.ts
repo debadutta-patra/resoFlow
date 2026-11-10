@@ -87,11 +87,11 @@ describe('CPMG on the shared parameter model', () => {
     expect(toml).not.toContain('R2_A');
   });
 
-  it('imports TOML onto canonical keys without losing parameters and keeps |DW|', () => {
+  it('imports TOML onto canonical keys without losing parameters, keeping the DW sign', () => {
     const toml = '[GLOBAL]\nPB = 0.05\n\n[CS_A]\n3LYS = 120.185\n# 4ASN = 118.554\n\n[DW_AB]\n3N = -1.2\n';
     const { config } = cpmgTomlToConfig(toml);
     expect(config.residues['3N'].cs_a?.value).toBe(120.185);
-    expect(config.residues['3N'].dw_ab?.value).toBe(1.2);
+    expect(config.residues['3N'].dw_ab?.value).toBe(-1.2); // sign preserved (lossless round-trip)
     expect(config.excludedResidues).toEqual([]); // comments are not exclusions
     expect(config.globals.tauc_a).toBeUndefined(); // not in the file: ChemEx default applies
   });

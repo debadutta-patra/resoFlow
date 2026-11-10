@@ -9,6 +9,7 @@ import React, { useMemo, useState } from 'react';
 import { Activity, AlertTriangle, GitFork, Info, RefreshCw, Sliders, Upload, X } from 'lucide-react';
 import type { ParameterEditor } from '../../hooks/useParameterEditor';
 import type { ParameterTabCapabilities } from '../../lib/experimentPlugin';
+import { getNucleusInfoForModule } from '../../lib/experimentPlugin';
 import type { MethodConfig } from '../../lib/methodConfig';
 import type { ParameterConfig, PickSetData, ProfileRef } from '../../lib/parameterConfig';
 import { isResidueExcluded, seedCsAFromProfiles, unsetStartingParams } from '../../lib/parameterConfig';
@@ -301,6 +302,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
               staleLabel={table.staleLabel}
               renderProfile={capabilities.renderResidueProfile}
               defaults={editor.defaults}
+              maxDwWarn={getNucleusInfoForModule(selectedModule ?? '').maxDwWarn}
             />
           </div>
         </div>

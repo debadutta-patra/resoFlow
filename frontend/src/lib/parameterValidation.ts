@@ -111,7 +111,7 @@ export function validateParameterConfig(
   
   const nucleusRange = options.nucleusRange || options.n15Range || (moduleInfo ? moduleInfo.sanityRange : [100, 135]);
   const nucleusLabel = options.nucleusLabel || (moduleInfo ? moduleInfo.unitLabel : 'ppm (¹⁵N)');
-  const maxDwWarn = options.maxDwWarn ?? (moduleInfo ? moduleInfo.maxDwWarn : 6.0);
+  const maxDwWarn = options.maxDwWarn ?? (moduleInfo ? moduleInfo.maxDwWarn : 15.0);
   const {
     availableResidues = [],
     methodConfig,
@@ -216,8 +216,8 @@ export function validateParameterConfig(
           scope: 'residue',
           residue: resKey,
           paramKey: 'DW_AB',
-          severity: 'warning',
-          message: `|Δω_AB| = ${Math.abs(dw).toFixed(2)} ppm is unusually large (> ${maxDwWarn} ppm). Verify that the B-state pick is assigned correctly.`,
+          severity: 'info',
+          message: `|DW_AB| = ${Math.abs(dw).toFixed(2)} ppm is above ${maxDwWarn} ppm (${nucleusLabel}). Large shift differences do occur (ChemEx's own 15N CEST example uses 12.5 ppm); check the B-state assignment.`,
         });
       }
     }

@@ -89,7 +89,7 @@ export const NUCLEUS_INFO: Record<string, NucleusInfo> = {
     defaultCarrier: 117.0,
     sanityRange: [100.0, 135.0],
     defaultZoomSpan: 20.0,
-    maxDwWarn: 6.0,
+    maxDwWarn: 15.0, // ChemEx's own 15N CEST example reaches 12.5 ppm
   },
   '13C': {
     nucleus: '13C',
@@ -98,7 +98,7 @@ export const NUCLEUS_INFO: Record<string, NucleusInfo> = {
     defaultCarrier: 40.0,
     sanityRange: [0.0, 220.0],
     defaultZoomSpan: 15.0,
-    maxDwWarn: 8.0,
+    maxDwWarn: 20.0,
   },
   '1HN': {
     nucleus: '1H',
@@ -107,7 +107,7 @@ export const NUCLEUS_INFO: Record<string, NucleusInfo> = {
     defaultCarrier: 8.5,
     sanityRange: [6.0, 11.5],
     defaultZoomSpan: 2.0,
-    maxDwWarn: 1.5,
+    maxDwWarn: 3.0,
   },
   '13CH3': {
     nucleus: '1H',
@@ -116,7 +116,7 @@ export const NUCLEUS_INFO: Record<string, NucleusInfo> = {
     defaultCarrier: 1.0,
     sanityRange: [-0.5, 4.0],
     defaultZoomSpan: 1.5,
-    maxDwWarn: 1.5,
+    maxDwWarn: 3.0,
   },
 };
 

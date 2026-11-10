@@ -16,7 +16,7 @@ describe("validateParameterConfig nucleus-aware validation", () => {
         },
         "3N": {
           cs_a: { value: 140.0, source: { kind: "default" } }, // Out of 15N range (100-135)
-          dw_ab: { value: 8.0, source: { kind: "default" } }, // Out of 15N dw warn (6.0)
+          dw_ab: { value: 16.0, source: { kind: "default" } }, // Above the 15N dw info threshold (15)
         },
       },
     };
@@ -28,7 +28,20 @@ describe("validateParameterConfig nucleus-aware validation", () => {
     expect(csaIssue).toBeDefined();
     expect(csaIssue?.message).toContain("outside normal range (100–135)");
     expect(dwIssue).toBeDefined();
-    expect(dwIssue?.message).toContain("unusually large (> 6 ppm)");
+    expect(dwIssue?.message).toContain("above 15 ppm");
+    expect(dwIssue?.severity).toBe("info");
+  });
+
+  it("does not flag ChemEx's own 15N CEST example (12.5 and -6.5 ppm)", () => {
+    const config: ParameterConfig = {
+      globals: {},
+      residues: {
+        "43N": { dw_ab: { value: 12.5, source: { kind: "imported" } } },
+        "55N": { dw_ab: { value: -6.5, source: { kind: "imported" } } },
+      },
+    };
+    const issues = validateParameterConfig(config, { selectedModule: "cest_15n" });
+    expect(issues.filter(i => i.id.startsWith("res-dw-range"))).toHaveLength(0);
   });
 
   it("validates 1H amide parameters without firing 15N range warnings", () => {
@@ -37,11 +50,11 @@ describe("validateParameterConfig nucleus-aware validation", () => {
       residues: {
         "2HN-N": {
           cs_a: { value: 8.3, source: { kind: "default" } }, // Valid 1HN (6.0-11.5)
-          dw_ab: { value: 0.8, source: { kind: "default" } }, // Valid 1HN dw (<= 1.5)
+          dw_ab: { value: 0.8, source: { kind: "default" } }, // Valid 1HN dw (<= 3)
         },
         "3HN-N": {
           cs_a: { value: 4.5, source: { kind: "default" } }, // Out of 1HN range
-          dw_ab: { value: 2.2, source: { kind: "default" } }, // Exceeds 1HN dw threshold (1.5)
+          dw_ab: { value: -3.2, source: { kind: "default" } }, // |DW| exceeds 1HN threshold (3)
         },
       },
     };
@@ -55,7 +68,7 @@ describe("validateParameterConfig nucleus-aware validation", () => {
     expect(csaIssue).toBeDefined();
     expect(csaIssue?.message).toContain("outside normal range (6–11.5)");
     expect(dwIssue).toBeDefined();
-    expect(dwIssue?.message).toContain("unusually large (> 1.5 ppm)");
+    expect(dwIssue?.message).toContain("above 3 ppm");
   });
 
   it("validates 13C parameters without firing 15N range warnings", () => {
