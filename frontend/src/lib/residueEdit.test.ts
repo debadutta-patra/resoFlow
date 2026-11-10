@@ -51,3 +51,12 @@ describe('editResidueValue', () => {
     expect(Object.keys(next.residues)).toEqual(['13N']);
   });
 });
+
+describe('bulkEditResidues', () => {
+  it('applies one edit to many residues, keeping per-residue bounds', async () => {
+    const { bulkEditResidues } = await import('./parameterConfig');
+    const next = bulkEditResidues(base(), ['13N', '14N'], 'cs_a', 115, [], 'now');
+    expect(next.residues['13N'].cs_a).toMatchObject({ value: 115, lower: 100, upper: 120 });
+    expect(next.residues['14N'].cs_a?.value).toBe(115);
+  });
+});

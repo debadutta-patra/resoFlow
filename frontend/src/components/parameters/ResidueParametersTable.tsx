@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Search,
   ArrowUpDown,
@@ -30,11 +30,14 @@ import {
   withBound,
   withValue,
   editResidueValue,
+  bulkEditResidues,
+  unsetStartingParams,
   type ResidueCell,
 } from '../../lib/parameterConfig';
 import { fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from '../../lib/chemexDefaults';
 import { NumericField } from './NumericField';
 import { residueTreatment, resolvedStepFor } from '../../lib/parameterRoleChip';
+import type { ParameterIssue } from '../../lib/parameterValidation';
 import type { ResolvedStep } from '../../lib/resolvedRoles';
 import type { MethodConfig } from '../../lib/methodConfig';
 import type { ResidueProfileCell } from '../../lib/experimentPlugin';
@@ -70,6 +73,10 @@ export interface ResidueParametersTableProps {
   maxDwWarn?: number;
   /** ChemEx-resolved roles per method step (authoritative for the Method Step column). */
   resolvedSteps?: ResolvedStep[];
+  /** Validation issues per residue key (shown as a row badge). */
+  issuesByResidue?: Record<string, ParameterIssue[]>;
+  /** Scroll to and highlight this residue (nonce changes on every request). */
+  focus?: { resKey: string; nonce: number } | null;
 }
 
 const BOUND_PARAMS: Array<{ key: 'cs_a' | 'dw_ab' | 'r1_a' | 'r2_a'; label: string }> = [
@@ -90,7 +97,31 @@ const defaultRenderProfile = (row: ResidueProfileCell, size: 'thumb' | 'large') 
   />
 );
 
-export type FilterSource = 'all' | 'picked' | 'manual' | 'stale' | 'no_b' | 'imported' | 'excluded';
+export type FilterSource =
+  | 'all'
+  | 'picked'
+  | 'manual'
+  | 'stale'
+  | 'no_b'
+  | 'imported'
+  | 'excluded'
+  | 'chemex_default'
+  | 'issues';
+
+const COLUMNS_STORAGE_KEY = 'resoflow.parameters.showRelaxationColumns';
+const readShowRates = (): boolean => {
+  try {
+    return localStorage.getItem(COLUMNS_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+const BULK_FIELDS: Array<{ key: ResidueCell; label: string }> = [
+  { key: 'cs_a', label: 'CS_A' },
+  { key: 'dw_ab', label: 'DW_AB' },
+  { key: 'r1_a', label: 'R1_A' },
+  { key: 'r2_a', label: 'R2_A' },
+];
 export type SortField = 'residue' | 'cs_a' | 'cs_b' | 'dw_ab' | 'source';
 
 interface TableRowData {
@@ -137,12 +168,31 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   defaults = fallbackDefaults,
   maxDwWarn = 15,
   resolvedSteps,
+  issuesByResidue = {},
+  focus = null,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
   const [sortField, setSortField] = useState<SortField>('residue');
   const [sortAsc, setSortAsc] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [bulkField, setBulkField] = useState<ResidueCell>('cs_a');
+  const [bulkValue, setBulkValue] = useState<number | undefined>(undefined);
+  const [showRates, setShowRates] = useState<boolean>(readShowRates);
+  const toggleRates = () =>
+    setShowRates(prev => {
+      try {
+        localStorage.setItem(COLUMNS_STORAGE_KEY, prev ? '0' : '1');
+      } catch {
+        /* per-viewer convenience only */
+      }
+      return !prev;
+    });
+  const issuesFor = (resKey: string): ParameterIssue[] =>
+    Object.entries(issuesByResidue)
+      .filter(([k]) => k === resKey || getCanonicalResidueKey(k, profiles) === resKey)
+      .flatMap(([, v]) => v);
 
   // Pagination for fast rendering with 300+ residues
   const pageSize = 50;
@@ -320,8 +370,14 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
     let no_b = 0;
     let imported = 0;
     let excluded = 0;
+    let chemexDefault = 0;
+    let staleAll = 0;
+    let withIssues = 0;
 
     for (const r of allRows) {
+      if (!r.isExcluded && unsetStartingParams(config, r.resKey, ['cs_a', 'dw_ab']).length > 0) chemexDefault++;
+      if (r.isStale && !r.isExcluded) staleAll++;
+      if (issuesFor(r.resKey).length > 0) withIssues++;
       if (r.isExcluded) {
         excluded++;
       } else if (r.isStale) {
@@ -344,8 +400,12 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       no_b,
       imported,
       excluded,
+      chemexDefault,
+      staleAll,
+      withIssues,
     };
-  }, [allRows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- issuesFor reads issuesByResidue/profiles
+  }, [allRows, config, issuesByResidue, profiles]);
 
   // Filter & Sort
   const filteredRows = useMemo(() => {
@@ -373,6 +433,12 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       }
       if (sourceFilter === 'no_b') {
         return row.hasNoBPick && !row.isExcluded;
+      }
+      if (sourceFilter === 'chemex_default') {
+        return !row.isExcluded && unsetStartingParams(config, row.resKey, ['cs_a', 'dw_ab']).length > 0;
+      }
+      if (sourceFilter === 'issues') {
+        return issuesFor(row.resKey).length > 0;
       }
       if (sourceFilter === 'imported') {
         return (row.sourceCsA?.kind === 'imported' || row.sourceDw?.kind === 'imported') && !row.isExcluded;
@@ -404,7 +470,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       }
       return sortAsc ? cmp : -cmp;
     });
-  }, [allRows, searchTerm, sourceFilter, sortField, sortAsc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- issuesFor reads issuesByResidue/profiles
+  }, [allRows, searchTerm, sourceFilter, sortField, sortAsc, config, issuesByResidue, profiles]);
 
   // Paginated slice
   const paginatedRows = useMemo(() => {
@@ -490,7 +557,50 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
     onChange({ ...config, residues: { ...config.residues, [row.resKey]: entry } });
   };
 
-  const columnCount = expectsBPicks ? 9 : 8;
+  const columnCount = (expectsBPicks ? 9 : 8) + 1 + (showRates ? 2 : 0);
+
+  // ── Focus a residue (from a validation item): show it, then scroll & highlight. ──
+  const [focusNonce, setFocusNonce] = useState<number | null>(null);
+  if (focus && focus.nonce !== focusNonce) {
+    setFocusNonce(focus.nonce);
+    const target = getCanonicalResidueKey(focus.resKey, profiles);
+    setSourceFilter('all');
+    setSearchTerm('');
+    const idx = allRows
+      .slice()
+      .sort((a, b) => extractResidueNumber(a.resKey) - extractResidueNumber(b.resKey) || a.resKey.localeCompare(b.resKey))
+      .findIndex(r => r.resKey === target);
+    setSortField('residue');
+    setSortAsc(true);
+    if (idx >= 0) setPage(Math.floor(idx / pageSize));
+  }
+  const focusKey = focus ? getCanonicalResidueKey(focus.resKey, profiles) : null;
+  useEffect(() => {
+    if (!focus || !focusKey) return;
+    const el = document.getElementById(`param-row-${focusKey}`);
+    el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [focus, focusKey, page]);
+
+  // ── Multi-select & bulk edit ──
+  const visibleKeys = filteredRows.map(r => r.resKey);
+  const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every(k => selected.has(k));
+  const toggleSelected = (key: string) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const toggleAllVisible = () =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleKeys.forEach(k => next.delete(k));
+      else visibleKeys.forEach(k => next.add(k));
+      return next;
+    });
+  const applyBulk = (value: number | undefined) => {
+    onChange(bulkEditResidues(config, Array.from(selected), bulkField, value, profiles));
+  };
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -541,7 +651,6 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
             <Sparkles className="w-3 h-3 text-blue-500" />
             Edited ({counts.manual})
           </button>
-          {counts.stale > 0 && (
             <button
               onClick={() => { setSourceFilter('stale'); setPage(0); }}
               className={`px-2.5 py-1 rounded-md border font-bold transition-all flex items-center gap-1.5 ${
@@ -550,8 +659,31 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                   : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100/50'
               }`}
             >
-              <AlertTriangle className="w-3 h-3 text-amber-500 animate-pulse" />
-              {staleLabel} ({counts.stale})
+              <AlertTriangle className={`w-3 h-3 text-amber-500 ${counts.stale > 0 ? 'animate-pulse' : ''}`} />
+              {staleLabel} ({counts.staleAll})
+            </button>
+          <button
+            onClick={() => { setSourceFilter('chemex_default'); setPage(0); }}
+            title="Residues whose CS_A or DW_AB is not in parameters.toml, so ChemEx starts them at its default"
+            className={`px-2.5 py-1 rounded-md border font-semibold transition-all flex items-center gap-1.5 ${
+              sourceFilter === 'chemex_default'
+                ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 border-slate-400 dark:border-slate-500 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-400 border-transparent hover:bg-slate-200/50'
+            }`}
+          >
+            ChemEx default ({counts.chemexDefault})
+          </button>
+          {counts.withIssues > 0 && (
+            <button
+              onClick={() => { setSourceFilter('issues'); setPage(0); }}
+              className={`px-2.5 py-1 rounded-md border font-semibold transition-all flex items-center gap-1.5 ${
+                sourceFilter === 'issues'
+                  ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border-amber-400 dark:border-amber-600 shadow-2xs'
+                  : 'text-amber-700 dark:text-amber-400 border-transparent hover:bg-amber-50/50'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              Issues ({counts.withIssues})
             </button>
           )}
           {counts.no_b > 0 && (
@@ -584,6 +716,10 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
 
         {/* Search & Filter Controls */}
         <div className="flex items-center gap-2.5">
+          <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer" title="Show R1_A / R2_A columns">
+            <input type="checkbox" checked={showRates} onChange={toggleRates} />
+            <span>R1_A/R2_A columns</span>
+          </label>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -597,12 +733,68 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div
+          role="toolbar"
+          aria-label="Bulk edit"
+          className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-xs text-blue-900 dark:text-blue-200"
+        >
+          <span className="font-bold">{selected.size} selected</span>
+          <select
+            aria-label="Bulk parameter"
+            value={bulkField}
+            onChange={e => setBulkField(e.target.value as ResidueCell)}
+            className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md font-mono text-slate-800 dark:text-slate-200"
+          >
+            {BULK_FIELDS.map(f => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <NumericField
+            ariaLabel="Bulk value"
+            value={bulkValue}
+            onCommit={setBulkValue}
+            placeholder={`ChemEx ${fmtDefault(defaults(bulkField)?.value)}`}
+            className="w-28 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md font-mono text-slate-800 dark:text-slate-200"
+          />
+          <button
+            type="button"
+            disabled={bulkValue === undefined}
+            onClick={() => applyBulk(bulkValue)}
+            className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-40"
+          >
+            Set
+          </button>
+          <button
+            type="button"
+            onClick={() => applyBulk(undefined)}
+            className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 font-semibold"
+            title="Remove the value so ChemEx's default (or [GLOBAL]) applies"
+          >
+            Clear
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())} className="ml-auto underline">
+            Deselect all
+          </button>
+        </div>
+      )}
+
       {/* Main Table Container */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto max-h-[550px]">
           <table className="w-full text-xs text-left">
             <thead className="sticky top-0 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-xs text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider z-20 border-b border-slate-200 dark:border-slate-700">
               <tr>
+                <th className="px-2 py-2.5 w-8 text-center">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible residues"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                  />
+                </th>
                 <th className="px-3 py-2.5 w-10 text-center"></th>
                 <th
                   onClick={() => toggleSort('residue')}
@@ -645,6 +837,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </th>
+                {showRates && <th className="px-3 py-2.5">R1_A (s⁻¹)</th>}
+                {showRates && <th className="px-3 py-2.5">R2_A (s⁻¹)</th>}
                 <th className="px-3 py-2.5">Profile</th>
                 <th
                   onClick={() => toggleSort('source')}
@@ -672,7 +866,10 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                   return (
                     <React.Fragment key={row.resKey}>
                       <tr
+                        id={`param-row-${row.resKey}`}
                         className={`group hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-colors ${
+                          focusKey === row.resKey ? 'ring-2 ring-inset ring-amber-400 dark:ring-amber-500 ' : ''
+                        }${
                           row.isExcluded
                             ? 'opacity-60 bg-slate-100/60 dark:bg-slate-950/40'
                             : row.isStale
@@ -682,6 +879,14 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                             : ''
                         }`}
                       >
+                        <td className="px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${row.label}`}
+                            checked={selected.has(row.resKey)}
+                            onChange={() => toggleSelected(row.resKey)}
+                          />
+                        </td>
                         {/* Expand toggle */}
                         <td className="px-2 py-2 text-center">
                           <button
@@ -703,6 +908,19 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                           <span className={row.isExcluded ? 'line-through text-slate-400 dark:text-slate-500' : ''}>
                             {row.label}
                           </span>
+                          {(() => {
+                            const rowIssues = issuesFor(row.resKey);
+                            return rowIssues.length > 0 ? (
+                              <span
+                                className="ml-1.5 inline-flex items-center gap-0.5 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
+                                title={rowIssues.map(i => `${i.paramKey ? `(${i.paramKey}) ` : ''}${i.message}`).join('\n')}
+                                aria-label={`${rowIssues.length} validation issue${rowIssues.length === 1 ? '' : 's'}`}
+                              >
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                {rowIssues.length}
+                              </span>
+                            ) : null;
+                          })()}
                         </td>
 
                         {/* CS_A Input */}
@@ -759,6 +977,19 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                             <div className="text-[9px] text-slate-400 mt-0.5">{pickNoun} {row.pickDw.toFixed(3)} · not applied</div>
                           )}
                         </td>
+
+                        {showRates &&
+                          (['r1_a', 'r2_a'] as const).map(k => (
+                            <td key={k} className="px-3 py-2">
+                              <NumericField
+                                ariaLabel={`${k.toUpperCase()} column for ${row.label}`}
+                                value={row.params[k]?.value}
+                                onCommit={v => handleCellEdit(row.resKey, k, v)}
+                                placeholder={config.globals?.[k] ? `[GLOBAL] ${fmtDefault(config.globals[k].value)}` : `ChemEx ${fmtDefault(defaults(k)?.value)}`}
+                                className="w-20 px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-800 dark:text-slate-200"
+                              />
+                            </td>
+                          ))}
 
                         {/* Profile Thumbnail */}
                         <td className="px-3 py-2">

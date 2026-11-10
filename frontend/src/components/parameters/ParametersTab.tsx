@@ -85,6 +85,7 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
   const [showImport, setShowImport] = useState(false);
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [sourceRun, setSourceRun] = useState<SourceRunSummary | null>(null);
+  const [focusRow, setFocusRow] = useState<{ resKey: string; nonce: number } | null>(null);
 
   const { parameterConfig } = editor;
   const staleCount = editor.staleResidues.length;
@@ -106,6 +107,12 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
       }),
     [parameterConfig, profiles, methodConfig, selectedModule, editor.defaults, capabilities.zeroDwQuickFix]
   );
+
+  const issuesByResidue = useMemo(() => {
+    const out: Record<string, ParameterIssue[]> = {};
+    for (const issue of validationIssues) if (issue.residue) (out[issue.residue] ??= []).push(issue);
+    return out;
+  }, [validationIssues]);
 
   // Residues (with data, not excluded) that will start CS_A / DW_AB from ChemEx's defaults.
   const defaultStart = useMemo(() => {
@@ -200,7 +207,16 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
         title="Parameter Validation Warnings"
         items={validationIssues.map(issue => (
           <>
-            {issue.residue && <strong>[{issue.residue}] </strong>}
+            {issue.residue && (
+              <button
+                type="button"
+                onClick={() => setFocusRow(prev => ({ resKey: issue.residue!, nonce: (prev?.nonce ?? 0) + 1 }))}
+                className="font-bold underline decoration-dotted hover:text-amber-950 dark:hover:text-amber-200"
+                title="Show this residue in the table"
+              >
+                [{issue.residue}]
+              </button>
+            )}{' '}
             {issue.paramKey && <strong>({issue.paramKey}) </strong>}
             {issue.message}
             {issue.quickFix && (
@@ -318,6 +334,8 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
               defaults={editor.defaults}
               maxDwWarn={getNucleusInfoForModule(selectedModule ?? '').maxDwWarn}
               resolvedSteps={resolvedSteps}
+              issuesByResidue={issuesByResidue}
+              focus={focusRow}
             />
           </div>
         </div>

@@ -623,3 +623,15 @@ export function editResidueValue(
   residues[resKey] = existing;
   return { ...config, residues };
 }
+
+/** Set (or, with `undefined`, clear) one cell on many residues at once. */
+export function bulkEditResidues(
+  config: ParameterConfig,
+  resKeys: string[],
+  field: ResidueCell,
+  value: number | undefined,
+  profiles?: ProfileRef[],
+  at: string = new Date().toISOString()
+): ParameterConfig {
+  return resKeys.reduce((cfg, key) => editResidueValue(cfg, key, field, value, profiles, at), config);
+}
