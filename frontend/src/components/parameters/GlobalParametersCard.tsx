@@ -111,7 +111,8 @@ export const GlobalParametersCard: React.FC<GlobalParametersCardProps> = ({
         breaksLink: meta?.derived ? meta.default_expression : undefined,
         label: extra?.label ?? def.label,
         hint: extra?.hint ?? FIELD_HINTS[key] ?? def.gloss,
-        unit: def.uiUnit === 'fraction' ? (def.max !== undefined ? `${def.min ?? 0} - ${def.max}` : '') : def.uiUnit,
+        // A fraction has no unit; its 0–1 range belongs to the bounds row, not the unit chip.
+        unit: def.uiUnit === 'fraction' ? '' : def.uiUnit,
         chemexDefault: defaults(key)?.value ?? null,
       };
     });

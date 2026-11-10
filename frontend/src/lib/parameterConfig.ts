@@ -575,3 +575,51 @@ export function unsetStartingParams(config: ParameterConfig, resKey: string, nam
     return !pv || Number.isNaN(pv.value);
   });
 }
+
+export type ResidueCell = 'cs_a' | 'cs_b' | 'dw_ab' | 'r1_a' | 'r2_a';
+
+/**
+ * Edit one residue cell. `undefined` clears it (ChemEx's default, or [GLOBAL], applies).
+ * - CS_A: sets CS_A; if DW_AB is set, DW_AB follows so CS_B (= CS_A + DW_AB) stays put.
+ * - DW_AB, R1_A, R2_A: set independently (never writes CS_A as a side effect).
+ * - CS_B: derived in ChemEx, so it edits DW_AB = CS_B − CS_A; it needs CS_A to be set
+ *   (returns the config unchanged otherwise). Clearing CS_B clears DW_AB.
+ * Alias keys of the same residue are merged into `resKey`. Bounds are kept.
+ */
+export function editResidueValue(
+  config: ParameterConfig,
+  resKey: string,
+  field: ResidueCell,
+  value: number | undefined,
+  profiles?: ProfileRef[],
+  at: string = new Date().toISOString()
+): ParameterConfig {
+  const existing: ResidueParams = { ...(config.residues?.[resKey] || {}) };
+  const manual: Source = { kind: 'manual', at };
+  const round = (v: number) => parseFloat(v.toFixed(6));
+
+  if (field === 'cs_b') {
+    const csA = existing.cs_a?.value;
+    if (value === undefined) delete existing.dw_ab;
+    else if (csA === undefined || Number.isNaN(csA)) return config;
+    else existing.dw_ab = withValue(existing.dw_ab, round(value - csA), manual);
+  } else if (value === undefined) {
+    delete existing[field];
+  } else if (field === 'cs_a') {
+    const oldCsA = existing.cs_a?.value;
+    const dw = existing.dw_ab?.value;
+    existing.cs_a = withValue(existing.cs_a, value, manual);
+    if (dw !== undefined && oldCsA !== undefined && !Number.isNaN(oldCsA)) {
+      existing.dw_ab = withValue(existing.dw_ab, round(oldCsA + dw - value), manual);
+    }
+  } else {
+    existing[field] = withValue(existing[field], value, manual);
+  }
+
+  const residues = { ...config.residues };
+  for (const key of Object.keys(residues)) {
+    if (key !== resKey && getCanonicalResidueKey(key, profiles) === resKey) delete residues[key];
+  }
+  residues[resKey] = existing;
+  return { ...config, residues };
+}

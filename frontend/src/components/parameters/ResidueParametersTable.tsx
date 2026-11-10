@@ -29,6 +29,8 @@ import {
   isPickSourceStale,
   withBound,
   withValue,
+  editResidueValue,
+  type ResidueCell,
 } from '../../lib/parameterConfig';
 import { fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from '../../lib/chemexDefaults';
 import { NumericField } from './NumericField';
@@ -413,58 +415,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   const totalPages = Math.ceil(filteredRows.length / pageSize);
 
   // Cell Edit Handlers
-  const handleCellEdit = (
-    resKey: string,
-    field: 'cs_a' | 'cs_b' | 'dw_ab',
-    newVal: number
-  ) => {
-    const canonicalKey = getCanonicalResidueKey(resKey, profiles);
-    const existing = config.residues?.[canonicalKey] || {};
-    const now = new Date().toISOString();
-
-    const currentCsA = existing.cs_a?.value ?? allRows.find(r => r.resKey === canonicalKey)?.cs_a ?? 0;
-    const currentDw = existing.dw_ab?.value ?? allRows.find(r => r.resKey === canonicalKey)?.dw_ab ?? null;
-
-    let updatedCsA = currentCsA;
-    let updatedDw = currentDw;
-
-    if (field === 'cs_a') {
-      updatedCsA = newVal;
-      // If dw was present, keep cs_b unchanged: dw_ab = cs_b - cs_a
-      if (currentDw !== null) {
-        const cs_b = currentCsA + currentDw;
-        updatedDw = parseFloat((cs_b - updatedCsA).toFixed(3));
-      }
-    } else if (field === 'cs_b') {
-      // dw_ab recomputes: dw_ab = cs_b - cs_a
-      updatedDw = parseFloat((newVal - currentCsA).toFixed(3));
-    } else if (field === 'dw_ab') {
-      updatedDw = newVal;
-    }
-
-    // Clean up any duplicate alias keys for this physical residue
-    const nextResidues = { ...config.residues };
-    for (const key of Object.keys(nextResidues)) {
-      if (getCanonicalResidueKey(key, profiles) === canonicalKey && key !== canonicalKey) {
-        delete nextResidues[key];
-      }
-    }
-
-    const updatedResEntry: ResidueParams = {
-      ...existing,
-      cs_a: withValue(existing.cs_a, updatedCsA, { kind: 'manual', at: now }),
-    };
-
-    if (updatedDw !== null) {
-      updatedResEntry.dw_ab = withValue(existing.dw_ab, updatedDw, { kind: 'manual', at: now });
-    }
-
-    nextResidues[canonicalKey] = updatedResEntry;
-
-    onChange({
-      ...config,
-      residues: nextResidues,
-    });
+  const handleCellEdit = (resKey: string, field: ResidueCell, newVal: number | undefined) => {
+    onChange(editResidueValue(config, getCanonicalResidueKey(resKey, profiles), field, newVal, profiles));
   };
 
   const handleResyncSingleRow = (resKey: string) => {
@@ -755,13 +707,10 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
 
                         {/* CS_A Input */}
                         <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            step="0.001"
-                            value={row.cfgCsA != null && !isNaN(row.cfgCsA) ? row.cfgCsA : ''}
-                            onChange={(e) =>
-                              handleCellEdit(row.resKey, 'cs_a', parseFloat(e.target.value) || 0)
-                            }
+                          <NumericField
+                            ariaLabel={`CS_A for ${row.label}`}
+                            value={row.cfgCsA}
+                            onCommit={v => handleCellEdit(row.resKey, 'cs_a', v)}
                             className="w-24 px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 placeholder:text-amber-500/80"
                             placeholder={`ChemEx ${fmtDefault(defaults('cs_a')?.value)}`}
                             title={row.cfgCsA == null ? `Not in parameters.toml: ChemEx starts CS_A at ${fmtDefault(defaults('cs_a')?.value)} ppm` : undefined}
@@ -775,28 +724,23 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
 
                         {/* CS_B Input (Computed display helper: dw_ab = cs_b - cs_a) */}
                         {expectsBPicks && <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            step="0.001"
-                            value={row.cfgCsA != null && row.cfgDw != null ? parseFloat((row.cfgCsA + row.cfgDw).toFixed(3)) : ''}
-                            onChange={(e) =>
-                              handleCellEdit(row.resKey, 'cs_b', parseFloat(e.target.value) || 0)
-                            }
+                          <NumericField
+                            ariaLabel={`CS_B for ${row.label}`}
+                            value={row.cfgCsA != null && row.cfgDw != null ? parseFloat((row.cfgCsA + row.cfgDw).toFixed(3)) : null}
+                            onCommit={v => handleCellEdit(row.resKey, 'cs_b', v)}
+                            disabled={row.cfgCsA == null}
                             className="w-24 px-2 py-1 bg-slate-50 dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-blue-500"
                             placeholder="—"
-                            title="Editing CS_B updates Δω_AB = CS_B - CS_A"
+                            title={row.cfgCsA == null ? 'Set CS_A first: CS_B is derived as CS_A + DW_AB' : 'Editing CS_B updates DW_AB = CS_B − CS_A'}
                           />
                         </td>}
 
                         {/* DW_AB Input */}
                         <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            step="0.001"
-                            value={row.params.dw_ab?.value ?? ''}
-                            onChange={(e) =>
-                              handleCellEdit(row.resKey, 'dw_ab', parseFloat(e.target.value) || 0)
-                            }
+                          <NumericField
+                            ariaLabel={`DW_AB for ${row.label}`}
+                            value={row.params.dw_ab?.value}
+                            onCommit={v => handleCellEdit(row.resKey, 'dw_ab', v)}
                             title={
                               row.params.dw_ab
                                 ? undefined
@@ -930,26 +874,10 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                     <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                                       R1_A (s⁻¹)
                                     </label>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      value={row.r1_a ?? ''}
-                                      onChange={(e) => {
-                                        const val = parseFloat(e.target.value);
-                                        const existing = config.residues?.[row.resKey] || {};
-                                        onChange({
-                                          ...config,
-                                          residues: {
-                                            ...config.residues,
-                                            [row.resKey]: {
-                                              ...existing,
-                                              r1_a: isNaN(val)
-                                                ? undefined
-                                                : withValue(existing.r1_a, val, { kind: 'manual', at: new Date().toISOString() }),
-                                            },
-                                          },
-                                        });
-                                      }}
+                                    <NumericField
+                                      ariaLabel={`R1_A for ${row.label}`}
+                                      value={row.r1_a}
+                                      onCommit={v => handleCellEdit(row.resKey, 'r1_a', v)}
                                       className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
                                       placeholder={`ChemEx ${fmtDefault(defaults('r1_a')?.value)}`}
                                     />
@@ -958,26 +886,10 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                                     <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                                       R2_A (s⁻¹)
                                     </label>
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      value={row.r2_a ?? ''}
-                                      onChange={(e) => {
-                                        const val = parseFloat(e.target.value);
-                                        const existing = config.residues?.[row.resKey] || {};
-                                        onChange({
-                                          ...config,
-                                          residues: {
-                                            ...config.residues,
-                                            [row.resKey]: {
-                                              ...existing,
-                                              r2_a: isNaN(val)
-                                                ? undefined
-                                                : withValue(existing.r2_a, val, { kind: 'manual', at: new Date().toISOString() }),
-                                            },
-                                          },
-                                        });
-                                      }}
+                                    <NumericField
+                                      ariaLabel={`R2_A for ${row.label}`}
+                                      value={row.r2_a}
+                                      onCommit={v => handleCellEdit(row.resKey, 'r2_a', v)}
                                       className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono"
                                       placeholder={`ChemEx ${fmtDefault(defaults('r2_a')?.value)}`}
                                     />
