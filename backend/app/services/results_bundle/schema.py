@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 BUNDLE_SCHEMA_VERSION = 1
-PARSER_VERSION = "2026.9.2-p1"
+PARSER_VERSION = "2026.9.2-p2"  # p2: run_overview.json + grid_surfaces.json
 
 SQLITE_INIT_DDL = """
 PRAGMA journal_mode = DELETE;

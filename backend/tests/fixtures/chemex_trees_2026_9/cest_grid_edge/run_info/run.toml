@@ -1,0 +1,50 @@
+# ChemEx run information.
+# Archived inputs are verbatim copies of the invocation TOML files.
+
+schema_version = 2
+created_at_utc = "2026-11-10T06:12:14.678917+00:00"
+
+[run]
+kind = "fit"
+working_directory = "/tmp/cest_grid_edge_run"
+requested_output_path = "/tmp/cest_grid_edge_run/Output"
+resolved_output_path = "/tmp/cest_grid_edge_run/Output"
+model = "2st"
+
+[command]
+arguments = ["chemex", "fit", "-e", "/tmp/cest_grid_edge_run/Experiments/13hz.toml", "/tmp/cest_grid_edge_run/Experiments/26hz.toml", "-p", "/tmp/cest_grid_edge_run/Parameters/parameters.toml", "-m", "/tmp/cest_grid_edge_run/Methods/method.toml", "-d", "2st", "-o", "/tmp/cest_grid_edge_run/Output"]
+
+[selection]
+include = []
+exclude = []
+
+[execution]
+workers = 8
+native_threads = "automatic"
+
+[software]
+chemex = "2026.9.2"
+python = "3.13.11"
+numpy = "2.4.2"
+scipy = "1.18.1"
+emcee = "3.1.6"
+
+[[inputs.experiments]]
+provided_path = "/tmp/cest_grid_edge_run/Experiments/13hz.toml"
+resolved_path = "/tmp/cest_grid_edge_run/Experiments/13hz.toml"
+copied_path = "inputs/experiments/13hz.toml"
+
+[[inputs.experiments]]
+provided_path = "/tmp/cest_grid_edge_run/Experiments/26hz.toml"
+resolved_path = "/tmp/cest_grid_edge_run/Experiments/26hz.toml"
+copied_path = "inputs/experiments/26hz.toml"
+
+[[inputs.parameters]]
+provided_path = "/tmp/cest_grid_edge_run/Parameters/parameters.toml"
+resolved_path = "/tmp/cest_grid_edge_run/Parameters/parameters.toml"
+copied_path = "inputs/parameters/parameters.toml"
+
+[[inputs.methods]]
+provided_path = "/tmp/cest_grid_edge_run/Methods/method.toml"
+resolved_path = "/tmp/cest_grid_edge_run/Methods/method.toml"
+copied_path = "inputs/methods/method.toml"

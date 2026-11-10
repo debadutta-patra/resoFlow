@@ -14,7 +14,7 @@ import type { MethodConfig, Step } from '../lib/methodConfig';
 import { createDefaultMethodConfig, createDefaultStep, migrateSavedConfig, newMethodId, normalizeMethodConfig } from '../lib/methodConfig';
 import { setRolesFrom, stepDisplayName, uniqueStepName } from '../lib/methodSteps';
 import { configToToml, tomlToConfig } from '../lib/methodToml';
-import { validateMethodConfig } from '../lib/methodValidation';
+import { validateMethodConfig, type ValidationError } from '../lib/methodValidation';
 import { partitionDismissed, restoreIssue as restoreIssueIn, type QuickFix } from '../lib/methodQuickFixes';
 import type { MethodTemplate } from '../lib/methodTemplates';
 import { DEFAULT_PARAM_METAS, type AvailableParamMeta } from '../components/methods/ParameterTable';
@@ -24,6 +24,9 @@ import { useResolvedRoles } from './useResolvedRoles';
 import { useStepTimings } from './useStepTimings';
 import { useLastRunMethod } from './useLastRunMethod';
 import { useProjectSettings } from './useProjectSettings';
+import { useRunOverview } from './useRunOverview';
+import { gridEdgeIssues } from '../lib/runChecks';
+import { isPreviousMethod } from '../lib/runOverview';
 import { chemexIssues } from '../lib/resolvedRoles';
 
 
@@ -318,6 +321,12 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
   const stepTimings = runTimings.steps;
   const runWorkers = runTimings.workers;
 
+  /** Last completed run per step (values, GRID landscape, MCMC flags), from the results bundle. */
+  const runOverview = useRunOverview(projectUuid, analysisUuid, opts.locked ? 'running' : 'idle');
+  /** The method changed since that run: its committed values belong to a previous method. */
+  const previousMethod = useMemo(() => isPreviousMethod(runOverview.overview, effectiveMethodToml), [runOverview.overview, effectiveMethodToml]);
+  const runIssues = useMemo(() => gridEdgeIssues(methodConfig, runOverview.overview), [methodConfig, runOverview.overview]);
+
   /** Per-step effective roles of every concrete parameter, resolved by ChemEx (debounced). */
   const resolvedRoles = useResolvedRoles({
     projectUuid,
@@ -335,8 +344,8 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
    */
   const { active: validationErrors, dismissed: dismissedIssues } = useMemo(() => {
     const fromChemex = resolvedRoles.stale ? [] : chemexIssues(resolvedRoles.report, methodConfig.steps);
-    return partitionDismissed([...localValidationErrors, ...fromChemex], methodConfig);
-  }, [localValidationErrors, resolvedRoles.report, resolvedRoles.stale, methodConfig]);
+    return partitionDismissed<ValidationError>([...localValidationErrors, ...runIssues, ...fromChemex], methodConfig);
+  }, [localValidationErrors, runIssues, resolvedRoles.report, resolvedRoles.stale, methodConfig]);
   /** Apply an issue's quick-fix (ignored while the method is locked by a run). */
   const applyQuickFix = useCallback(
     (fix: QuickFix) => {
@@ -419,6 +428,8 @@ export function useMethodEditor(opts: UseMethodEditorOptions) {
     stepTimings,
     runWorkers,
     lastRunMethod,
+    runOverview,
+    previousMethod,
     knownParamNames,
     validationErrors,
     dismissedIssues,

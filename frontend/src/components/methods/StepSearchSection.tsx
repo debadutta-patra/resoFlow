@@ -9,6 +9,8 @@
  */
 
 import { searchAxisDomId } from '../../lib/parameterRoleView';
+import { QuickFixButtons, SeverityIcon } from './MethodIssueBanner';
+import type { QuickFix } from '../../lib/methodQuickFixes';
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Clock, Dices, Grid3x3, Info, Plus, RotateCcw, Shuffle, Trash2, Wrench } from 'lucide-react';
 import type { SearchAxis, SearchFunction, SearchMode, Step, StepSearch } from '../../lib/methodConfig';
@@ -44,6 +46,11 @@ interface StepSearchSectionProps {
   onAddRefineStep?: () => void;
   /** ChemEx problems for this step (SEARCH.* ones are shown here). */
   chemexIssues?: ValidationError[];
+  /** Run-result issues per axis parameter (e.g. grid minimum on an edge), shown on the axis row. */
+  runAxisIssues?: ValidationError[];
+  onApplyFix?: (fix: QuickFix) => void;
+  /** Last completed run's χ² landscape for this step (GRID), rendered under the axis editor. */
+  landscape?: React.ReactNode;
 }
 
 const inputCls =
@@ -132,6 +139,9 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
   timings,
   onAddRefineStep,
   chemexIssues = [],
+  runAxisIssues = [],
+  onApplyFix,
+  landscape,
 }) => {
   const search: StepSearch = step.search ?? { mode: 'none', axes: [] };
   const [isOpen, setIsOpen] = useState(search.mode !== 'none');
@@ -444,6 +454,25 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                           </td>
                         </tr>
                       );
+                    }).flatMap((row, idx) => {
+                      const axis = search.axes[idx];
+                      const issues = runAxisIssues.filter(e => e.paramName === axis.param.toUpperCase());
+                      if (issues.length === 0) return [row];
+                      return [
+                        row,
+                        <tr key={`${axis.id}-issues`}>
+                          <td />
+                          <td colSpan={4} className="pb-2 px-2">
+                            {issues.map((issue, k) => (
+                              <div key={k} className="flex flex-wrap items-center gap-2 text-xs text-amber-900 dark:text-amber-700" data-testid="axis-issue">
+                                <SeverityIcon severity={issue.severity} />
+                                <span>{issue.message}</span>
+                                {onApplyFix && <QuickFixButtons actions={issue.actions} onApply={onApplyFix} disabled={readOnly} />}
+                              </div>
+                            ))}
+                          </td>
+                        </tr>,
+                      ];
                     })}
                   </tbody>
                 </table>
@@ -470,6 +499,8 @@ export const StepSearchSection: React.FC<StepSearchSectionProps> = ({
                   </span>
                 </div>
               )}
+
+              {search.mode === 'grid' && landscape}
 
               {!readOnly && (
                 <div className="flex items-center gap-2">

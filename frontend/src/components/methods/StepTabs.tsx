@@ -6,6 +6,7 @@
  * ("4 coords · 2 res"), the deterministic search, enabled statistics and errors.
  */
 
+import type { StepResultBadge } from '../../lib/runOverview';
 import React, { useState } from 'react';
 import { Activity, AlertCircle, Check, ChevronLeft, ChevronRight, Copy, Edit2, GripVertical, Grid3x3, Plus, Shuffle, Trash2 } from 'lucide-react';
 import type { Step } from '../../lib/methodConfig';
@@ -30,7 +31,55 @@ interface StepTabsProps {
   errorCounts?: Record<string, number>;
   /** Step names (any case) that have results from the last completed run. */
   stepsWithResults?: Set<string>;
+  /** Per step id: last completed run's outcome (status dot, red-χ², MCMC flags). */
+  results?: Record<string, StepResultBadge>;
+  /** Open the MCMC diagnostics of step `idx` (from its badge). */
+  onOpenMcmc?: (idx: number) => void;
 }
+
+const DOT: Record<StepResultBadge['state'], { cls: string; label: string }> = {
+  ok: { cls: 'bg-emerald-500', label: 'Completed in the last run' },
+  failed: { cls: 'bg-red-500', label: 'Failed or did not commit in the last run' },
+  'not-run': { cls: 'bg-slate-400 dark:bg-slate-500', label: 'Not in the last run' },
+};
+
+const fmtChi = (v: number) => (Math.abs(v) >= 1e4 ? v.toExponential(2) : v.toFixed(2));
+
+/** Status dot, red-χ² and MCMC badges for one step tab. */
+export const StepResultRow: React.FC<{ result: StepResultBadge; onOpenMcmc?: () => void; stale?: boolean }> = ({ result, onOpenMcmc, stale }) => {
+  const m = result.mcmc;
+  const mcmcFlag = m ? (m.withheld ? 'no posterior summary' : m.tentative ? 'tentative burn' : null) : null;
+  const mcmcText = m
+    ? [m.tauMax !== null ? `τmax ${m.tauMax.toFixed(1)}` : null, m.essWithheld ? 'ESS withheld' : m.essMin !== null ? `ESS ${Math.round(m.essMin)}` : null]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+  return (
+    <div className={`flex flex-wrap items-center gap-1.5 text-xs font-normal ${stale ? 'opacity-60' : ''}`} data-testid="step-result">
+      <span className={`inline-block w-2 h-2 rounded-full ${DOT[result.state].cls}`} title={DOT[result.state].label} aria-label={DOT[result.state].label} />
+      {result.redchi !== null && <span className="font-mono text-slate-700 dark:text-slate-300" title="Reduced χ² of the last run">χ²ᵣ {fmtChi(result.redchi)}</span>}
+      {m && (
+        <button
+          type="button"
+          onClick={e => {
+            e.stopPropagation();
+            onOpenMcmc?.();
+          }}
+          disabled={!onOpenMcmc}
+          title={`MCMC diagnostics${mcmcFlag ? ` — ${mcmcFlag}` : ''}`}
+          className={`px-1.5 py-0.5 rounded font-mono border ${
+            mcmcFlag
+              ? 'bg-amber-50 text-amber-900 border-amber-200 dark:text-amber-700 dark:border-amber-300'
+              : 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-200 dark:border-purple-700'
+          } hover:underline disabled:no-underline`}
+        >
+          {mcmcText || 'MCMC'}
+          {mcmcFlag && <span className="font-sans font-semibold"> · {mcmcFlag}</span>}
+        </button>
+      )}
+    </div>
+  );
+};
 
 const iconBtn = 'p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed';
 
@@ -48,6 +97,8 @@ export const StepTabs: React.FC<StepTabsProps> = ({
   badgesStale = false,
   errorCounts = {},
   stepsWithResults,
+  results,
+  onOpenMcmc,
 }) => {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [tempName, setTempName] = useState('');
@@ -219,6 +270,10 @@ export const StepTabs: React.FC<StepTabsProps> = ({
                   </span>
                 )}
               </div>
+
+              {results?.[step.id] && results[step.id].state !== 'not-run' && (
+                <StepResultRow result={results[step.id]} onOpenMcmc={onOpenMcmc ? () => onOpenMcmc(idx) : undefined} stale={badgesStale} />
+              )}
 
               {editing && (renameError || hasResults(name)) && (
                 <div className="absolute top-full left-0 mt-1 z-30 w-72 p-2 rounded-lg border shadow-lg text-[11px] font-normal bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>

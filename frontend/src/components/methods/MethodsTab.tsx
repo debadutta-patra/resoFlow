@@ -22,6 +22,11 @@ import { errorsForStep, resolvedCountsByName, ruleDomId, rulesByTargetName, step
 import MethodTomlPanel from './MethodTomlPanel';
 import MethodIssueBanner from './MethodIssueBanner';
 import SequenceImportModal from './SequenceImportModal';
+import { overviewStep, stepResultBadge, type StepResultBadge } from '../../lib/runOverview';
+import McmcDiagnosticsTab from './McmcDiagnosticsTab';
+import { toMcmcMethodData } from './StatisticsResultsSection';
+import GridLandscape from './GridLandscape';
+
 import { itemHasType, labelWithSequence } from '../../lib/sequence';
 import { stepDisplayName } from '../../lib/methodSteps';
 import {
@@ -50,6 +55,9 @@ export interface MethodsTabProps {
   committedByStep?: Record<string, Record<string, number>>;
   /** True while a run is queued or in progress: the editor shows the submitted snapshot read-only. */
   readOnly?: boolean;
+  /** Raw per-step results of the last run (results bundle), for the MCMC diagnostics view. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resultsSteps?: Record<string, any>;
 }
 
 export const MethodsTab: React.FC<MethodsTabProps> = ({
@@ -62,10 +70,12 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   startingProvenance,
   committedByStep,
   readOnly = false,
+  resultsSteps,
 }) => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showSequence, setShowSequence] = useState(false);
+
   const { sequence, settings: projectSettings } = editor.projectSettings;
   /** Chips carry the residue type from assignment names, else from the project sequence. */
   const labeledResidues = useMemo(
@@ -77,6 +87,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   const { report, stale } = editor.resolvedRoles;
   const resolvedStep = report?.steps.find(s => s.name.toUpperCase() === (activeStep.name || '').trim().toUpperCase());
   const resolvedCounts = useMemo(() => resolvedCountsByName(resolvedStep), [resolvedStep]);
+  const activeOverview = overviewStep(editor.runOverview.overview, activeStep.name || '');
   // Error locations index ROLES actions, so only map them onto rules for the current method text.
   const chemexErrors = useMemo(() => (stale ? [] : errorsForStep(report, activeStep.name || '')), [report, stale, activeStep.name]);
 
@@ -98,6 +109,23 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
     () => editor.validationErrors.filter(e => e.origin === 'chemex' && e.stepId === activeStep.id),
     [editor.validationErrors, activeStep.id]
   );
+  const stepResults = useMemo(() => {
+    const out: Record<string, StepResultBadge> = {};
+    methodConfig.steps.forEach((s, i) => {
+      out[s.id] = stepResultBadge(editor.runOverview.overview, stepDisplayName(s, i));
+    });
+    return out;
+  }, [methodConfig.steps, editor.runOverview.overview]);
+  const [mcmcStep, setMcmcStep] = useState<string | null>(null);
+  const mcmcData = useMemo(() => {
+    if (!mcmcStep) return null;
+    const raw = resultsSteps?.[mcmcStep]?.statistical_analyses?.mcmc;
+    const ov = overviewStep(editor.runOverview.overview, mcmcStep)?.mcmc;
+    if (!raw && !ov) return null;
+    const data = raw ? toMcmcMethodData(raw) : { method_name: 'MCMC', status: ov?.status, summary: {}, diagnostics: {} };
+    // τ is cached in the run overview (not in the parsed diagnostics model).
+    return { ...data, diagnostics: { ...(data.diagnostics ?? {}), tau_max: ov?.tau_max ?? undefined } };
+  }, [mcmcStep, resultsSteps, editor.runOverview.overview]);
   const stepsWithResults = useMemo(() => new Set(Object.keys(committedByStep ?? {})), [committedByStep]);
 
   // "Mixed · N rules" → highlight and scroll to the rules targeting that parameter.
@@ -192,6 +220,8 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             badgesStale={stale}
             errorCounts={errorCounts}
             stepsWithResults={stepsWithResults}
+            results={stepResults}
+            onOpenMcmc={idx => setMcmcStep(stepDisplayName(methodConfig.steps[idx], idx))}
           />
 
           <div className="space-y-2">
@@ -213,6 +243,8 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               readOnly={readOnly}
               resolvedCounts={resolvedCounts}
               resolvedParams={resolvedStep?.parameters}
+              committedStep={activeOverview}
+              committedFromPreviousMethod={editor.previousMethod}
               onShowRules={showRules}
             />
           </div>
@@ -244,6 +276,19 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
             timings={editor.stepTimings}
             onAddRefineStep={() => editor.stepHandlers.onAddRefineStep(editor.activeStepIdx)}
             chemexIssues={activeChemexIssues}
+            runAxisIssues={editor.validationErrors.filter(e => e.stepId === activeStep.id && e.code === 'grid-edge')}
+            onApplyFix={editor.applyQuickFix}
+            landscape={
+              activeOverview?.grid ? (
+                <GridLandscape
+                  stepName={activeOverview.name}
+                  grid={activeOverview.grid}
+                  axes={activeStep.search?.axes ?? []}
+                  loadSurface={editor.runOverview.loadSurface}
+                  previousMethod={editor.previousMethod}
+                />
+              ) : undefined
+            }
           />
 
           <ResidueSelector
@@ -308,6 +353,21 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
           }}
           additionTarget={t => additionTarget(t, methodConfig, editor.activeStepIdx)}
         />
+      )}
+      {mcmcStep && (
+        <ChemexModalShell
+          icon={<Workflow size={20} />}
+          title={`MCMC diagnostics · ${mcmcStep}`}
+          subtitle="Last completed run"
+          onClose={() => setMcmcStep(null)}
+          footer={
+            <button type="button" onClick={() => setMcmcStep(null)} className={chemexBtnSecondary}>
+              Close
+            </button>
+          }
+        >
+          {mcmcData ? <McmcDiagnosticsTab mcmcData={mcmcData} /> : <p className="text-xs text-slate-600 dark:text-slate-300">No MCMC results stored for this step.</p>}
+        </ChemexModalShell>
       )}
       {showSequence && (
         <SequenceImportModal

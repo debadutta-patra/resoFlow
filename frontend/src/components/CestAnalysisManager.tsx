@@ -1,3 +1,4 @@
+import StartingValuesMenu from './chemex/StartingValuesMenu';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -5,8 +6,8 @@ import {
   Play, FileText,
   ChevronLeft, ChevronRight, Check, AlertCircle,
   Beaker, Loader2, RotateCcw, Square,
-  Workflow, Sparkles, Copy, Download, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info,
-  RefreshCw, MinusCircle, PlusCircle, Activity, ArrowUpDown, LayoutGrid, Maximize2, Search, FastForward
+  Workflow, Copy, Download, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info,
+  MinusCircle, PlusCircle, Activity, ArrowUpDown, LayoutGrid, Maximize2, Search
 } from 'lucide-react';
 import Plot, { PLOT_COLORS } from './Plot';
 import { formatUncertainty } from '../lib/uncertaintyFormatter';
@@ -25,7 +26,6 @@ import { useMethodEditor } from '../hooks/useMethodEditor';
 import { useParameterEditor } from '../hooks/useParameterEditor';
 import { cestPlugin } from '../plugins/cestPlugin';
 import StatisticsResultsSection from './methods/StatisticsResultsSection';
-import type { ParameterConfig, ResidueParams } from '../lib/parameterConfig';
 import {
   canonicalizeParameterConfig,
   isResidueExcluded,
@@ -796,83 +796,6 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     }
   };
 
-  const handleUseFittedAsStarting = () => {
-    if (!analysisResults) return;
-    let updated = false;
-    const now = new Date().toISOString();
-    const nextConfig: ParameterConfig = {
-      ...parameterConfig,
-      globals: { ...parameterConfig.globals },
-      residues: { ...parameterConfig.residues },
-    };
-
-    if (analysisResults.global?.pb !== undefined) {
-      nextConfig.globals.pb = {
-        value: parseFloat(analysisResults.global.pb.toFixed(4)),
-        source: { kind: 'manual', at: now },
-      };
-      updated = true;
-    }
-    if (analysisResults.global?.kex_ab !== undefined) {
-      nextConfig.globals.kex_ab = {
-        value: parseFloat(analysisResults.global.kex_ab.toFixed(2)),
-        source: { kind: 'manual', at: now },
-      };
-      updated = true;
-    }
-
-    if (analysisResults.residues) {
-      for (const [res, rData] of Object.entries(analysisResults.residues)) {
-        const p = rData.parameters;
-        if (p && (p.cs_a !== undefined || p.cs_b !== undefined || p.dw_ab !== undefined)) {
-          const existing = nextConfig.residues[res] || {};
-          const cs_a = p.cs_a !== undefined ? parseFloat(p.cs_a.toFixed(3)) : existing.cs_a?.value;
-          const dw_ab = p.dw_ab !== undefined
-            ? parseFloat(p.dw_ab.toFixed(3))
-            : (p.cs_b !== undefined && cs_a !== undefined ? parseFloat((p.cs_b - cs_a).toFixed(3)) : existing.dw_ab?.value);
-
-          const updatedRes: ResidueParams = {
-            ...existing,
-            ...(cs_a !== undefined ? { cs_a: { value: cs_a, source: { kind: 'manual' as const, at: now } } } : {}),
-            ...(dw_ab !== undefined ? { dw_ab: { value: dw_ab, source: { kind: 'manual' as const, at: now } } } : {}),
-          };
-          delete (updatedRes as Record<string, unknown>).cs_b;
-          nextConfig.residues[res] = updatedRes;
-          updated = true;
-        }
-      }
-    }
-
-    if (updated) {
-      setParameterConfig(nextConfig);
-      setSuccessMsg('Updated starting parameters with values from completed fit.');
-      setTimeout(() => setSuccessMsg(''), 4000);
-    }
-  };
-
-  const handleUseGridMinAsStarting = async () => {
-    if (!analysisResults) return;
-    try {
-      const stepToUse = selectedStep || analysisResults.step_order?.[0] || 'STEP1';
-      const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/steps/${stepToUse}/grid`);
-      const gridData = res.data;
-      if (gridData && gridData.min_point && gridData.min_point.coordinates) {
-        const coords = gridData.min_point.coordinates;
-        const { nextConfig, updatedCount } = applyGridCoordinatesToConfig(parameterConfig, coords, currentResultResidue || undefined);
-        if (updatedCount > 0) {
-          setParameterConfig(nextConfig);
-          setSuccessMsg(`Updated starting parameters with grid minimum (${updatedCount} parameters updated).`);
-          setTimeout(() => setSuccessMsg(''), 5000);
-        }
-      } else {
-        alert('No grid search minimum coordinates found for this step.');
-      }
-    } catch (err) {
-      console.error('Failed to fetch grid minimum:', err);
-      alert('Failed to load grid search minimum coordinates.');
-    }
-  };
-
   const handleRestore = async () => {
     if (!window.confirm("This will restore the last version of your results. Current results will become the new backup. Proceed?")) return;
     try {
@@ -1064,51 +987,26 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
             <FitModeHelp />
           </div>
 
-          {status === 'COMPLETED' && analysisResults && (
-            <button
-              onClick={handleUseFittedAsStarting}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
-              title="Copy fitted parameters (pb, kex, chemical shifts) into the starting values of the Parameters tab"
-            >
-              <RefreshCw className="w-3 h-3 text-blue-500" />
-              <span>Use fitted as starting</span>
-            </button>
-          )}
-
-          {(status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED') &&
-            analysisResults?.steps &&
-            Object.values(analysisResults.steps).some((s: any) => s?.has_grid) && (
-            <button
-              onClick={handleUseGridMinAsStarting}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-lg border border-amber-200 dark:border-amber-800 transition-all"
-              title="Copy grid search minimum coordinates into the starting values of the Parameters tab"
-            >
-              <Sparkles className="w-3 h-3 text-amber-500" />
-              <span>Use grid minimum as starting</span>
-            </button>
-          )}
+          <StartingValuesMenu
+            overview={methodEditor.runOverview.overview}
+            parameterConfig={parameterConfig}
+            onApply={(next, message) => {
+              setParameterConfig(next);
+              notify(message, 5000);
+            }}
+            onContinueFromRun={status === 'COMPLETED' ? handleContinueRun : undefined}
+            disabled={isRunning}
+          />
 
           {hasBackup && (
             <button
               onClick={handleRestore}
               disabled={isRunning}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200 transition-all disabled:opacity-50"
-              title="Restore previous run results from backup"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:text-amber-700 text-xs font-bold rounded-lg border border-amber-200 dark:border-amber-300 transition-all disabled:opacity-50"
+              title="Swap the current results with the previous run's results (backup). Starting values are not changed."
             >
               <RotateCcw size={13} />
-              <span>Restore Last fit</span>
-            </button>
-          )}
-
-          {status === 'COMPLETED' && (
-            <button
-              onClick={handleContinueRun}
-              disabled={isRunning}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-bold rounded-lg border border-purple-200 dark:border-purple-800 transition-all disabled:opacity-50"
-              title="Create a new run initialized from this run's restart.toml"
-            >
-              <FastForward size={13} />
-              <span>Continue from Run</span>
+              <span>Restore previous results</span>
             </button>
           )}
 
@@ -1524,6 +1422,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               startingValues={parameterEditor.startingValues}
               startingProvenance={startingProvenance(parameterConfig, cestPlugin.dataPrepTabLabel ?? 'pick')}
               committedByStep={committedByStep}
+              resultsSteps={analysisResults?.steps}
               onNavigateToParameters={() => setActiveTab('parameters')}
               notify={notify}
               readOnly={runLocked}

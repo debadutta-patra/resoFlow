@@ -1,0 +1,3402 @@
+{
+  "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+  "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+  "artifact_type": "native_constrained_evidence",
+  "bundle_identity": "de8c573dc0a8526f8db442f6b2022df8c8b8fba643b87fdf9f91e7ab648fabc3",
+  "constrained_propagation": {
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "artifact_type": "ConstrainedPropagationEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.caf07ceb84a10p+2",
+        "name": "SOURCE_COVARIANCE::CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "SOURCE_COVARIANCE::FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.26d33d4fc2c0fp+12; upper[0] zeta=0x1.0edb7f95e74d6p+12; lower[1] zeta=0x1.2e9f55ec653e0p+12; upper[1] zeta=0x1.1054f3896b50fp+12; lower[2] zeta=0x1.ab1d3f95dc8dbp+11; upper[2] zeta=0x1.7571ecf38d7cep+11; lower[3] zeta=0x1.de78310536de8p+3; upper[3] zeta=0x1.efcf32ac5e38ep+17; lower[4] zeta=0x1.c5e6e7c06e3ecp+4; upper[4] zeta=0x1.b0bab559da214p+10; lower[5] zeta=0x1.fe1fc0d086b74p+7; upper[5] zeta=0x1.58c13eded9476p+17; lower[6] zeta=0x1.1487eb79641d6p+8; upper[6] zeta=0x1.4215e9abfc437p+17; lower[7] zeta=0x1.1ef80205d2520p+8; upper[7] zeta=0x1.4794fd845c4ecp+17; lower[8] zeta=0x1.c8dacbe4a7e65p+6; upper[8] zeta=0x1.dc6eda9f4e6b3p+12; lower[9] zeta=0x1.85236c174b103p+6; upper[9] zeta=0x1.b68fe7ad44846p+12; lower[10] zeta=0x1.889ad20e95097p+6; upper[10] zeta=0x1.cda818bbeb567p+12; lower[11] zeta=0x1.be08f97b9a0a5p+3; upper[11] zeta=0x1.99e46730437c7p+6; lower[12] zeta=0x1.696ed2d0e0347p+3; upper[12] zeta=0x1.cb30807b45df7p+6; lower[13] zeta=0x1.fbca7a8c5a094p+3; upper[13] zeta=0x1.df7eb6e48f267p+5",
+        "name": "SOURCE_COVARIANCE::BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EXACT_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "GRAM_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "scaled-rank=8; rows=9; threshold=0x1.ec1511aadeb19p-49",
+        "name": "OUTPUT_RANK_DEFICIENCY_EXPECTED",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_FIRST_ORDER_DEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE_USABILITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_13N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_26N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_28N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KAB",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KBA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__PA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_13N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_26N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_28N_499_2MHZ",
+        "state": "satisfied"
+      }
+    ],
+    "controlled_ids": [
+      "__DW_AB_13N",
+      "__DW_AB_26N",
+      "__DW_AB_28N",
+      "__KEX_AB",
+      "__PB",
+      "__R1_A_13N_499_2MHZ",
+      "__R1_A_26N_499_2MHZ",
+      "__R1_A_28N_499_2MHZ",
+      "__R2_A_13N_499_2MHZ",
+      "__R2_A_26N_499_2MHZ",
+      "__R2_A_28N_499_2MHZ",
+      "__R2_B_13N_499_2MHZ",
+      "__R2_B_26N_499_2MHZ",
+      "__R2_B_28N_499_2MHZ"
+    ],
+    "covariance": [
+      [
+        {
+          "binary64": "0x1.0000a95b25da6p-11"
+        },
+        {
+          "binary64": "0x1.9247e54dfb6c7p-16"
+        },
+        {
+          "binary64": "0x1.0151a8d4fdf43p-15"
+        },
+        {
+          "binary64": "0x1.4843e14ccb430p-13"
+        },
+        {
+          "binary64": "0x1.63a9aba2e316dp-6"
+        },
+        {
+          "binary64": "0x1.bebf0f76d04b9p-19"
+        },
+        {
+          "binary64": "0x1.52ad2609e7e00p-25"
+        },
+        {
+          "binary64": "0x1.0afa444613f6fp-19"
+        },
+        {
+          "binary64": "0x1.21b553be12ed6p-18"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.9247e54dfb6c7p-16"
+        },
+        {
+          "binary64": "0x1.efa00c3d431f0p-12"
+        },
+        {
+          "binary64": "0x1.789a45430320ap-16"
+        },
+        {
+          "binary64": "0x1.0c395a3861e54p-13"
+        },
+        {
+          "binary64": "0x1.0b538e911f986p-6"
+        },
+        {
+          "binary64": "0x1.38cfc1fbd3d2fp-19"
+        },
+        {
+          "binary64": "0x1.5ce4acc66d892p-20"
+        },
+        {
+          "binary64": "0x1.973a54714ca20p-25"
+        },
+        {
+          "binary64": "0x1.62db146e98af6p-19"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.0151a8d4fdf43p-15"
+        },
+        {
+          "binary64": "0x1.789a45430320ap-16"
+        },
+        {
+          "binary64": "0x1.ff48ede77986ap-11"
+        },
+        {
+          "binary64": "0x1.532fecd97178cp-13"
+        },
+        {
+          "binary64": "0x1.54164f7b0291fp-6"
+        },
+        {
+          "binary64": "0x1.9022ae1e16640p-19"
+        },
+        {
+          "binary64": "0x1.c3959c1419798p-20"
+        },
+        {
+          "binary64": "0x1.9423dfb94ca44p-20"
+        },
+        {
+          "binary64": "0x1.d802b16602080p-23"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.4843e14ccb430p-13"
+        },
+        {
+          "binary64": "0x1.0c395a3861e54p-13"
+        },
+        {
+          "binary64": "0x1.532fecd97178cp-13"
+        },
+        {
+          "binary64": "0x1.247cc0a71ba80p-10"
+        },
+        {
+          "binary64": "0x1.fb3327208d356p-4"
+        },
+        {
+          "binary64": "0x1.0015ae5bf96e7p-16"
+        },
+        {
+          "binary64": "0x1.75fd3ddc08d50p-18"
+        },
+        {
+          "binary64": "0x1.0ddf1b0cd01dep-18"
+        },
+        {
+          "binary64": "0x1.83c8cc561dc7ep-17"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.63a9aba2e316dp-6"
+        },
+        {
+          "binary64": "0x1.0b538e911f986p-6"
+        },
+        {
+          "binary64": "0x1.54164f7b0291fp-6"
+        },
+        {
+          "binary64": "0x1.fb3327208d356p-4"
+        },
+        {
+          "binary64": "0x1.e88d0af707184p+3"
+        },
+        {
+          "binary64": "0x1.14bf1ed67c635p-9"
+        },
+        {
+          "binary64": "0x1.1e9dd7c0f4a8ap-10"
+        },
+        {
+          "binary64": "0x1.f0ab30329855fp-11"
+        },
+        {
+          "binary64": "0x1.2457ac5434d93p-9"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.bebf0f76d04b9p-19"
+        },
+        {
+          "binary64": "0x1.38cfc1fbd3d2fp-19"
+        },
+        {
+          "binary64": "0x1.9022ae1e16640p-19"
+        },
+        {
+          "binary64": "0x1.0015ae5bf96e7p-16"
+        },
+        {
+          "binary64": "0x1.14bf1ed67c635p-9"
+        },
+        {
+          "binary64": "0x1.5aeb048b377bbp-22"
+        },
+        {
+          "binary64": "0x1.baeba7a89cac6p-23"
+        },
+        {
+          "binary64": "0x1.9cb750940523dp-23"
+        },
+        {
+          "binary64": "0x1.c06379f531396p-22"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.52ad2609e7e00p-25"
+        },
+        {
+          "binary64": "0x1.5ce4acc66d892p-20"
+        },
+        {
+          "binary64": "0x1.c3959c1419798p-20"
+        },
+        {
+          "binary64": "0x1.75fd3ddc08d50p-18"
+        },
+        {
+          "binary64": "0x1.1e9dd7c0f4a8ap-10"
+        },
+        {
+          "binary64": "0x1.baeba7a89cac6p-23"
+        },
+        {
+          "binary64": "0x1.0c7507a4ce086p-15"
+        },
+        {
+          "binary64": "0x1.7a43f3fe8fde6p-23"
+        },
+        {
+          "binary64": "0x1.7af847a9abb5dp-22"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.0afa444613f6fp-19"
+        },
+        {
+          "binary64": "0x1.973a54714ca20p-25"
+        },
+        {
+          "binary64": "0x1.9423dfb94ca44p-20"
+        },
+        {
+          "binary64": "0x1.0ddf1b0cd01dep-18"
+        },
+        {
+          "binary64": "0x1.f0ab30329855fp-11"
+        },
+        {
+          "binary64": "0x1.9cb750940523dp-23"
+        },
+        {
+          "binary64": "0x1.7a43f3fe8fde6p-23"
+        },
+        {
+          "binary64": "0x1.336f22a5e6208p-15"
+        },
+        {
+          "binary64": "0x1.7b2bc9973cae0p-22"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.21b553be12ed6p-18"
+        },
+        {
+          "binary64": "0x1.62db146e98af6p-19"
+        },
+        {
+          "binary64": "0x1.d802b16602080p-23"
+        },
+        {
+          "binary64": "0x1.83c8cc561dc7ep-17"
+        },
+        {
+          "binary64": "0x1.2457ac5434d93p-9"
+        },
+        {
+          "binary64": "0x1.c06379f531396p-22"
+        },
+        {
+          "binary64": "0x1.7af847a9abb5dp-22"
+        },
+        {
+          "binary64": "0x1.7b2bc9973cae0p-22"
+        },
+        {
+          "binary64": "0x1.292f0aac81ce2p-15"
+        }
+      ]
+    ],
+    "factor": [
+      [
+        {
+          "binary64": "0x1.faed87ed4af27p-12"
+        },
+        {
+          "binary64": "0x1.48ec27829f644p-7"
+        },
+        {
+          "binary64": "-0x1.3b841c737c5abp-9"
+        },
+        {
+          "binary64": "0x1.acf92a8e10c1dp-12"
+        },
+        {
+          "binary64": "0x1.1ee53895dc58cp-7"
+        },
+        {
+          "binary64": "0x1.0dc4b030ec184p-10"
+        },
+        {
+          "binary64": "0x1.17d8e5afe9ab9p-7"
+        },
+        {
+          "binary64": "0x1.b80565ea12267p-10"
+        },
+        {
+          "binary64": "0x1.6d8a943f16c78p-13"
+        },
+        {
+          "binary64": "0x1.42e63c88ca005p-9"
+        },
+        {
+          "binary64": "0x1.47874809d97d4p-8"
+        },
+        {
+          "binary64": "-0x1.311e007bf1082p-8"
+        },
+        {
+          "binary64": "0x1.82a28fbfda5a4p-7"
+        },
+        {
+          "binary64": "-0x1.889cfdffb090ap-8"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.ee6f596cacc1ap-12"
+        },
+        {
+          "binary64": "-0x1.28fc4e7f85276p-12"
+        },
+        {
+          "binary64": "-0x1.032f829b44ba7p-7"
+        },
+        {
+          "binary64": "0x1.41f6abef69e57p-12"
+        },
+        {
+          "binary64": "-0x1.ebb3819f9d470p-8"
+        },
+        {
+          "binary64": "0x1.3842ed6cbe67fp-7"
+        },
+        {
+          "binary64": "0x1.8787943e5ffa4p-8"
+        },
+        {
+          "binary64": "-0x1.10546a9d06b77p-16"
+        },
+        {
+          "binary64": "0x1.27a34125d4096p-9"
+        },
+        {
+          "binary64": "0x1.646c1f8bf5782p-10"
+        },
+        {
+          "binary64": "0x1.8c7455ff81cf0p-8"
+        },
+        {
+          "binary64": "0x1.a2d22e76ed7ccp-7"
+        },
+        {
+          "binary64": "0x1.04396049b82c7p-10"
+        },
+        {
+          "binary64": "-0x1.1de23273e1ad5p-8"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.2474bc5d8e9aap-10"
+        },
+        {
+          "binary64": "0x1.277dca34939f1p-11"
+        },
+        {
+          "binary64": "-0x1.ba9bf99ee56c0p-10"
+        },
+        {
+          "binary64": "0x1.6e37567ef1666p-9"
+        },
+        {
+          "binary64": "-0x1.2fbe812b1c025p-7"
+        },
+        {
+          "binary64": "-0x1.02688381b5c93p-6"
+        },
+        {
+          "binary64": "0x1.f1fc6d61fc3f4p-7"
+        },
+        {
+          "binary64": "-0x1.9d28bb9a16e05p-12"
+        },
+        {
+          "binary64": "0x1.50ba04c3822b1p-14"
+        },
+        {
+          "binary64": "0x1.53390ba0af12ep-7"
+        },
+        {
+          "binary64": "-0x1.fab3e99e31611p-7"
+        },
+        {
+          "binary64": "0x1.04d01d1484768p-8"
+        },
+        {
+          "binary64": "0x1.119d79c7e640fp-9"
+        },
+        {
+          "binary64": "-0x1.6b1c922283f0cp-8"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.939377d6320a4p-7"
+        },
+        {
+          "binary64": "-0x1.6a5a142b87c9fp-12"
+        },
+        {
+          "binary64": "0x1.c69f055d34b75p-11"
+        },
+        {
+          "binary64": "-0x1.9e9da5a2fd760p-14"
+        },
+        {
+          "binary64": "0x1.19985b88adca2p-12"
+        },
+        {
+          "binary64": "0x1.2b190a38c8a0ap-14"
+        },
+        {
+          "binary64": "0x1.08d48db8f0e61p-8"
+        },
+        {
+          "binary64": "-0x1.340e26d07d088p-15"
+        },
+        {
+          "binary64": "0x1.3046fb31fc6a6p-12"
+        },
+        {
+          "binary64": "0x1.d870c5cb5149fp-10"
+        },
+        {
+          "binary64": "0x1.6c3b7386eae83p-9"
+        },
+        {
+          "binary64": "-0x1.0b46d2a52a3c5p-9"
+        },
+        {
+          "binary64": "-0x1.a31ac23cd8c06p-8"
+        },
+        {
+          "binary64": "-0x1.e8f6d34134efap-6"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.f33a465443fcep-2"
+        },
+        {
+          "binary64": "-0x1.a19c2e6fea9b8p-6"
+        },
+        {
+          "binary64": "0x1.4765670adefbcp-5"
+        },
+        {
+          "binary64": "0x1.5fd59bfafb790p-8"
+        },
+        {
+          "binary64": "0x1.7469575e12155p-7"
+        },
+        {
+          "binary64": "-0x1.411797540b307p-9"
+        },
+        {
+          "binary64": "0x1.6cd1f445f7bcap-4"
+        },
+        {
+          "binary64": "0x1.291d3300ac51ap-6"
+        },
+        {
+          "binary64": "0x1.54df6859e6ba1p-5"
+        },
+        {
+          "binary64": "0x1.4ebf661279c0fp-4"
+        },
+        {
+          "binary64": "0x1.716a977edc0b7p-4"
+        },
+        {
+          "binary64": "-0x1.30a1cec587668p-4"
+        },
+        {
+          "binary64": "-0x1.dea7c9689eb86p-3"
+        },
+        {
+          "binary64": "-0x1.eec90189d98abp+1"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.2f17d5eedb364p-14"
+        },
+        {
+          "binary64": "-0x1.43b0e462e4bdcp-20"
+        },
+        {
+          "binary64": "-0x1.db91fff85f24cp-19"
+        },
+        {
+          "binary64": "0x1.a2ea4c9075709p-19"
+        },
+        {
+          "binary64": "-0x1.70f7f464afc9ap-20"
+        },
+        {
+          "binary64": "-0x1.f3cfd7dac7959p-20"
+        },
+        {
+          "binary64": "-0x1.69b5c490c8fedp-15"
+        },
+        {
+          "binary64": "0x1.765c4e9ebc533p-18"
+        },
+        {
+          "binary64": "0x1.b7385cfb1fdf4p-18"
+        },
+        {
+          "binary64": "-0x1.03660ea32be49p-17"
+        },
+        {
+          "binary64": "-0x1.6c8a6e3d71f2cp-16"
+        },
+        {
+          "binary64": "0x1.cbc1656035ce6p-17"
+        },
+        {
+          "binary64": "0x1.675defe4474cap-15"
+        },
+        {
+          "binary64": "-0x1.257c60507e4d8p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.003577f8accf3p-12"
+        },
+        {
+          "binary64": "0x1.ff47f0d2fe8a8p-10"
+        },
+        {
+          "binary64": "0x1.2b7ac21cc2fd1p-18"
+        },
+        {
+          "binary64": "-0x1.b07567bbf5bc4p-17"
+        },
+        {
+          "binary64": "-0x1.f4d3b4ee34e95p-11"
+        },
+        {
+          "binary64": "-0x1.e3493e312baf7p-14"
+        },
+        {
+          "binary64": "-0x1.0edb02b707eadp-10"
+        },
+        {
+          "binary64": "-0x1.4d3e49fe660bep-8"
+        },
+        {
+          "binary64": "0x1.f0bfc8e8b5c03p-14"
+        },
+        {
+          "binary64": "0x1.da4646c220648p-16"
+        },
+        {
+          "binary64": "-0x1.d3b56e572715bp-15"
+        },
+        {
+          "binary64": "0x1.eff11ca66f2ccp-17"
+        },
+        {
+          "binary64": "0x1.9e81b13c0a821p-12"
+        },
+        {
+          "binary64": "-0x1.6356696f734b4p-12"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.633aa93509b40p-12"
+        },
+        {
+          "binary64": "-0x1.5a997fc96dbd9p-12"
+        },
+        {
+          "binary64": "-0x1.6ddc31d8dde8bp-9"
+        },
+        {
+          "binary64": "0x1.bf3969c49ace0p-15"
+        },
+        {
+          "binary64": "0x1.7dbc5aca2cf5bp-11"
+        },
+        {
+          "binary64": "-0x1.12d9f25d7c499p-10"
+        },
+        {
+          "binary64": "-0x1.5b965dee0d23ep-10"
+        },
+        {
+          "binary64": "-0x1.04024e3ab71c9p-14"
+        },
+        {
+          "binary64": "-0x1.40b7d367ee080p-8"
+        },
+        {
+          "binary64": "0x1.a7f31bc929a4cp-11"
+        },
+        {
+          "binary64": "0x1.59bb55753e9a8p-12"
+        },
+        {
+          "binary64": "0x1.3cc81ea4ca7a6p-11"
+        },
+        {
+          "binary64": "0x1.0c4fd783ff4bap-12"
+        },
+        {
+          "binary64": "-0x1.47208aefb6902p-12"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.4d18ab12e1d9cp-12"
+        },
+        {
+          "binary64": "-0x1.c23381b4128a3p-15"
+        },
+        {
+          "binary64": "0x1.85152432f8e36p-13"
+        },
+        {
+          "binary64": "0x1.c5c7b16756ab8p-9"
+        },
+        {
+          "binary64": "0x1.613fe37b96872p-15"
+        },
+        {
+          "binary64": "0x1.75442676d8e60p-14"
+        },
+        {
+          "binary64": "0x1.0a5a563be5928p-10"
+        },
+        {
+          "binary64": "-0x1.deb1c56fd3c13p-13"
+        },
+        {
+          "binary64": "-0x1.0e1f6293c5b0cp-10"
+        },
+        {
+          "binary64": "-0x1.1c62619aa8146p-8"
+        },
+        {
+          "binary64": "-0x1.f96bda9121175p-11"
+        },
+        {
+          "binary64": "0x1.185c68e99b958p-11"
+        },
+        {
+          "binary64": "0x1.9e494fbc07363p-11"
+        },
+        {
+          "binary64": "-0x1.6a32f24faccecp-11"
+        }
+      ]
+    ],
+    "identity": "c8d2450058ae2df20759092c09417c7d48a7f663e592949953f06d3e1e560927",
+    "output_ids": [
+      "__CS_B_13N",
+      "__CS_B_26N",
+      "__CS_B_28N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R1_B_13N_499_2MHZ",
+      "__R1_B_26N_499_2MHZ",
+      "__R1_B_28N_499_2MHZ"
+    ],
+    "output_scales": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      }
+    ],
+    "output_units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ],
+    "request_identity": "d55c4f8e1bb89a344eef2f0212fddb3aa881747f0e4fc8ff96d78f535f22f1b9",
+    "source_constraint_jacobian_identity": "9a58b09824d181f00f288a781bedd331f14332743679fd6c7ee41e72565527f5",
+    "source_covariance_identity": "10bccef0b32e99cf2a9b180e587ec945bcd0ece120226820b80f369b6502ec58"
+  },
+  "constraint_jacobian": {
+    "accepted_evaluation_identity": "275e9af41417a0dae026b47ec61d6a5d8a30e56ed7a4a31305b28c7456f7dd81",
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "artifact_type": "ConstraintJacobianEvidence",
+    "capability_selection_identity": "90af77a5035b40d350edba81f2e2ae7257de55e65385d0be9b08c29df8dc951d",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      }
+    ],
+    "constraint_program_identity": "c2e73e704bac787be3739639af2de83d6506223e40d5a776ba2201204886ff8b",
+    "controlled_ids": [
+      "__DW_AB_13N",
+      "__DW_AB_26N",
+      "__DW_AB_28N",
+      "__KEX_AB",
+      "__PB",
+      "__R1_A_13N_499_2MHZ",
+      "__R1_A_26N_499_2MHZ",
+      "__R1_A_28N_499_2MHZ",
+      "__R2_A_13N_499_2MHZ",
+      "__R2_A_26N_499_2MHZ",
+      "__R2_A_28N_499_2MHZ",
+      "__R2_B_13N_499_2MHZ",
+      "__R2_B_26N_499_2MHZ",
+      "__R2_B_28N_499_2MHZ"
+    ],
+    "function_partial_diagnostics": [],
+    "identity": "9a58b09824d181f00f288a781bedd331f14332743679fd6c7ee41e72565527f5",
+    "matrix": [
+      [
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.083210fac501fp-6"
+        },
+        {
+          "binary64": "0x1.d72d49daa8e50p+5"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.f7be6f7829d7fp-1"
+        },
+        {
+          "binary64": "-0x1.d72d49daa8e50p+5"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "-0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x1.0000000000000p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        },
+        {
+          "binary64": "0x0.0p+0"
+        }
+      ]
+    ],
+    "output_ids": [
+      "__CS_B_13N",
+      "__CS_B_26N",
+      "__CS_B_28N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R1_B_13N_499_2MHZ",
+      "__R1_B_26N_499_2MHZ",
+      "__R1_B_28N_499_2MHZ"
+    ],
+    "output_scales": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      }
+    ],
+    "output_units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ],
+    "parameterization_identity": "483b681708fe81d5ccd7913ef35d10828c4d7d8c18e9ee5105b8c062edb0ff92",
+    "problem_identity": "f9e5a94e014a3b82b8904216f6122866d6852e690fe9bea5520fdc7e45f5a97f",
+    "request_identity": "6133fa0bee112b06c598d0abba6c9386524002758ebbd5214e12a451d1ed81bf",
+    "structural_dependencies": [
+      [
+        "__DW_AB_13N"
+      ],
+      [
+        "__DW_AB_26N"
+      ],
+      [
+        "__DW_AB_28N"
+      ],
+      [
+        "__KEX_AB",
+        "__PB"
+      ],
+      [
+        "__KEX_AB",
+        "__PB"
+      ],
+      [
+        "__PB"
+      ],
+      [
+        "__R1_A_13N_499_2MHZ"
+      ],
+      [
+        "__R1_A_26N_499_2MHZ"
+      ],
+      [
+        "__R1_A_28N_499_2MHZ"
+      ]
+    ]
+  },
+  "correlations": {
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "artifact_type": "CorrelationEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.caf07ceb84a10p+2",
+        "name": "SOURCE_COVARIANCE::CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "SOURCE_COVARIANCE::FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.26d33d4fc2c0fp+12; upper[0] zeta=0x1.0edb7f95e74d6p+12; lower[1] zeta=0x1.2e9f55ec653e0p+12; upper[1] zeta=0x1.1054f3896b50fp+12; lower[2] zeta=0x1.ab1d3f95dc8dbp+11; upper[2] zeta=0x1.7571ecf38d7cep+11; lower[3] zeta=0x1.de78310536de8p+3; upper[3] zeta=0x1.efcf32ac5e38ep+17; lower[4] zeta=0x1.c5e6e7c06e3ecp+4; upper[4] zeta=0x1.b0bab559da214p+10; lower[5] zeta=0x1.fe1fc0d086b74p+7; upper[5] zeta=0x1.58c13eded9476p+17; lower[6] zeta=0x1.1487eb79641d6p+8; upper[6] zeta=0x1.4215e9abfc437p+17; lower[7] zeta=0x1.1ef80205d2520p+8; upper[7] zeta=0x1.4794fd845c4ecp+17; lower[8] zeta=0x1.c8dacbe4a7e65p+6; upper[8] zeta=0x1.dc6eda9f4e6b3p+12; lower[9] zeta=0x1.85236c174b103p+6; upper[9] zeta=0x1.b68fe7ad44846p+12; lower[10] zeta=0x1.889ad20e95097p+6; upper[10] zeta=0x1.cda818bbeb567p+12; lower[11] zeta=0x1.be08f97b9a0a5p+3; upper[11] zeta=0x1.99e46730437c7p+6; lower[12] zeta=0x1.696ed2d0e0347p+3; upper[12] zeta=0x1.cb30807b45df7p+6; lower[13] zeta=0x1.fbca7a8c5a094p+3; upper[13] zeta=0x1.df7eb6e48f267p+5",
+        "name": "SOURCE_COVARIANCE::BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EXACT_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "GRAM_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "scaled-rank=8; rows=9; threshold=0x1.ec1511aadeb19p-49",
+        "name": "OUTPUT_RANK_DEFICIENCY_EXPECTED",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_FIRST_ORDER_DEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE_USABILITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_13N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_26N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_28N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KAB",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KBA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__PA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_13N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_26N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_28N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_ENTRY_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.b2507154e7524p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.b2507154e7524p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.017478a642333p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.017478a642333p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0f5ce1d4b0437p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0f5ce1d4b0437p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.68b159ee75a52p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.68b159ee75a52p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.895d511ffa1a1p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.895d511ffa1a1p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.823ea9ccf8b42p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.823ea9ccf8b42p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.3d8c4c4c073b3p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.3d8c4c4c073b3p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5c6580c61abb3p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5c6580c61abb3p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.57f79de0e2fa2p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.57f79de0e2fa2p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.b2507154e7524p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.b2507154e7524p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.68b159ee75a52p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.68b159ee75a52p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.3d8c4c4c073b3p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.3d8c4c4c073b3p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e5c3a9bfc109bp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e5c3a9bfc109bp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.9b9c54a2e3917p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.9b9c54a2e3917p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e3321895c7129p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e3321895c7129p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.45d2d2ddb87bfp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.45d2d2ddb87bfp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.dc305792029b7p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.dc305792029b7p-5"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.017478a642333p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.017478a642333p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.895d511ffa1a1p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.895d511ffa1a1p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5c6580c61abb3p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5c6580c61abb3p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e5c3a9bfc109bp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e5c3a9bfc109bp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e6bdf3f3c1cabp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e6bdf3f3c1cabp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.9535726e65bc6p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.9535726e65bc6p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4813b6cf8c665p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4813b6cf8c665p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.88d21c3f431f1p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.88d21c3f431f1p-4"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0f5ce1d4b0437p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0f5ce1d4b0437p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.823ea9ccf8b42p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.823ea9ccf8b42p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.57f79de0e2fa2p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.57f79de0e2fa2p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.9b9c54a2e3917p-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.9b9c54a2e3917p-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e6bdf3f3c1cabp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e6bdf3f3c1cabp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.06b95c11c3e84p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.06b95c11c3e84p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.c986f35315d7fp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.c986f35315d7fp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.f992961165b0cp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.f992961165b0cp-4"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e3321895c7129p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e3321895c7129p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.9535726e65bc6p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.9535726e65bc6p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.06b95c11c3e84p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.06b95c11c3e84p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.511284a129c96p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.511284a129c96p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.57797de49b391p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.57797de49b391p-7"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.45d2d2ddb87bfp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.45d2d2ddb87bfp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4813b6cf8c665p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4813b6cf8c665p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.c986f35315d7fp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.c986f35315d7fp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.511284a129c96p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.511284a129c96p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.dc305792029b7p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.dc305792029b7p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.88d21c3f431f1p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.88d21c3f431f1p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.f992961165b0cp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.f992961165b0cp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.57797de49b391p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.57797de49b391p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        }
+      ]
+    ],
+    "identity": "977f7b94e87cbd9b0e91b6c345c133af29c8d0067f011d14bb6aadd6b8256d42",
+    "output_ids": [
+      "__CS_B_13N",
+      "__CS_B_26N",
+      "__CS_B_28N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R1_B_13N_499_2MHZ",
+      "__R1_B_26N_499_2MHZ",
+      "__R1_B_28N_499_2MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "constrained_propagation",
+    "source_identity": "c8d2450058ae2df20759092c09417c7d48a7f663e592949953f06d3e1e560927",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "failures": [],
+  "marginal_standard_errors": {
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "artifact_type": "MarginalErrorEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.caf07ceb84a10p+2",
+        "name": "SOURCE_COVARIANCE::CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "SOURCE_COVARIANCE::FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.26d33d4fc2c0fp+12; upper[0] zeta=0x1.0edb7f95e74d6p+12; lower[1] zeta=0x1.2e9f55ec653e0p+12; upper[1] zeta=0x1.1054f3896b50fp+12; lower[2] zeta=0x1.ab1d3f95dc8dbp+11; upper[2] zeta=0x1.7571ecf38d7cep+11; lower[3] zeta=0x1.de78310536de8p+3; upper[3] zeta=0x1.efcf32ac5e38ep+17; lower[4] zeta=0x1.c5e6e7c06e3ecp+4; upper[4] zeta=0x1.b0bab559da214p+10; lower[5] zeta=0x1.fe1fc0d086b74p+7; upper[5] zeta=0x1.58c13eded9476p+17; lower[6] zeta=0x1.1487eb79641d6p+8; upper[6] zeta=0x1.4215e9abfc437p+17; lower[7] zeta=0x1.1ef80205d2520p+8; upper[7] zeta=0x1.4794fd845c4ecp+17; lower[8] zeta=0x1.c8dacbe4a7e65p+6; upper[8] zeta=0x1.dc6eda9f4e6b3p+12; lower[9] zeta=0x1.85236c174b103p+6; upper[9] zeta=0x1.b68fe7ad44846p+12; lower[10] zeta=0x1.889ad20e95097p+6; upper[10] zeta=0x1.cda818bbeb567p+12; lower[11] zeta=0x1.be08f97b9a0a5p+3; upper[11] zeta=0x1.99e46730437c7p+6; lower[12] zeta=0x1.696ed2d0e0347p+3; upper[12] zeta=0x1.cb30807b45df7p+6; lower[13] zeta=0x1.fbca7a8c5a094p+3; upper[13] zeta=0x1.df7eb6e48f267p+5",
+        "name": "SOURCE_COVARIANCE::BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "SOURCE_COVARIANCE::CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE::USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_COMPLETE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_CONSTRAINT_LINEARIZATION::CONSTRAINT_OUTPUT_LINEARIZATION_RELIABLE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EXACT_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CONSTRAINT_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "GRAM_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "scaled-rank=8; rows=9; threshold=0x1.ec1511aadeb19p-49",
+        "name": "OUTPUT_RANK_DEFICIENCY_EXPECTED",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_FIRST_ORDER_DEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "SOURCE_COVARIANCE_USABILITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_13N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_26N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__CS_B_28N",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KAB",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__KBA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__PA",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_13N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_26N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "OUTPUT_FIRST_ORDER_NONDEGENERACY::__R1_B_28N_499_2MHZ",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_VARIANCE_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__CS_B_13N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.6a0a5e2898028p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__CS_B_26N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.6433c71b71607p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__CS_B_28N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.ffa46ec397ed7p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__KAB",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.11a2dbeb62d8cp-5"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__KBA",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.f423585531422p+1"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__PA",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.2a0303a792afap-11"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R1_B_13N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.72be19a48286cp-8"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R1_B_26N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.8cbe9d8844dc9p-8"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R1_B_28N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.86130fbaf86a5p-8"
+        }
+      }
+    ],
+    "identity": "a1e92fd403a87780e006214d0ddc4a163c82aee5303570b3f9c1b4b22fa59043",
+    "output_ids": [
+      "__CS_B_13N",
+      "__CS_B_26N",
+      "__CS_B_28N",
+      "__KAB",
+      "__KBA",
+      "__PA",
+      "__R1_B_13N_499_2MHZ",
+      "__R1_B_26N_499_2MHZ",
+      "__R1_B_28N_499_2MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "constrained_propagation",
+    "source_identity": "c8d2450058ae2df20759092c09417c7d48a7f663e592949953f06d3e1e560927",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "operations": [
+    {
+      "artifact_identity": "2d55e52dacfa7534c20bf1d6d00214f29d3b9f0e2991220597edd06d7baf9554",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "689a759deae7ab294af170b68bb2469514ac6a6d0c72c856ad64803b21bbb48e",
+      "occurrence_identity": "27106139f50549d79536fbb34925ebcf",
+      "request_identity": "bd53af7bce7dc98cf9d56666e8566928d45e05c1395db1e97d19e15fac8a08df",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "residual_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "10bccef0b32e99cf2a9b180e587ec945bcd0ece120226820b80f369b6502ec58",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "020b02d10fe1813fe176c200ed1818a8657395f311e0a8d72c016cdaab6f0cfc",
+      "occurrence_identity": "09ada8cbea9c473aa34b612663decf7d",
+      "request_identity": "2809a3a7ebc4a5169ae099983768728572b953c1ac00120a165818871d53674b",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "covariance",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "b59d67a6f763b231637546b444f8cda1988c76fa1624216257293fe26e914967",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "4dad918534cbb0d0ecf78297f2be27c5a81e2e52c18c9177520d9b21eb9afb9f",
+      "occurrence_identity": "01d850c501a34fde83417a4765506473",
+      "request_identity": "70f356ce5081b59177c3a6dc787bf017a1245b11b52adc8259c92840ab402330",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "7b370181f361191418cf7bf2fd707be58002874d4a50af18249b9fcd55d9386c",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "c70ba071036c33bdc8063afce7557174426aecb64f58ccfc06a8da019f4d288f",
+      "occurrence_identity": "d5c6c4224d6d4c4dbf0e47a79fa23d72",
+      "request_identity": "d9f85c55c5c2be6375f8a6431a7b06ecf227f404b4dc4ab092bf192105b29bc6",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "correlations",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "9a58b09824d181f00f288a781bedd331f14332743679fd6c7ee41e72565527f5",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "2b66027ccdba9765d01e5c68dfa7bd53617ae4ae2cbecc0a00b26b78931560ae",
+      "occurrence_identity": "bcab6f01efae43948277d09c200881b2",
+      "request_identity": "6133fa0bee112b06c598d0abba6c9386524002758ebbd5214e12a451d1ed81bf",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constraint_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "c8d2450058ae2df20759092c09417c7d48a7f663e592949953f06d3e1e560927",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "000b65cce27f3638c9540d2c4f72a6e7cbd6bbe0f2698e9695447a1e845074e6",
+      "occurrence_identity": "e72a0d753b804b83bd48a03d28d27a59",
+      "request_identity": "d55c4f8e1bb89a344eef2f0212fddb3aa881747f0e4fc8ff96d78f535f22f1b9",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constrained_propagation",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "a1e92fd403a87780e006214d0ddc4a163c82aee5303570b3f9c1b4b22fa59043",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "fe59e0c653212b5d6f80ad44ae157052e2ffbafd88c14c0e4c444e5045feec64",
+      "occurrence_identity": "4a1d474bd8954309986eb5df73512544",
+      "request_identity": "d124b73717e122802efce89283008f52429bc30fa794d1e242806adea3835d2c",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constrained_marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "977f7b94e87cbd9b0e91b6c345c133af29c8d0067f011d14bb6aadd6b8256d42",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "6d414b76fe3cf6ee2435336f082e62538f0c054223d3b2033b41a4a9dbb54c01",
+      "occurrence_identity": "c77308befd924f3586e38a5bc7ec0228",
+      "request_identity": "ca2692e7c5a768d5fabf28297e3843418dda4f71662fb2f66aed01cb57776faa",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constrained_correlations",
+      "terminal": "completed"
+    }
+  ],
+  "policy_identity": "b09ac447cf3767815a1029f101e336910f3d440364fd4e54d508b8e288d023b1",
+  "request_identity": "318902c34f794045940d250149f6e509209ce2476f6c5c853dfc128e73842b9b",
+  "requested_output_scope": [
+    "__CS_B_13N",
+    "__CS_B_26N",
+    "__CS_B_28N",
+    "__KAB",
+    "__KBA",
+    "__PA",
+    "__R1_B_13N_499_2MHZ",
+    "__R1_B_26N_499_2MHZ",
+    "__R1_B_28N_499_2MHZ"
+  ],
+  "schema_version": 2
+}

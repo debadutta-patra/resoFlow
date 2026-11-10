@@ -1,0 +1,22 @@
+FORMAT_VERSION = 2
+
+[STEP1]
+INCLUDE = ["13N", "26N", "28N"]
+ROLES = [
+  { CONSTRAIN = ["[R2_B] = [R2_A]"] },
+  { FIT = ["PB", "KEX_AB", "DW_AB", "CS_A"] },
+]
+
+[STEP1.SEARCH.GRID]
+AXES = [
+  "[PB] = log(0.01, 0.1, 3)",
+  "[KEX_AB] = log(20, 200, 3)",
+]
+
+[STEP2]
+INCLUDE = ["13N", "26N", "28N"]
+
+[STEP3]
+ROLES = [
+  { FIX = ["PB", "KEX_AB"] },
+]

@@ -234,3 +234,36 @@ def get_step_timings(analysis: models.Analysis = Depends(get_analysis)) -> dict[
     fits each step performed (for runtime / cost estimates of the next run)."""
     model = (load_chemex_config(analysis) or {}).get("model") or "2st"
     return step_timings_with_evaluations(_run_dir(analysis), model=model, experiments=_configured_experiments(analysis))
+
+
+@router.get(f"{ANALYSIS_CHEMEX}/run-overview")
+def get_run_overview(analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    """Last completed run, per step (values ± errors, GRID landscape summary, MCMC flags,
+    strong correlations, method snapshot), read from the results bundle."""
+    from ..services.results_bundle import store
+    from ..services.results_bundle.run_overview import ensure_bundle
+
+    run_dir = _run_dir(analysis)
+    if not ensure_bundle(run_dir, analysis):
+        return {"available": False, "completed_at": None, "overview": None}
+    overview = store.get_run_overview(run_dir)
+    return {
+        "available": overview is not None,
+        "completed_at": analysis.completed_at.isoformat() if analysis.completed_at else None,
+        "overview": overview,
+    }
+
+
+@router.get(f"{ANALYSIS_CHEMEX}/steps/{{step_name}}/grid-surface")
+def get_grid_surface(step_name: str, x: str, y: str, analysis: models.Analysis = Depends(get_analysis)) -> dict[str, Any]:
+    """A GRID step's 2D χ² surface for axes x/y, from the results bundle."""
+    from ..services.results_bundle import store
+    from ..services.results_bundle.run_overview import ensure_bundle
+
+    run_dir = _run_dir(analysis)
+    if not ensure_bundle(run_dir, analysis):
+        raise HTTPException(status_code=404, detail="No completed run results")
+    surface = store.get_grid_surface(run_dir, step_name, x, y)
+    if surface is None:
+        raise HTTPException(status_code=404, detail=f"No GRID surface for {x}/{y} in step {step_name}")
+    return surface

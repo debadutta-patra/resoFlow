@@ -5,6 +5,7 @@ import { baselineRoleLabel } from '../../lib/baselineRoles';
 import type { BaselineRolesState } from '../../hooks/useBaselineRoles';
 import { resolvedCountsLabel, rulesByTargetName, type ResolvedParameter, type ResolvedRole } from '../../lib/resolvedRoles';
 import { expressionRhs, idNameMap, roleView, searchAxisDomId, type RoleView } from '../../lib/parameterRoleView';
+import { committedSummary, fmtValue as fmtCommitted, type OverviewStep } from '../../lib/runOverview';
 import { checkConstraintRhs, parseConstraint } from '../../lib/methodGrammar';
 import {
   ChevronDown,
@@ -127,6 +128,12 @@ interface ParameterTableProps {
   onShowRules?: (name: string) => void;
   /** Every resolved parameter copy of this step (ChemEx), for the role-dependent setting column. */
   resolvedParams?: ResolvedParameter[];
+  /** This step in the last completed run (results bundle); the "Last committed" column is hidden without it. */
+  committedStep?: OverviewStep;
+  /** The method changed since that run. */
+  committedFromPreviousMethod?: boolean;
+  /** Extra content per parameter name shown under the name (e.g. correlation notes). */
+  nameNotes?: Record<string, React.ReactNode>;
 }
 
 const MODE_LABELS: Record<ParamMode, string> = { default: 'Default', fit: 'Fit', fix: 'Fix', constrain: 'Constrain', grid: 'Fit' };
@@ -197,6 +204,55 @@ const StartingValueNote: React.FC<{
 };
 
 const SEARCH_LABEL = { grid: 'Grid axis', de: 'DE range' } as const;
+
+/** Value ± error committed by this step in the last completed run; residue-level as median (range) with a per-residue popover. */
+const CommittedCell: React.FC<{ step: OverviewStep; name: string; previousMethod: boolean }> = ({ step, name, previousMethod }) => {
+  const [open, setOpen] = useState(false);
+  const summary = committedSummary(step, name);
+  if (!summary) return <span className="text-xs text-slate-500 dark:text-slate-400">—</span>;
+  return (
+    <div className="relative text-xs text-slate-700 dark:text-slate-200" data-testid={`committed-${name}`}>
+      <div className="font-mono">{summary.text}</div>
+      <div className="text-slate-600 dark:text-slate-400">
+        {step.name}
+        {previousMethod && <span title="The method changed since this run"> (previous method)</span>}
+      </div>
+      {summary.scope === 'residue' && (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(v => !v)}
+            className="mt-0.5 text-blue-700 dark:text-blue-700 hover:underline"
+          >
+            per residue {open ? '▴' : '▾'}
+          </button>
+          {open && (
+            <div
+              role="dialog"
+              aria-label={`${name} per residue`}
+              className="absolute right-0 z-30 mt-1 w-64 max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg p-2"
+            >
+              <table className="w-full font-mono text-xs">
+                <tbody>
+                  {summary.perResidue.map((c, i) => (
+                    <tr key={`${c.residue}-${c.qualifier}-${i}`} className="border-b border-slate-100 dark:border-slate-700 last:border-0">
+                      <td className="py-0.5 pr-2">{c.residue}{c.qualifier ? ` · ${c.qualifier}` : ''}</td>
+                      <td className="py-0.5 text-right">
+                        {fmtCommitted(c.value)}
+                        {c.stderr !== null ? ` ± ${fmtCommitted(c.stderr)}` : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
 /** Setting column content for the parameter's resolved role (see lib/parameterRoleView). */
 const SettingCell: React.FC<{
@@ -287,6 +343,9 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
   resolvedCounts,
   onShowRules,
   resolvedParams,
+  committedStep,
+  committedFromPreviousMethod = false,
+  nameNotes = {},
 }) => {
   const rulesByName = useMemo(() => rulesByTargetName(step), [step]);
   const resolvedByName = useMemo(() => {
@@ -435,7 +494,12 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
             <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400">
               <th className="py-3 px-4 font-semibold uppercase tracking-wider w-1/4">Parameter</th>
               <th className="py-3 px-4 font-semibold uppercase tracking-wider w-1/4">Treatment</th>
-              <th className="py-3 px-4 font-semibold uppercase tracking-wider w-1/2">Setting / Expression / Grid</th>
+              <th className={`py-3 px-4 font-semibold uppercase tracking-wider ${committedStep ? 'w-1/3' : 'w-1/2'}`}>Setting / Expression / Grid</th>
+              {committedStep && (
+                <th className="py-3 px-4 font-semibold uppercase tracking-wider" title="Value ± error committed by this step in the last completed run">
+                  Last committed
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -505,9 +569,10 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-xs leading-snug">
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 max-w-xs leading-snug">
                           {meta.gloss}
                         </p>
+                        {nameNotes[uName]}
                       </div>
                     </div>
                   </td>
@@ -690,6 +755,11 @@ export const ParameterTable: React.FC<ParameterTableProps> = ({
                     )}
 
                   </td>
+                  {committedStep && (
+                    <td className="py-3.5 px-4 align-top">
+                      <CommittedCell step={committedStep} name={uName} previousMethod={committedFromPreviousMethod} />
+                    </td>
+                  )}
                 </tr>
               );
             })}

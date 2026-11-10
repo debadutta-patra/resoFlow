@@ -1,0 +1,6104 @@
+{
+  "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+  "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+  "artifact_type": "native_covariance_evidence",
+  "bundle_identity": "de8c573dc0a8526f8db442f6b2022df8c8b8fba643b87fdf9f91e7ab648fabc3",
+  "correlations": {
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "artifact_type": "CorrelationEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.caf07ceb84a10p+2",
+        "name": "CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.26d33d4fc2c0fp+12; upper[0] zeta=0x1.0edb7f95e74d6p+12; lower[1] zeta=0x1.2e9f55ec653e0p+12; upper[1] zeta=0x1.1054f3896b50fp+12; lower[2] zeta=0x1.ab1d3f95dc8dbp+11; upper[2] zeta=0x1.7571ecf38d7cep+11; lower[3] zeta=0x1.de78310536de8p+3; upper[3] zeta=0x1.efcf32ac5e38ep+17; lower[4] zeta=0x1.c5e6e7c06e3ecp+4; upper[4] zeta=0x1.b0bab559da214p+10; lower[5] zeta=0x1.fe1fc0d086b74p+7; upper[5] zeta=0x1.58c13eded9476p+17; lower[6] zeta=0x1.1487eb79641d6p+8; upper[6] zeta=0x1.4215e9abfc437p+17; lower[7] zeta=0x1.1ef80205d2520p+8; upper[7] zeta=0x1.4794fd845c4ecp+17; lower[8] zeta=0x1.c8dacbe4a7e65p+6; upper[8] zeta=0x1.dc6eda9f4e6b3p+12; lower[9] zeta=0x1.85236c174b103p+6; upper[9] zeta=0x1.b68fe7ad44846p+12; lower[10] zeta=0x1.889ad20e95097p+6; upper[10] zeta=0x1.cda818bbeb567p+12; lower[11] zeta=0x1.be08f97b9a0a5p+3; upper[11] zeta=0x1.99e46730437c7p+6; lower[12] zeta=0x1.696ed2d0e0347p+3; upper[12] zeta=0x1.cb30807b45df7p+6; lower[13] zeta=0x1.fbca7a8c5a094p+3; upper[13] zeta=0x1.df7eb6e48f267p+5",
+        "name": "BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_ENTRY_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "CORRELATION_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0139646a22b39p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0139646a22b39p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.0f5ce1d4b0437p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.0f5ce1d4b0437p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.14bf2536c55eap-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.14bf2536c55eap-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.229a440b4541dp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.229a440b4541dp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.2e7a2534334f4p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.2e7a2534334f4p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.a8dcb66c700c9p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.a8dcb66c700c9p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.724965197d47bp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.724965197d47bp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.67a65ad7862cbp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.67a65ad7862cbp-6"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.98dec53bc003dp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.8941c96179662p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.8941c96179662p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.823ea9ccf8b42p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.823ea9ccf8b42p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.cc8a75ee71f57p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.cc8a75ee71f57p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0db3cd990ac49p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0db3cd990ac49p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.e76729edde84bp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.e76729edde84bp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7ba3ecca7984fp-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7ba3ecca7984fp-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.48f09c95f6e8cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.48f09c95f6e8cp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.22a6257331283p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.22a6257331283p-7"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.6c281441732f9p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ed9cec082d51p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5c48f8539fc32p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5c48f8539fc32p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.57f79de0e2fa2p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.57f79de0e2fa2p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.9305b53949063p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.9305b53949063p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.a7c46b7147d78p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.a7c46b7147d78p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.611234677d66ap-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.611234677d66ap-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.657494f70c9abp-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.657494f70c9abp-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.e4735e1f5e782p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.e4735e1f5e782p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7c70397e68dc4p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7c70397e68dc4p-4"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0139646a22b39p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0139646a22b39p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.8941c96179662p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.8941c96179662p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5c48f8539fc32p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5c48f8539fc32p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.e6508cbfe0cccp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.e6508cbfe0cccp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.93fef8b12b7c7p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.93fef8b12b7c7p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.46d15aeeb62c0p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.46d15aeeb62c0p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.87ad8e33fcdf5p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.87ad8e33fcdf5p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4106119d76b7bp-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4106119d76b7bp-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.43f6b3c9e0411p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.43f6b3c9e0411p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4481126364bdcp-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4481126364bdcp-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.348d4fa45b9b3p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.348d4fa45b9b3p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5d1c9b8bc272ap-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5d1c9b8bc272ap-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.c905e2ca3320ep-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.c905e2ca3320ep-6"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.0f5ce1d4b0437p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.0f5ce1d4b0437p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.823ea9ccf8b42p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.823ea9ccf8b42p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.57f79de0e2fa2p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.57f79de0e2fa2p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.e6508cbfe0cccp-1"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.e6508cbfe0cccp-1"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.06b95c11c3e84p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.06b95c11c3e84p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.c986f35315d7fp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.c986f35315d7fp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.f992961165b0cp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.f992961165b0cp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e16ed4729ba2cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e16ed4729ba2cp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.13629cc35d213p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.13629cc35d213p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.1e642c8fafeaep-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.1e642c8fafeaep-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.ab7125ed0b9c0p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.ab7125ed0b9c0p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5da8e2c1d4d95p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5da8e2c1d4d95p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4f3f9ebc77d38p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4f3f9ebc77d38p-4"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ab93e080cf63p-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5a48e5cf9529cp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.380a2e4b4711fp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.93fef8b12b7c7p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.93fef8b12b7c7p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.06b95c11c3e84p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.06b95c11c3e84p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.511284a129c96p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.511284a129c96p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.57797de49b391p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.57797de49b391p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.8416b40c15d9ap-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.8416b40c15d9ap-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.484ce56376365p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.484ce56376365p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.84895b9e535c2p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.84895b9e535c2p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4ae893043cd36p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4ae893043cd36p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.469406d4f80b7p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.469406d4f80b7p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6ddcc7902e1d7p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6ddcc7902e1d7p-7"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e73e7cf1bd2f1p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.79b194f9d206fp-12"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.04f44c23f1cc5p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.46d15aeeb62c0p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.46d15aeeb62c0p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.c986f35315d7fp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.c986f35315d7fp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.511284a129c96p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.511284a129c96p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.055a087697e30p-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.055a087697e30p-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5ef725e035828p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5ef725e035828p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.1e02a21e45203p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.1e02a21e45203p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.cdc92cd11dcf7p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.cdc92cd11dcf7p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b6634fb123e75p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b6634fb123e75p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7170ee0a3e59ep-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7170ee0a3e59ep-7"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0ce28072d93adp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4ebf6aa600a19p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.35fd6e4a3e4abp-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.87ad8e33fcdf5p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.87ad8e33fcdf5p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.f992961165b0cp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.f992961165b0cp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.57797de49b391p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.57797de49b391p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.41225b113a5fcp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.298b542fb35ccp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.298b542fb35ccp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.43441b620d07fp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.43441b620d07fp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b3906bef863a3p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b3906bef863a3p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b186e2c028800p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b186e2c028800p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.3b3b0c755eae7p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.3b3b0c755eae7p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.dda4e5ae4a83cp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.dda4e5ae4a83cp-4"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.14bf2536c55eap-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.14bf2536c55eap-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.cc8a75ee71f57p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.cc8a75ee71f57p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.9305b53949063p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.9305b53949063p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4106119d76b7bp-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4106119d76b7bp-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e16ed4729ba2cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e16ed4729ba2cp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.8416b40c15d9ap-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.8416b40c15d9ap-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.055a087697e30p-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.055a087697e30p-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.298b542fb35ccp-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.298b542fb35ccp-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e9218f220be11p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e9218f220be11p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.cee8203e10bbfp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.cee8203e10bbfp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.3eaee569fa8d4p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.3eaee569fa8d4p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.877a382107dc2p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.877a382107dc2p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b60525f5ad92dp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b60525f5ad92dp-6"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.229a440b4541dp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.229a440b4541dp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0db3cd990ac49p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.0db3cd990ac49p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.a7c46b7147d78p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.a7c46b7147d78p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.43f6b3c9e0411p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.43f6b3c9e0411p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.13629cc35d213p-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.13629cc35d213p-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.484ce56376365p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.484ce56376365p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5ef725e035828p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5ef725e035828p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.43441b620d07fp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.43441b620d07fp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.e9218f220be11p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.e9218f220be11p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.b6d7174e65bb7p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.b6d7174e65bb7p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4ecaa1247eea2p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4ecaa1247eea2p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.9eeb18d29b00fp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.9eeb18d29b00fp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.2831a260f6518p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.2831a260f6518p-7"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.2e7a2534334f4p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.2e7a2534334f4p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.e76729edde84bp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.e76729edde84bp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.611234677d66ap-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.611234677d66ap-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4481126364bdcp-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4481126364bdcp-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.1e642c8fafeaep-2"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.1e642c8fafeaep-2"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.84895b9e535c2p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.84895b9e535c2p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.1e02a21e45203p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.1e02a21e45203p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b3906bef863a3p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b3906bef863a3p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.cee8203e10bbfp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.cee8203e10bbfp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.b6d7174e65bb7p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.b6d7174e65bb7p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.8aeb96598c74dp-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.8aeb96598c74dp-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.aac8ada3d71d3p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.aac8ada3d71d3p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7a3ae63c1502dp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7a3ae63c1502dp-5"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.a8dcb66c700c9p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.a8dcb66c700c9p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7ba3ecca7984fp-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7ba3ecca7984fp-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.657494f70c9abp-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.657494f70c9abp-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.348d4fa45b9b3p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.348d4fa45b9b3p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.ab7125ed0b9c0p-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.ab7125ed0b9c0p-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4ae893043cd36p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4ae893043cd36p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.cdc92cd11dcf7p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.cdc92cd11dcf7p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b186e2c028800p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b186e2c028800p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.3eaee569fa8d4p-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.3eaee569fa8d4p-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.4ecaa1247eea2p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.4ecaa1247eea2p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.8aeb96598c74dp-10"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.8aeb96598c74dp-10"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.9d00745984b53p-9"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.9d00745984b53p-9"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.468684e690a0bp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.468684e690a0bp-6"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.724965197d47bp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.724965197d47bp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.48f09c95f6e8cp-3"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.48f09c95f6e8cp-3"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.e4735e1f5e782p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.e4735e1f5e782p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.5d1c9b8bc272ap-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.5d1c9b8bc272ap-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.5da8e2c1d4d95p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.5da8e2c1d4d95p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.469406d4f80b7p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.469406d4f80b7p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b6634fb123e75p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b6634fb123e75p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.3b3b0c755eae7p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.3b3b0c755eae7p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.877a382107dc2p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.877a382107dc2p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.9eeb18d29b00fp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.9eeb18d29b00fp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.aac8ada3d71d3p-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.aac8ada3d71d3p-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.9d00745984b53p-9"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.9d00745984b53p-9"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.3f58789b39339p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.3f58789b39339p-8"
+          }
+        }
+      ],
+      [
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.67a65ad7862cbp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.67a65ad7862cbp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.22a6257331283p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.22a6257331283p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7c70397e68dc4p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7c70397e68dc4p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.c905e2ca3320ep-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.c905e2ca3320ep-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.4f3f9ebc77d38p-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.4f3f9ebc77d38p-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.6ddcc7902e1d7p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.6ddcc7902e1d7p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7170ee0a3e59ep-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7170ee0a3e59ep-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.dda4e5ae4a83cp-4"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.dda4e5ae4a83cp-4"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.b60525f5ad92dp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.b60525f5ad92dp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.2831a260f6518p-7"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.2831a260f6518p-7"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "-0x1.7a3ae63c1502dp-5"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "-0x1.7a3ae63c1502dp-5"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.468684e690a0bp-6"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.468684e690a0bp-6"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": {
+            "binary64": "0x0.0p+0"
+          },
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.3f58789b39339p-8"
+          },
+          "tolerance": {
+            "binary64": "0x1.0000000000000p-46"
+          },
+          "value": {
+            "binary64": "0x1.3f58789b39339p-8"
+          }
+        },
+        {
+          "artifact_type": "CorrelationEntry",
+          "excess": null,
+          "outcome": "AVAILABLE",
+          "raw_value": {
+            "binary64": "0x1.0000000000000p+0"
+          },
+          "tolerance": null,
+          "value": {
+            "binary64": "0x1.0000000000000p+0"
+          }
+        }
+      ]
+    ],
+    "identity": "7b370181f361191418cf7bf2fd707be58002874d4a50af18249b9fcd55d9386c",
+    "output_ids": [
+      "__DW_AB_13N",
+      "__DW_AB_26N",
+      "__DW_AB_28N",
+      "__KEX_AB",
+      "__PB",
+      "__R1_A_13N_499_2MHZ",
+      "__R1_A_26N_499_2MHZ",
+      "__R1_A_28N_499_2MHZ",
+      "__R2_A_13N_499_2MHZ",
+      "__R2_A_26N_499_2MHZ",
+      "__R2_A_28N_499_2MHZ",
+      "__R2_B_13N_499_2MHZ",
+      "__R2_B_26N_499_2MHZ",
+      "__R2_B_28N_499_2MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "local_covariance",
+    "source_identity": "10bccef0b32e99cf2a9b180e587ec945bcd0ece120226820b80f369b6502ec58",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "covariance": {
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "accepted_vector": [
+      {
+        "binary64": "0x1.0f2a5637f1797p+2"
+      },
+      {
+        "binary64": "0x1.512c899278180p+2"
+      },
+      {
+        "binary64": "0x1.ad0dcbae2aa29p+2"
+      },
+      {
+        "binary64": "0x1.d72d49daa8e50p+5"
+      },
+      {
+        "binary64": "0x1.083210fac501fp-6"
+      },
+      {
+        "binary64": "0x1.716259abb3debp+0"
+      },
+      {
+        "binary64": "0x1.ac90274b18f6ap+0"
+      },
+      {
+        "binary64": "0x1.b543311f239edp+0"
+      },
+      {
+        "binary64": "0x1.d86029a577192p+3"
+      },
+      {
+        "binary64": "0x1.b595f3913a76dp+3"
+      },
+      {
+        "binary64": "0x1.a3a309fc90ea6p+3"
+      },
+      {
+        "binary64": "0x1.def10e0b12bcbp+6"
+      },
+      {
+        "binary64": "0x1.664d67b7e0c26p+6"
+      },
+      {
+        "binary64": "0x1.a2a9df420b036p+7"
+      }
+    ],
+    "artifact_type": "CovarianceEvidence",
+    "calibration_identity": "native-product-local-covariance-numerics-v2",
+    "chi_square": {
+      "binary64": "0x1.3be4a92455f32p+8"
+    },
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.caf07ceb84a10p+2",
+        "name": "CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.26d33d4fc2c0fp+12; upper[0] zeta=0x1.0edb7f95e74d6p+12; lower[1] zeta=0x1.2e9f55ec653e0p+12; upper[1] zeta=0x1.1054f3896b50fp+12; lower[2] zeta=0x1.ab1d3f95dc8dbp+11; upper[2] zeta=0x1.7571ecf38d7cep+11; lower[3] zeta=0x1.de78310536de8p+3; upper[3] zeta=0x1.efcf32ac5e38ep+17; lower[4] zeta=0x1.c5e6e7c06e3ecp+4; upper[4] zeta=0x1.b0bab559da214p+10; lower[5] zeta=0x1.fe1fc0d086b74p+7; upper[5] zeta=0x1.58c13eded9476p+17; lower[6] zeta=0x1.1487eb79641d6p+8; upper[6] zeta=0x1.4215e9abfc437p+17; lower[7] zeta=0x1.1ef80205d2520p+8; upper[7] zeta=0x1.4794fd845c4ecp+17; lower[8] zeta=0x1.c8dacbe4a7e65p+6; upper[8] zeta=0x1.dc6eda9f4e6b3p+12; lower[9] zeta=0x1.85236c174b103p+6; upper[9] zeta=0x1.b68fe7ad44846p+12; lower[10] zeta=0x1.889ad20e95097p+6; upper[10] zeta=0x1.cda818bbeb567p+12; lower[11] zeta=0x1.be08f97b9a0a5p+3; upper[11] zeta=0x1.99e46730437c7p+6; lower[12] zeta=0x1.696ed2d0e0347p+3; upper[12] zeta=0x1.cb30807b45df7p+6; lower[13] zeta=0x1.fbca7a8c5a094p+3; upper[13] zeta=0x1.df7eb6e48f267p+5",
+        "name": "BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      }
+    ],
+    "controlled_coordinate_count": 14,
+    "controlled_ids": [
+      "__DW_AB_13N",
+      "__DW_AB_26N",
+      "__DW_AB_28N",
+      "__KEX_AB",
+      "__PB",
+      "__R1_A_13N_499_2MHZ",
+      "__R1_A_26N_499_2MHZ",
+      "__R1_A_28N_499_2MHZ",
+      "__R2_A_13N_499_2MHZ",
+      "__R2_A_26N_499_2MHZ",
+      "__R2_A_28N_499_2MHZ",
+      "__R2_B_13N_499_2MHZ",
+      "__R2_B_26N_499_2MHZ",
+      "__R2_B_28N_499_2MHZ"
+    ],
+    "coordinate_scales": [
+      {
+        "binary64": "0x1.53687c46276f1p-6"
+      },
+      {
+        "binary64": "0x1.584b34034cdc9p-6"
+      },
+      {
+        "binary64": "0x1.f39e2f79f013dp-6"
+      },
+      {
+        "binary64": "0x1.1dbfb4f6cea3ap+0"
+      },
+      {
+        "binary64": "0x1.60538288a0543p-13"
+      },
+      {
+        "binary64": "0x1.6fef36aacb69cp-8"
+      },
+      {
+        "binary64": "0x1.87e486ee17d1ep-8"
+      },
+      {
+        "binary64": "0x1.7e89958c70b28p-8"
+      },
+      {
+        "binary64": "0x1.e19c370fac4bcp-4"
+      },
+      {
+        "binary64": "0x1.0c754ebf923a5p-3"
+      },
+      {
+        "binary64": "0x1.003897b84255dp-3"
+      },
+      {
+        "binary64": "0x1.0870cbffee001p+3"
+      },
+      {
+        "binary64": "0x1.efdca2e683266p+2"
+      },
+      {
+        "binary64": "0x1.9b3312922a74fp+3"
+      }
+    ],
+    "covariance": [
+      [
+        {
+          "binary64": "0x1.0000a95b25da6p-11"
+        },
+        {
+          "binary64": "0x1.9247e54dfb6c7p-16"
+        },
+        {
+          "binary64": "0x1.0151a8d4fdf43p-15"
+        },
+        {
+          "binary64": "0x1.663a33657cad6p-6"
+        },
+        {
+          "binary64": "-0x1.bebf0f76d04b9p-19"
+        },
+        {
+          "binary64": "0x1.52ad2609e7e00p-25"
+        },
+        {
+          "binary64": "0x1.0afa444613f6fp-19"
+        },
+        {
+          "binary64": "0x1.21b553be12ed6p-18"
+        },
+        {
+          "binary64": "0x1.94ad6cec20f64p-13"
+        },
+        {
+          "binary64": "-0x1.ce247360906a5p-13"
+        },
+        {
+          "binary64": "-0x1.c939044bda004p-13"
+        },
+        {
+          "binary64": "-0x1.4296a57a970b9p-5"
+        },
+        {
+          "binary64": "-0x1.0390d14ce7a97p-8"
+        },
+        {
+          "binary64": "-0x1.a359c0b024928p-8"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.9247e54dfb6c7p-16"
+        },
+        {
+          "binary64": "0x1.efa00c3d431f0p-12"
+        },
+        {
+          "binary64": "0x1.789a45430320ap-16"
+        },
+        {
+          "binary64": "0x1.0d6c0145905c3p-6"
+        },
+        {
+          "binary64": "-0x1.38cfc1fbd3d2fp-19"
+        },
+        {
+          "binary64": "0x1.5ce4acc66d892p-20"
+        },
+        {
+          "binary64": "0x1.973a54714ca20p-25"
+        },
+        {
+          "binary64": "0x1.62db146e98af6p-19"
+        },
+        {
+          "binary64": "-0x1.4b4973bec2ba9p-13"
+        },
+        {
+          "binary64": "0x1.a5fd0a969e010p-14"
+        },
+        {
+          "binary64": "-0x1.6a6ff6eb6f019p-13"
+        },
+        {
+          "binary64": "-0x1.1b9aabe10f4a0p-10"
+        },
+        {
+          "binary64": "-0x1.c5ba4623bd178p-6"
+        },
+        {
+          "binary64": "-0x1.4d6e4bc7f7be4p-9"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.0151a8d4fdf43p-15"
+        },
+        {
+          "binary64": "0x1.789a45430320ap-16"
+        },
+        {
+          "binary64": "0x1.ff48ede77986ap-11"
+        },
+        {
+          "binary64": "0x1.56bcaf54b574ep-6"
+        },
+        {
+          "binary64": "-0x1.9022ae1e16640p-19"
+        },
+        {
+          "binary64": "0x1.c3959c1419798p-20"
+        },
+        {
+          "binary64": "0x1.9423dfb94ca44p-20"
+        },
+        {
+          "binary64": "0x1.d802b16602080p-23"
+        },
+        {
+          "binary64": "-0x1.a06c5b1687d5bp-13"
+        },
+        {
+          "binary64": "-0x1.dc3168fdd1ff4p-13"
+        },
+        {
+          "binary64": "0x1.791e182a212a0p-13"
+        },
+        {
+          "binary64": "-0x1.7f8f0cd6bb9b0p-10"
+        },
+        {
+          "binary64": "-0x1.dfeb49a4d0c98p-9"
+        },
+        {
+          "binary64": "-0x1.3971dcf509f4ap-5"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.663a33657cad6p-6"
+        },
+        {
+          "binary64": "0x1.0d6c0145905c3p-6"
+        },
+        {
+          "binary64": "0x1.56bcaf54b574ep-6"
+        },
+        {
+          "binary64": "0x1.f082fb798e860p+3"
+        },
+        {
+          "binary64": "-0x1.16bf4a3334562p-9"
+        },
+        {
+          "binary64": "0x1.2013d4fed0b16p-10"
+        },
+        {
+          "binary64": "0x1.f2c6ee68b1f63p-11"
+        },
+        {
+          "binary64": "0x1.25db75208af70p-9"
+        },
+        {
+          "binary64": "-0x1.46def37af51b8p-3"
+        },
+        {
+          "binary64": "-0x1.66be93bb438e1p-3"
+        },
+        {
+          "binary64": "-0x1.558f9573589d1p-3"
+        },
+        {
+          "binary64": "-0x1.46441219e06e3p-1"
+        },
+        {
+          "binary64": "-0x1.54d022c2804eap+1"
+        },
+        {
+          "binary64": "-0x1.7310350a22ac5p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.bebf0f76d04b9p-19"
+        },
+        {
+          "binary64": "-0x1.38cfc1fbd3d2fp-19"
+        },
+        {
+          "binary64": "-0x1.9022ae1e16640p-19"
+        },
+        {
+          "binary64": "-0x1.16bf4a3334562p-9"
+        },
+        {
+          "binary64": "0x1.5aeb048b377bbp-22"
+        },
+        {
+          "binary64": "-0x1.baeba7a89cac6p-23"
+        },
+        {
+          "binary64": "-0x1.9cb750940523dp-23"
+        },
+        {
+          "binary64": "-0x1.c06379f531396p-22"
+        },
+        {
+          "binary64": "0x1.21bd7a125ea7fp-16"
+        },
+        {
+          "binary64": "0x1.687d6e30dd085p-16"
+        },
+        {
+          "binary64": "0x1.645876eaa0e67p-16"
+        },
+        {
+          "binary64": "0x1.0b263ffd30ee8p-12"
+        },
+        {
+          "binary64": "0x1.938429766746cp-12"
+        },
+        {
+          "binary64": "0x1.41c42bb553f90p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.52ad2609e7e00p-25"
+        },
+        {
+          "binary64": "0x1.5ce4acc66d892p-20"
+        },
+        {
+          "binary64": "0x1.c3959c1419798p-20"
+        },
+        {
+          "binary64": "0x1.2013d4fed0b16p-10"
+        },
+        {
+          "binary64": "-0x1.baeba7a89cac6p-23"
+        },
+        {
+          "binary64": "0x1.0c7507a4ce086p-15"
+        },
+        {
+          "binary64": "0x1.7a43f3fe8fde6p-23"
+        },
+        {
+          "binary64": "0x1.7af847a9abb5dp-22"
+        },
+        {
+          "binary64": "-0x1.2290926d0a8c9p-15"
+        },
+        {
+          "binary64": "-0x1.0b5229f00ba44p-17"
+        },
+        {
+          "binary64": "-0x1.2cb692d8b9a7bp-17"
+        },
+        {
+          "binary64": "-0x1.014a681104db6p-8"
+        },
+        {
+          "binary64": "-0x1.d4dbc136d9af6p-13"
+        },
+        {
+          "binary64": "-0x1.b4d9221d56ec4p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.0afa444613f6fp-19"
+        },
+        {
+          "binary64": "0x1.973a54714ca20p-25"
+        },
+        {
+          "binary64": "0x1.9423dfb94ca44p-20"
+        },
+        {
+          "binary64": "0x1.f2c6ee68b1f63p-11"
+        },
+        {
+          "binary64": "-0x1.9cb750940523dp-23"
+        },
+        {
+          "binary64": "0x1.7a43f3fe8fde6p-23"
+        },
+        {
+          "binary64": "0x1.336f22a5e6208p-15"
+        },
+        {
+          "binary64": "0x1.7b2bc9973cae0p-22"
+        },
+        {
+          "binary64": "-0x1.a2cc947d9d160p-21"
+        },
+        {
+          "binary64": "-0x1.31d1aba0b9e84p-14"
+        },
+        {
+          "binary64": "-0x1.d9c604a688d98p-18"
+        },
+        {
+          "binary64": "-0x1.803bc80de4098p-12"
+        },
+        {
+          "binary64": "-0x1.50c2c8e185778p-8"
+        },
+        {
+          "binary64": "-0x1.d80f2b8bd33c8p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.21b553be12ed6p-18"
+        },
+        {
+          "binary64": "0x1.62db146e98af6p-19"
+        },
+        {
+          "binary64": "0x1.d802b16602080p-23"
+        },
+        {
+          "binary64": "0x1.25db75208af70p-9"
+        },
+        {
+          "binary64": "-0x1.c06379f531396p-22"
+        },
+        {
+          "binary64": "0x1.7af847a9abb5dp-22"
+        },
+        {
+          "binary64": "0x1.7b2bc9973cae0p-22"
+        },
+        {
+          "binary64": "0x1.292f0aac81ce2p-15"
+        },
+        {
+          "binary64": "-0x1.d4c787c5d1228p-18"
+        },
+        {
+          "binary64": "-0x1.14f27262c5fc3p-16"
+        },
+        {
+          "binary64": "-0x1.62b063d72b540p-14"
+        },
+        {
+          "binary64": "-0x1.62a7e8ed3fde8p-11"
+        },
+        {
+          "binary64": "-0x1.dc2a6270d188ep-12"
+        },
+        {
+          "binary64": "-0x1.2c073eb1085e4p-7"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.94ad6cec20f64p-13"
+        },
+        {
+          "binary64": "-0x1.4b4973bec2ba9p-13"
+        },
+        {
+          "binary64": "-0x1.a06c5b1687d5bp-13"
+        },
+        {
+          "binary64": "-0x1.46def37af51b8p-3"
+        },
+        {
+          "binary64": "0x1.21bd7a125ea7fp-16"
+        },
+        {
+          "binary64": "-0x1.2290926d0a8c9p-15"
+        },
+        {
+          "binary64": "-0x1.a2cc947d9d160p-21"
+        },
+        {
+          "binary64": "-0x1.d4c787c5d1228p-18"
+        },
+        {
+          "binary64": "0x1.11b09e76480b4p-6"
+        },
+        {
+          "binary64": "0x1.1c5b5f42b5ef8p-9"
+        },
+        {
+          "binary64": "0x1.ff96b8f81be62p-10"
+        },
+        {
+          "binary64": "-0x1.61d1dfa0ba78cp-3"
+        },
+        {
+          "binary64": "0x1.9145752503671p-6"
+        },
+        {
+          "binary64": "-0x1.756876caa4d58p-5"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.ce247360906a5p-13"
+        },
+        {
+          "binary64": "0x1.a5fd0a969e010p-14"
+        },
+        {
+          "binary64": "-0x1.dc3168fdd1ff4p-13"
+        },
+        {
+          "binary64": "-0x1.66be93bb438e1p-3"
+        },
+        {
+          "binary64": "0x1.687d6e30dd085p-16"
+        },
+        {
+          "binary64": "-0x1.0b5229f00ba44p-17"
+        },
+        {
+          "binary64": "-0x1.31d1aba0b9e84p-14"
+        },
+        {
+          "binary64": "-0x1.14f27262c5fc3p-16"
+        },
+        {
+          "binary64": "0x1.1c5b5f42b5ef8p-9"
+        },
+        {
+          "binary64": "0x1.43b6282b18333p-6"
+        },
+        {
+          "binary64": "0x1.07b9f4dce3daap-9"
+        },
+        {
+          "binary64": "-0x1.943f507c08c64p-8"
+        },
+        {
+          "binary64": "-0x1.ce88b9b01b2f0p-5"
+        },
+        {
+          "binary64": "-0x1.129c02b989accp-6"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.c939044bda004p-13"
+        },
+        {
+          "binary64": "-0x1.6a6ff6eb6f019p-13"
+        },
+        {
+          "binary64": "0x1.791e182a212a0p-13"
+        },
+        {
+          "binary64": "-0x1.558f9573589d1p-3"
+        },
+        {
+          "binary64": "0x1.645876eaa0e67p-16"
+        },
+        {
+          "binary64": "-0x1.2cb692d8b9a7bp-17"
+        },
+        {
+          "binary64": "-0x1.d9c604a688d98p-18"
+        },
+        {
+          "binary64": "-0x1.62b063d72b540p-14"
+        },
+        {
+          "binary64": "0x1.ff96b8f81be62p-10"
+        },
+        {
+          "binary64": "0x1.07b9f4dce3daap-9"
+        },
+        {
+          "binary64": "0x1.24776ba18a1c0p-6"
+        },
+        {
+          "binary64": "-0x1.c540df08459f0p-10"
+        },
+        {
+          "binary64": "0x1.c437df2a8b0eap-6"
+        },
+        {
+          "binary64": "-0x1.4d508a78925eep-4"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.4296a57a970b9p-5"
+        },
+        {
+          "binary64": "-0x1.1b9aabe10f4a0p-10"
+        },
+        {
+          "binary64": "-0x1.7f8f0cd6bb9b0p-10"
+        },
+        {
+          "binary64": "-0x1.46441219e06e3p-1"
+        },
+        {
+          "binary64": "0x1.0b263ffd30ee8p-12"
+        },
+        {
+          "binary64": "-0x1.014a681104db6p-8"
+        },
+        {
+          "binary64": "-0x1.803bc80de4098p-12"
+        },
+        {
+          "binary64": "-0x1.62a7e8ed3fde8p-11"
+        },
+        {
+          "binary64": "-0x1.61d1dfa0ba78cp-3"
+        },
+        {
+          "binary64": "-0x1.943f507c08c64p-8"
+        },
+        {
+          "binary64": "-0x1.c540df08459f0p-10"
+        },
+        {
+          "binary64": "0x1.272aa2df13883p+6"
+        },
+        {
+          "binary64": "0x1.b7a152e3f0730p-3"
+        },
+        {
+          "binary64": "0x1.211341aabc192p+1"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0390d14ce7a97p-8"
+        },
+        {
+          "binary64": "-0x1.c5ba4623bd178p-6"
+        },
+        {
+          "binary64": "-0x1.dfeb49a4d0c98p-9"
+        },
+        {
+          "binary64": "-0x1.54d022c2804eap+1"
+        },
+        {
+          "binary64": "0x1.938429766746cp-12"
+        },
+        {
+          "binary64": "-0x1.d4dbc136d9af6p-13"
+        },
+        {
+          "binary64": "-0x1.50c2c8e185778p-8"
+        },
+        {
+          "binary64": "-0x1.dc2a6270d188ep-12"
+        },
+        {
+          "binary64": "0x1.9145752503671p-6"
+        },
+        {
+          "binary64": "-0x1.ce88b9b01b2f0p-5"
+        },
+        {
+          "binary64": "0x1.c437df2a8b0eap-6"
+        },
+        {
+          "binary64": "0x1.b7a152e3f0730p-3"
+        },
+        {
+          "binary64": "0x1.f72b47d855a64p+5"
+        },
+        {
+          "binary64": "0x1.05037b256fb9cp-1"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.a359c0b024928p-8"
+        },
+        {
+          "binary64": "-0x1.4d6e4bc7f7be4p-9"
+        },
+        {
+          "binary64": "-0x1.3971dcf509f4ap-5"
+        },
+        {
+          "binary64": "-0x1.7310350a22ac5p+0"
+        },
+        {
+          "binary64": "0x1.41c42bb553f90p-11"
+        },
+        {
+          "binary64": "-0x1.b4d9221d56ec4p-11"
+        },
+        {
+          "binary64": "-0x1.d80f2b8bd33c8p-11"
+        },
+        {
+          "binary64": "-0x1.2c073eb1085e4p-7"
+        },
+        {
+          "binary64": "-0x1.756876caa4d58p-5"
+        },
+        {
+          "binary64": "-0x1.129c02b989accp-6"
+        },
+        {
+          "binary64": "-0x1.4d508a78925eep-4"
+        },
+        {
+          "binary64": "0x1.211341aabc192p+1"
+        },
+        {
+          "binary64": "0x1.05037b256fb9cp-1"
+        },
+        {
+          "binary64": "0x1.5c0a7efe3e8f8p+7"
+        }
+      ]
+    ],
+    "evaluation_plan_identity": "a52fbf906b447df62227178439bea9bf63826a52b0af55858a91e00a0ff12746",
+    "factor": [
+      [
+        {
+          "binary64": "0x1.faed87ed4af27p-12"
+        },
+        {
+          "binary64": "0x1.48ec27829f644p-7"
+        },
+        {
+          "binary64": "-0x1.3b841c737c5abp-9"
+        },
+        {
+          "binary64": "0x1.acf92a8e10c1dp-12"
+        },
+        {
+          "binary64": "0x1.1ee53895dc58cp-7"
+        },
+        {
+          "binary64": "0x1.0dc4b030ec184p-10"
+        },
+        {
+          "binary64": "0x1.17d8e5afe9ab9p-7"
+        },
+        {
+          "binary64": "0x1.b80565ea12267p-10"
+        },
+        {
+          "binary64": "0x1.6d8a943f16c78p-13"
+        },
+        {
+          "binary64": "0x1.42e63c88ca005p-9"
+        },
+        {
+          "binary64": "0x1.47874809d97d4p-8"
+        },
+        {
+          "binary64": "-0x1.311e007bf1082p-8"
+        },
+        {
+          "binary64": "0x1.82a28fbfda5a4p-7"
+        },
+        {
+          "binary64": "-0x1.889cfdffb090ap-8"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.ee6f596cacc1ap-12"
+        },
+        {
+          "binary64": "-0x1.28fc4e7f85276p-12"
+        },
+        {
+          "binary64": "-0x1.032f829b44ba7p-7"
+        },
+        {
+          "binary64": "0x1.41f6abef69e57p-12"
+        },
+        {
+          "binary64": "-0x1.ebb3819f9d470p-8"
+        },
+        {
+          "binary64": "0x1.3842ed6cbe67fp-7"
+        },
+        {
+          "binary64": "0x1.8787943e5ffa4p-8"
+        },
+        {
+          "binary64": "-0x1.10546a9d06b77p-16"
+        },
+        {
+          "binary64": "0x1.27a34125d4096p-9"
+        },
+        {
+          "binary64": "0x1.646c1f8bf5782p-10"
+        },
+        {
+          "binary64": "0x1.8c7455ff81cf0p-8"
+        },
+        {
+          "binary64": "0x1.a2d22e76ed7ccp-7"
+        },
+        {
+          "binary64": "0x1.04396049b82c7p-10"
+        },
+        {
+          "binary64": "-0x1.1de23273e1ad5p-8"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.2474bc5d8e9aap-10"
+        },
+        {
+          "binary64": "0x1.277dca34939f1p-11"
+        },
+        {
+          "binary64": "-0x1.ba9bf99ee56c0p-10"
+        },
+        {
+          "binary64": "0x1.6e37567ef1666p-9"
+        },
+        {
+          "binary64": "-0x1.2fbe812b1c025p-7"
+        },
+        {
+          "binary64": "-0x1.02688381b5c93p-6"
+        },
+        {
+          "binary64": "0x1.f1fc6d61fc3f4p-7"
+        },
+        {
+          "binary64": "-0x1.9d28bb9a16e05p-12"
+        },
+        {
+          "binary64": "0x1.50ba04c3822b1p-14"
+        },
+        {
+          "binary64": "0x1.53390ba0af12ep-7"
+        },
+        {
+          "binary64": "-0x1.fab3e99e31611p-7"
+        },
+        {
+          "binary64": "0x1.04d01d1484768p-8"
+        },
+        {
+          "binary64": "0x1.119d79c7e640fp-9"
+        },
+        {
+          "binary64": "-0x1.6b1c922283f0cp-8"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.ffd6e212f58d3p-2"
+        },
+        {
+          "binary64": "-0x1.a74596c098babp-6"
+        },
+        {
+          "binary64": "0x1.4e7fe32053ceap-5"
+        },
+        {
+          "binary64": "0x1.595b25646f833p-8"
+        },
+        {
+          "binary64": "0x1.7d361a3a5783ap-7"
+        },
+        {
+          "binary64": "-0x1.37becf0244eb7p-9"
+        },
+        {
+          "binary64": "0x1.7d5f3d2186cb0p-4"
+        },
+        {
+          "binary64": "0x1.28832bed44131p-6"
+        },
+        {
+          "binary64": "0x1.573ff6504ab2ep-5"
+        },
+        {
+          "binary64": "0x1.56212929a7062p-4"
+        },
+        {
+          "binary64": "0x1.7ccc731b1362bp-4"
+        },
+        {
+          "binary64": "-0x1.38fc055ab0b86p-4"
+        },
+        {
+          "binary64": "-0x1.ebc09f7a857e7p-3"
+        },
+        {
+          "binary64": "-0x1.f29aef305bf49p+1"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.2f17d5eedb364p-14"
+        },
+        {
+          "binary64": "0x1.43b0e462e4bdcp-20"
+        },
+        {
+          "binary64": "0x1.db91fff85f24cp-19"
+        },
+        {
+          "binary64": "-0x1.a2ea4c9075709p-19"
+        },
+        {
+          "binary64": "0x1.70f7f464afc9ap-20"
+        },
+        {
+          "binary64": "0x1.f3cfd7dac7959p-20"
+        },
+        {
+          "binary64": "0x1.69b5c490c8fedp-15"
+        },
+        {
+          "binary64": "-0x1.765c4e9ebc533p-18"
+        },
+        {
+          "binary64": "-0x1.b7385cfb1fdf4p-18"
+        },
+        {
+          "binary64": "0x1.03660ea32be49p-17"
+        },
+        {
+          "binary64": "0x1.6c8a6e3d71f2cp-16"
+        },
+        {
+          "binary64": "-0x1.cbc1656035ce6p-17"
+        },
+        {
+          "binary64": "-0x1.675defe4474cap-15"
+        },
+        {
+          "binary64": "0x1.257c60507e4d8p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.003577f8accf3p-12"
+        },
+        {
+          "binary64": "0x1.ff47f0d2fe8a8p-10"
+        },
+        {
+          "binary64": "0x1.2b7ac21cc2fd1p-18"
+        },
+        {
+          "binary64": "-0x1.b07567bbf5bc4p-17"
+        },
+        {
+          "binary64": "-0x1.f4d3b4ee34e95p-11"
+        },
+        {
+          "binary64": "-0x1.e3493e312baf7p-14"
+        },
+        {
+          "binary64": "-0x1.0edb02b707eadp-10"
+        },
+        {
+          "binary64": "-0x1.4d3e49fe660bep-8"
+        },
+        {
+          "binary64": "0x1.f0bfc8e8b5c03p-14"
+        },
+        {
+          "binary64": "0x1.da4646c220648p-16"
+        },
+        {
+          "binary64": "-0x1.d3b56e572715bp-15"
+        },
+        {
+          "binary64": "0x1.eff11ca66f2ccp-17"
+        },
+        {
+          "binary64": "0x1.9e81b13c0a821p-12"
+        },
+        {
+          "binary64": "-0x1.6356696f734b4p-12"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.633aa93509b40p-12"
+        },
+        {
+          "binary64": "-0x1.5a997fc96dbd9p-12"
+        },
+        {
+          "binary64": "-0x1.6ddc31d8dde8bp-9"
+        },
+        {
+          "binary64": "0x1.bf3969c49ace0p-15"
+        },
+        {
+          "binary64": "0x1.7dbc5aca2cf5bp-11"
+        },
+        {
+          "binary64": "-0x1.12d9f25d7c499p-10"
+        },
+        {
+          "binary64": "-0x1.5b965dee0d23ep-10"
+        },
+        {
+          "binary64": "-0x1.04024e3ab71c9p-14"
+        },
+        {
+          "binary64": "-0x1.40b7d367ee080p-8"
+        },
+        {
+          "binary64": "0x1.a7f31bc929a4cp-11"
+        },
+        {
+          "binary64": "0x1.59bb55753e9a8p-12"
+        },
+        {
+          "binary64": "0x1.3cc81ea4ca7a6p-11"
+        },
+        {
+          "binary64": "0x1.0c4fd783ff4bap-12"
+        },
+        {
+          "binary64": "-0x1.47208aefb6902p-12"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.4d18ab12e1d9cp-12"
+        },
+        {
+          "binary64": "-0x1.c23381b4128a3p-15"
+        },
+        {
+          "binary64": "0x1.85152432f8e36p-13"
+        },
+        {
+          "binary64": "0x1.c5c7b16756ab8p-9"
+        },
+        {
+          "binary64": "0x1.613fe37b96872p-15"
+        },
+        {
+          "binary64": "0x1.75442676d8e60p-14"
+        },
+        {
+          "binary64": "0x1.0a5a563be5928p-10"
+        },
+        {
+          "binary64": "-0x1.deb1c56fd3c13p-13"
+        },
+        {
+          "binary64": "-0x1.0e1f6293c5b0cp-10"
+        },
+        {
+          "binary64": "-0x1.1c62619aa8146p-8"
+        },
+        {
+          "binary64": "-0x1.f96bda9121175p-11"
+        },
+        {
+          "binary64": "0x1.185c68e99b958p-11"
+        },
+        {
+          "binary64": "0x1.9e494fbc07363p-11"
+        },
+        {
+          "binary64": "-0x1.6a32f24faccecp-11"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.5720e5ca62496p-6"
+        },
+        {
+          "binary64": "0x1.658573ef62615p-6"
+        },
+        {
+          "binary64": "0x1.81d3470c5710ep-7"
+        },
+        {
+          "binary64": "-0x1.210d17d007153p-9"
+        },
+        {
+          "binary64": "-0x1.f04aa0510ebb3p-5"
+        },
+        {
+          "binary64": "-0x1.d1e01a07de3b8p-8"
+        },
+        {
+          "binary64": "-0x1.4fa4eec6cb044p-5"
+        },
+        {
+          "binary64": "0x1.47005a565fcf6p-5"
+        },
+        {
+          "binary64": "-0x1.820c0032a9e3ep-9"
+        },
+        {
+          "binary64": "-0x1.b4461ef40296bp-9"
+        },
+        {
+          "binary64": "0x1.73a1dd5fde446p-8"
+        },
+        {
+          "binary64": "-0x1.514dee8f68c86p-7"
+        },
+        {
+          "binary64": "0x1.587bb740c03b7p-4"
+        },
+        {
+          "binary64": "0x1.34f7c80905e4cp-5"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.06e503394baf4p-6"
+        },
+        {
+          "binary64": "-0x1.cefeae6a8beeep-8"
+        },
+        {
+          "binary64": "-0x1.014c8064b442dp-5"
+        },
+        {
+          "binary64": "0x1.5f06d2d4c97bep-19"
+        },
+        {
+          "binary64": "0x1.5e0c7f69b2eacp-5"
+        },
+        {
+          "binary64": "-0x1.c9976956b162cp-5"
+        },
+        {
+          "binary64": "-0x1.16d4b2a2e844cp-5"
+        },
+        {
+          "binary64": "0x1.14e8f623433b3p-11"
+        },
+        {
+          "binary64": "0x1.12d8bd07f3eeep-4"
+        },
+        {
+          "binary64": "-0x1.0ee8249c829a9p-6"
+        },
+        {
+          "binary64": "0x1.41728591c16f0p-7"
+        },
+        {
+          "binary64": "0x1.1cf3b12d47980p-4"
+        },
+        {
+          "binary64": "0x1.be1fcc8b57150p-6"
+        },
+        {
+          "binary64": "0x1.659cef6956213p-5"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.72428e06a33fap-7"
+        },
+        {
+          "binary64": "-0x1.95a50debf658dp-9"
+        },
+        {
+          "binary64": "0x1.20cd84b2a3654p-7"
+        },
+        {
+          "binary64": "0x1.ba56b9d940d4bp-5"
+        },
+        {
+          "binary64": "0x1.c6be72f38dfadp-6"
+        },
+        {
+          "binary64": "0x1.815aa11e7d021p-5"
+        },
+        {
+          "binary64": "-0x1.e829ac1031c5ap-6"
+        },
+        {
+          "binary64": "0x1.b25c7f63a1004p-11"
+        },
+        {
+          "binary64": "0x1.0927e13d4e337p-7"
+        },
+        {
+          "binary64": "0x1.18ef4e1de80d7p-4"
+        },
+        {
+          "binary64": "-0x1.e654829252ee9p-5"
+        },
+        {
+          "binary64": "0x1.2c65a6a511925p-6"
+        },
+        {
+          "binary64": "0x1.5356802c1bc8cp-6"
+        },
+        {
+          "binary64": "0x1.5a873e0de8e0fp-5"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.846a364986ab9p-3"
+        },
+        {
+          "binary64": "0x1.54fed202f9cafp+2"
+        },
+        {
+          "binary64": "-0x1.ec421cff4d20cp-2"
+        },
+        {
+          "binary64": "0x1.87872593ad2e6p-4"
+        },
+        {
+          "binary64": "-0x1.39cab93877afap-2"
+        },
+        {
+          "binary64": "-0x1.2cd0d8630bf18p-4"
+        },
+        {
+          "binary64": "-0x1.69875323075dfp+0"
+        },
+        {
+          "binary64": "0x1.5da9b5759a32dp+1"
+        },
+        {
+          "binary64": "-0x1.4a459ecc65134p-5"
+        },
+        {
+          "binary64": "-0x1.8a39f7ea9e652p-1"
+        },
+        {
+          "binary64": "-0x1.be3e89f28de07p+0"
+        },
+        {
+          "binary64": "0x1.b476e6109a92ep+0"
+        },
+        {
+          "binary64": "-0x1.583dadbc05adfp+2"
+        },
+        {
+          "binary64": "0x1.443baa9fd08e6p-2"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.5cda5481c6accp-3"
+        },
+        {
+          "binary64": "-0x1.c5a1ab8a24c6fp-2"
+        },
+        {
+          "binary64": "-0x1.30a4751ac6733p+2"
+        },
+        {
+          "binary64": "0x1.2dc3204dcc42cp-3"
+        },
+        {
+          "binary64": "-0x1.8b123000070b0p-1"
+        },
+        {
+          "binary64": "0x1.a5a6ff9223a89p-1"
+        },
+        {
+          "binary64": "-0x1.0bcfb7563452dp-1"
+        },
+        {
+          "binary64": "0x1.83c68795c233fp-4"
+        },
+        {
+          "binary64": "0x1.5461a118c7b05p+1"
+        },
+        {
+          "binary64": "-0x1.fa72ce06dbe58p-1"
+        },
+        {
+          "binary64": "-0x1.2f48ebac45543p+1"
+        },
+        {
+          "binary64": "-0x1.39cdee1129eeap+2"
+        },
+        {
+          "binary64": "-0x1.d7f115e2876f8p-2"
+        },
+        {
+          "binary64": "0x1.703a8de348f31p-1"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.5938fe607e123p+0"
+        },
+        {
+          "binary64": "0x1.5e6644e485898p-4"
+        },
+        {
+          "binary64": "-0x1.a3abf9e7b5253p-2"
+        },
+        {
+          "binary64": "0x1.ca2385e4fdb5ep+2"
+        },
+        {
+          "binary64": "-0x1.f0324b6068721p+0"
+        },
+        {
+          "binary64": "-0x1.884184b2f27b5p+1"
+        },
+        {
+          "binary64": "-0x1.493dc54f9dc93p+0"
+        },
+        {
+          "binary64": "0x1.ce0f37689aba1p-2"
+        },
+        {
+          "binary64": "0x1.b6ca696063c67p+0"
+        },
+        {
+          "binary64": "0x1.fc7249814daa6p+1"
+        },
+        {
+          "binary64": "0x1.03041d6985044p+3"
+        },
+        {
+          "binary64": "-0x1.7a2e0a82d1953p+1"
+        },
+        {
+          "binary64": "-0x1.c0456ff0ade54p+1"
+        },
+        {
+          "binary64": "0x1.7be04fd96d704p-1"
+        }
+      ]
+    ],
+    "factorization": "column-equilibrated-svd-factor-gram-v4",
+    "identity": "10bccef0b32e99cf2a9b180e587ec945bcd0ece120226820b80f369b6502ec58",
+    "information_condition": {
+      "binary64": "0x1.9b60b072968eep+5"
+    },
+    "jacobian_condition": {
+      "binary64": "0x1.caf07ceb84a10p+2"
+    },
+    "nominal_residual_degrees_of_freedom": 348,
+    "numerical_compatibility_requirement": "binary64-retained-scipy-2point-gesdd-column-equilibrated-v1",
+    "parameterization_identity": "31cd883cfc7d9ca406bc952775f2f65f6968c39ac7d5d1ca565591b592fbe1c1",
+    "policy_identity": "b09ac447cf3767815a1029f101e336910f3d440364fd4e54d508b8e288d023b1",
+    "problem_identity": "f9e5a94e014a3b82b8904216f6122866d6852e690fe9bea5520fdc7e45f5a97f",
+    "profiled_normalization_count": 6,
+    "rank": 14,
+    "rank_diagnostic_identity": "ca4b42d6b245706d25bf83a108c5d5f9a4ff98933ea98066fa5133ae289cd138",
+    "rank_threshold": {
+      "binary64": "0x1.0e725930fb6a4p-43"
+    },
+    "request_identity": "2809a3a7ebc4a5169ae099983768728572b953c1ac00120a165818871d53674b",
+    "residual_variance_scale": {
+      "binary64": "0x1.0000000000000p+0"
+    },
+    "residual_variance_scaling": "absolute_observation_uncertainties",
+    "retained_residual_count": 368,
+    "singular_values": [
+      {
+        "binary64": "0x1.78460cc9b6d6ap+0"
+      },
+      {
+        "binary64": "0x1.1b4665bd61baep+0"
+      },
+      {
+        "binary64": "0x1.18758a17147f9p+0"
+      },
+      {
+        "binary64": "0x1.1442d146e77b0p+0"
+      },
+      {
+        "binary64": "0x1.0e38e6718532bp+0"
+      },
+      {
+        "binary64": "0x1.0d8bf502223e1p+0"
+      },
+      {
+        "binary64": "0x1.034e43c3d993dp+0"
+      },
+      {
+        "binary64": "0x1.f23be87969368p-1"
+      },
+      {
+        "binary64": "0x1.e4269bb95d553p-1"
+      },
+      {
+        "binary64": "0x1.dd6d3c00e3d65p-1"
+      },
+      {
+        "binary64": "0x1.cf81e628873f8p-1"
+      },
+      {
+        "binary64": "0x1.c59558ed0c43ep-1"
+      },
+      {
+        "binary64": "0x1.9b109abfa29aap-1"
+      },
+      {
+        "binary64": "0x1.a3c6da2ab247ep-3"
+      }
+    ],
+    "source_jacobian_identity": "2d55e52dacfa7534c20bf1d6d00214f29d3b9f0e2991220597edd06d7baf9554",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ],
+    "unscaled_covariance": [
+      [
+        {
+          "binary64": "0x1.0000a95b25da6p-11"
+        },
+        {
+          "binary64": "0x1.9247e54dfb6c7p-16"
+        },
+        {
+          "binary64": "0x1.0151a8d4fdf43p-15"
+        },
+        {
+          "binary64": "0x1.663a33657cad6p-6"
+        },
+        {
+          "binary64": "-0x1.bebf0f76d04b9p-19"
+        },
+        {
+          "binary64": "0x1.52ad2609e7e00p-25"
+        },
+        {
+          "binary64": "0x1.0afa444613f6fp-19"
+        },
+        {
+          "binary64": "0x1.21b553be12ed6p-18"
+        },
+        {
+          "binary64": "0x1.94ad6cec20f64p-13"
+        },
+        {
+          "binary64": "-0x1.ce247360906a5p-13"
+        },
+        {
+          "binary64": "-0x1.c939044bda004p-13"
+        },
+        {
+          "binary64": "-0x1.4296a57a970b9p-5"
+        },
+        {
+          "binary64": "-0x1.0390d14ce7a97p-8"
+        },
+        {
+          "binary64": "-0x1.a359c0b024928p-8"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.9247e54dfb6c7p-16"
+        },
+        {
+          "binary64": "0x1.efa00c3d431f0p-12"
+        },
+        {
+          "binary64": "0x1.789a45430320ap-16"
+        },
+        {
+          "binary64": "0x1.0d6c0145905c3p-6"
+        },
+        {
+          "binary64": "-0x1.38cfc1fbd3d2fp-19"
+        },
+        {
+          "binary64": "0x1.5ce4acc66d892p-20"
+        },
+        {
+          "binary64": "0x1.973a54714ca20p-25"
+        },
+        {
+          "binary64": "0x1.62db146e98af6p-19"
+        },
+        {
+          "binary64": "-0x1.4b4973bec2ba9p-13"
+        },
+        {
+          "binary64": "0x1.a5fd0a969e010p-14"
+        },
+        {
+          "binary64": "-0x1.6a6ff6eb6f019p-13"
+        },
+        {
+          "binary64": "-0x1.1b9aabe10f4a0p-10"
+        },
+        {
+          "binary64": "-0x1.c5ba4623bd178p-6"
+        },
+        {
+          "binary64": "-0x1.4d6e4bc7f7be4p-9"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.0151a8d4fdf43p-15"
+        },
+        {
+          "binary64": "0x1.789a45430320ap-16"
+        },
+        {
+          "binary64": "0x1.ff48ede77986ap-11"
+        },
+        {
+          "binary64": "0x1.56bcaf54b574ep-6"
+        },
+        {
+          "binary64": "-0x1.9022ae1e16640p-19"
+        },
+        {
+          "binary64": "0x1.c3959c1419798p-20"
+        },
+        {
+          "binary64": "0x1.9423dfb94ca44p-20"
+        },
+        {
+          "binary64": "0x1.d802b16602080p-23"
+        },
+        {
+          "binary64": "-0x1.a06c5b1687d5bp-13"
+        },
+        {
+          "binary64": "-0x1.dc3168fdd1ff4p-13"
+        },
+        {
+          "binary64": "0x1.791e182a212a0p-13"
+        },
+        {
+          "binary64": "-0x1.7f8f0cd6bb9b0p-10"
+        },
+        {
+          "binary64": "-0x1.dfeb49a4d0c98p-9"
+        },
+        {
+          "binary64": "-0x1.3971dcf509f4ap-5"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.663a33657cad6p-6"
+        },
+        {
+          "binary64": "0x1.0d6c0145905c3p-6"
+        },
+        {
+          "binary64": "0x1.56bcaf54b574ep-6"
+        },
+        {
+          "binary64": "0x1.f082fb798e860p+3"
+        },
+        {
+          "binary64": "-0x1.16bf4a3334562p-9"
+        },
+        {
+          "binary64": "0x1.2013d4fed0b16p-10"
+        },
+        {
+          "binary64": "0x1.f2c6ee68b1f63p-11"
+        },
+        {
+          "binary64": "0x1.25db75208af70p-9"
+        },
+        {
+          "binary64": "-0x1.46def37af51b8p-3"
+        },
+        {
+          "binary64": "-0x1.66be93bb438e1p-3"
+        },
+        {
+          "binary64": "-0x1.558f9573589d1p-3"
+        },
+        {
+          "binary64": "-0x1.46441219e06e3p-1"
+        },
+        {
+          "binary64": "-0x1.54d022c2804eap+1"
+        },
+        {
+          "binary64": "-0x1.7310350a22ac5p+0"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.bebf0f76d04b9p-19"
+        },
+        {
+          "binary64": "-0x1.38cfc1fbd3d2fp-19"
+        },
+        {
+          "binary64": "-0x1.9022ae1e16640p-19"
+        },
+        {
+          "binary64": "-0x1.16bf4a3334562p-9"
+        },
+        {
+          "binary64": "0x1.5aeb048b377bbp-22"
+        },
+        {
+          "binary64": "-0x1.baeba7a89cac6p-23"
+        },
+        {
+          "binary64": "-0x1.9cb750940523dp-23"
+        },
+        {
+          "binary64": "-0x1.c06379f531396p-22"
+        },
+        {
+          "binary64": "0x1.21bd7a125ea7fp-16"
+        },
+        {
+          "binary64": "0x1.687d6e30dd085p-16"
+        },
+        {
+          "binary64": "0x1.645876eaa0e67p-16"
+        },
+        {
+          "binary64": "0x1.0b263ffd30ee8p-12"
+        },
+        {
+          "binary64": "0x1.938429766746cp-12"
+        },
+        {
+          "binary64": "0x1.41c42bb553f90p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.52ad2609e7e00p-25"
+        },
+        {
+          "binary64": "0x1.5ce4acc66d892p-20"
+        },
+        {
+          "binary64": "0x1.c3959c1419798p-20"
+        },
+        {
+          "binary64": "0x1.2013d4fed0b16p-10"
+        },
+        {
+          "binary64": "-0x1.baeba7a89cac6p-23"
+        },
+        {
+          "binary64": "0x1.0c7507a4ce086p-15"
+        },
+        {
+          "binary64": "0x1.7a43f3fe8fde6p-23"
+        },
+        {
+          "binary64": "0x1.7af847a9abb5dp-22"
+        },
+        {
+          "binary64": "-0x1.2290926d0a8c9p-15"
+        },
+        {
+          "binary64": "-0x1.0b5229f00ba44p-17"
+        },
+        {
+          "binary64": "-0x1.2cb692d8b9a7bp-17"
+        },
+        {
+          "binary64": "-0x1.014a681104db6p-8"
+        },
+        {
+          "binary64": "-0x1.d4dbc136d9af6p-13"
+        },
+        {
+          "binary64": "-0x1.b4d9221d56ec4p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.0afa444613f6fp-19"
+        },
+        {
+          "binary64": "0x1.973a54714ca20p-25"
+        },
+        {
+          "binary64": "0x1.9423dfb94ca44p-20"
+        },
+        {
+          "binary64": "0x1.f2c6ee68b1f63p-11"
+        },
+        {
+          "binary64": "-0x1.9cb750940523dp-23"
+        },
+        {
+          "binary64": "0x1.7a43f3fe8fde6p-23"
+        },
+        {
+          "binary64": "0x1.336f22a5e6208p-15"
+        },
+        {
+          "binary64": "0x1.7b2bc9973cae0p-22"
+        },
+        {
+          "binary64": "-0x1.a2cc947d9d160p-21"
+        },
+        {
+          "binary64": "-0x1.31d1aba0b9e84p-14"
+        },
+        {
+          "binary64": "-0x1.d9c604a688d98p-18"
+        },
+        {
+          "binary64": "-0x1.803bc80de4098p-12"
+        },
+        {
+          "binary64": "-0x1.50c2c8e185778p-8"
+        },
+        {
+          "binary64": "-0x1.d80f2b8bd33c8p-11"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.21b553be12ed6p-18"
+        },
+        {
+          "binary64": "0x1.62db146e98af6p-19"
+        },
+        {
+          "binary64": "0x1.d802b16602080p-23"
+        },
+        {
+          "binary64": "0x1.25db75208af70p-9"
+        },
+        {
+          "binary64": "-0x1.c06379f531396p-22"
+        },
+        {
+          "binary64": "0x1.7af847a9abb5dp-22"
+        },
+        {
+          "binary64": "0x1.7b2bc9973cae0p-22"
+        },
+        {
+          "binary64": "0x1.292f0aac81ce2p-15"
+        },
+        {
+          "binary64": "-0x1.d4c787c5d1228p-18"
+        },
+        {
+          "binary64": "-0x1.14f27262c5fc3p-16"
+        },
+        {
+          "binary64": "-0x1.62b063d72b540p-14"
+        },
+        {
+          "binary64": "-0x1.62a7e8ed3fde8p-11"
+        },
+        {
+          "binary64": "-0x1.dc2a6270d188ep-12"
+        },
+        {
+          "binary64": "-0x1.2c073eb1085e4p-7"
+        }
+      ],
+      [
+        {
+          "binary64": "0x1.94ad6cec20f64p-13"
+        },
+        {
+          "binary64": "-0x1.4b4973bec2ba9p-13"
+        },
+        {
+          "binary64": "-0x1.a06c5b1687d5bp-13"
+        },
+        {
+          "binary64": "-0x1.46def37af51b8p-3"
+        },
+        {
+          "binary64": "0x1.21bd7a125ea7fp-16"
+        },
+        {
+          "binary64": "-0x1.2290926d0a8c9p-15"
+        },
+        {
+          "binary64": "-0x1.a2cc947d9d160p-21"
+        },
+        {
+          "binary64": "-0x1.d4c787c5d1228p-18"
+        },
+        {
+          "binary64": "0x1.11b09e76480b4p-6"
+        },
+        {
+          "binary64": "0x1.1c5b5f42b5ef8p-9"
+        },
+        {
+          "binary64": "0x1.ff96b8f81be62p-10"
+        },
+        {
+          "binary64": "-0x1.61d1dfa0ba78cp-3"
+        },
+        {
+          "binary64": "0x1.9145752503671p-6"
+        },
+        {
+          "binary64": "-0x1.756876caa4d58p-5"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.ce247360906a5p-13"
+        },
+        {
+          "binary64": "0x1.a5fd0a969e010p-14"
+        },
+        {
+          "binary64": "-0x1.dc3168fdd1ff4p-13"
+        },
+        {
+          "binary64": "-0x1.66be93bb438e1p-3"
+        },
+        {
+          "binary64": "0x1.687d6e30dd085p-16"
+        },
+        {
+          "binary64": "-0x1.0b5229f00ba44p-17"
+        },
+        {
+          "binary64": "-0x1.31d1aba0b9e84p-14"
+        },
+        {
+          "binary64": "-0x1.14f27262c5fc3p-16"
+        },
+        {
+          "binary64": "0x1.1c5b5f42b5ef8p-9"
+        },
+        {
+          "binary64": "0x1.43b6282b18333p-6"
+        },
+        {
+          "binary64": "0x1.07b9f4dce3daap-9"
+        },
+        {
+          "binary64": "-0x1.943f507c08c64p-8"
+        },
+        {
+          "binary64": "-0x1.ce88b9b01b2f0p-5"
+        },
+        {
+          "binary64": "-0x1.129c02b989accp-6"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.c939044bda004p-13"
+        },
+        {
+          "binary64": "-0x1.6a6ff6eb6f019p-13"
+        },
+        {
+          "binary64": "0x1.791e182a212a0p-13"
+        },
+        {
+          "binary64": "-0x1.558f9573589d1p-3"
+        },
+        {
+          "binary64": "0x1.645876eaa0e67p-16"
+        },
+        {
+          "binary64": "-0x1.2cb692d8b9a7bp-17"
+        },
+        {
+          "binary64": "-0x1.d9c604a688d98p-18"
+        },
+        {
+          "binary64": "-0x1.62b063d72b540p-14"
+        },
+        {
+          "binary64": "0x1.ff96b8f81be62p-10"
+        },
+        {
+          "binary64": "0x1.07b9f4dce3daap-9"
+        },
+        {
+          "binary64": "0x1.24776ba18a1c0p-6"
+        },
+        {
+          "binary64": "-0x1.c540df08459f0p-10"
+        },
+        {
+          "binary64": "0x1.c437df2a8b0eap-6"
+        },
+        {
+          "binary64": "-0x1.4d508a78925eep-4"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.4296a57a970b9p-5"
+        },
+        {
+          "binary64": "-0x1.1b9aabe10f4a0p-10"
+        },
+        {
+          "binary64": "-0x1.7f8f0cd6bb9b0p-10"
+        },
+        {
+          "binary64": "-0x1.46441219e06e3p-1"
+        },
+        {
+          "binary64": "0x1.0b263ffd30ee8p-12"
+        },
+        {
+          "binary64": "-0x1.014a681104db6p-8"
+        },
+        {
+          "binary64": "-0x1.803bc80de4098p-12"
+        },
+        {
+          "binary64": "-0x1.62a7e8ed3fde8p-11"
+        },
+        {
+          "binary64": "-0x1.61d1dfa0ba78cp-3"
+        },
+        {
+          "binary64": "-0x1.943f507c08c64p-8"
+        },
+        {
+          "binary64": "-0x1.c540df08459f0p-10"
+        },
+        {
+          "binary64": "0x1.272aa2df13883p+6"
+        },
+        {
+          "binary64": "0x1.b7a152e3f0730p-3"
+        },
+        {
+          "binary64": "0x1.211341aabc192p+1"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.0390d14ce7a97p-8"
+        },
+        {
+          "binary64": "-0x1.c5ba4623bd178p-6"
+        },
+        {
+          "binary64": "-0x1.dfeb49a4d0c98p-9"
+        },
+        {
+          "binary64": "-0x1.54d022c2804eap+1"
+        },
+        {
+          "binary64": "0x1.938429766746cp-12"
+        },
+        {
+          "binary64": "-0x1.d4dbc136d9af6p-13"
+        },
+        {
+          "binary64": "-0x1.50c2c8e185778p-8"
+        },
+        {
+          "binary64": "-0x1.dc2a6270d188ep-12"
+        },
+        {
+          "binary64": "0x1.9145752503671p-6"
+        },
+        {
+          "binary64": "-0x1.ce88b9b01b2f0p-5"
+        },
+        {
+          "binary64": "0x1.c437df2a8b0eap-6"
+        },
+        {
+          "binary64": "0x1.b7a152e3f0730p-3"
+        },
+        {
+          "binary64": "0x1.f72b47d855a64p+5"
+        },
+        {
+          "binary64": "0x1.05037b256fb9cp-1"
+        }
+      ],
+      [
+        {
+          "binary64": "-0x1.a359c0b024928p-8"
+        },
+        {
+          "binary64": "-0x1.4d6e4bc7f7be4p-9"
+        },
+        {
+          "binary64": "-0x1.3971dcf509f4ap-5"
+        },
+        {
+          "binary64": "-0x1.7310350a22ac5p+0"
+        },
+        {
+          "binary64": "0x1.41c42bb553f90p-11"
+        },
+        {
+          "binary64": "-0x1.b4d9221d56ec4p-11"
+        },
+        {
+          "binary64": "-0x1.d80f2b8bd33c8p-11"
+        },
+        {
+          "binary64": "-0x1.2c073eb1085e4p-7"
+        },
+        {
+          "binary64": "-0x1.756876caa4d58p-5"
+        },
+        {
+          "binary64": "-0x1.129c02b989accp-6"
+        },
+        {
+          "binary64": "-0x1.4d508a78925eep-4"
+        },
+        {
+          "binary64": "0x1.211341aabc192p+1"
+        },
+        {
+          "binary64": "0x1.05037b256fb9cp-1"
+        },
+        {
+          "binary64": "0x1.5c0a7efe3e8f8p+7"
+        }
+      ]
+    ]
+  },
+  "failures": [],
+  "marginal_standard_errors": {
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "artifact_type": "MarginalErrorEvidence",
+    "claims": [
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "AUTHORITATIVE_LINEAGE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "LOCAL_LINEARIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "EFFECTIVE_OBSERVATION_SUFFICIENCY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "FULL_COLUMN_RANK",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "kappa_J=0x1.caf07ceb84a10p+2",
+        "name": "CONDITIONING_ADEQUACY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "Accepted point is in the strict box interior",
+        "name": "FULL_DIMENSIONAL_FEASIBLE_INTERIOR",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "INTERIOR_POINT",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "lower[0] zeta=0x1.26d33d4fc2c0fp+12; upper[0] zeta=0x1.0edb7f95e74d6p+12; lower[1] zeta=0x1.2e9f55ec653e0p+12; upper[1] zeta=0x1.1054f3896b50fp+12; lower[2] zeta=0x1.ab1d3f95dc8dbp+11; upper[2] zeta=0x1.7571ecf38d7cep+11; lower[3] zeta=0x1.de78310536de8p+3; upper[3] zeta=0x1.efcf32ac5e38ep+17; lower[4] zeta=0x1.c5e6e7c06e3ecp+4; upper[4] zeta=0x1.b0bab559da214p+10; lower[5] zeta=0x1.fe1fc0d086b74p+7; upper[5] zeta=0x1.58c13eded9476p+17; lower[6] zeta=0x1.1487eb79641d6p+8; upper[6] zeta=0x1.4215e9abfc437p+17; lower[7] zeta=0x1.1ef80205d2520p+8; upper[7] zeta=0x1.4794fd845c4ecp+17; lower[8] zeta=0x1.c8dacbe4a7e65p+6; upper[8] zeta=0x1.dc6eda9f4e6b3p+12; lower[9] zeta=0x1.85236c174b103p+6; upper[9] zeta=0x1.b68fe7ad44846p+12; lower[10] zeta=0x1.889ad20e95097p+6; upper[10] zeta=0x1.cda818bbeb567p+12; lower[11] zeta=0x1.be08f97b9a0a5p+3; upper[11] zeta=0x1.99e46730437c7p+6; lower[12] zeta=0x1.696ed2d0e0347p+3; upper[12] zeta=0x1.cb30807b45df7p+6; lower[13] zeta=0x1.fbca7a8c5a094p+3; upper[13] zeta=0x1.df7eb6e48f267p+5",
+        "name": "BOUNDARY_SEPARATION",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "AFFINE_FEASIBILITY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "canonical-root-affine-halfspace-zeta-gt-3-v1",
+        "name": "CONTROLLED_AFFINE_SEPARATION",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "RESIDUAL_VARIANCE_NONDEGENERACY",
+        "state": "not_applicable"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "PROFILED_NORMALIZATION_REGULARITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "COVARIANCE_ARITHMETIC_INTEGRITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "USABLE_LOCAL_COVARIANCE",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_VARIANCE_VALIDITY",
+        "state": "satisfied"
+      },
+      {
+        "artifact_type": "ClaimAssessment",
+        "detail": "",
+        "name": "MARGINAL_SCOPE_REPORTABILITY",
+        "state": "satisfied"
+      }
+    ],
+    "entries": [
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__DW_AB_13N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.6a0a5e2898028p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__DW_AB_26N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.6433c71b71607p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__DW_AB_28N",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.ffa46ec397ed7p-6"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__KEX_AB",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.f832445670029p+1"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__PB",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.2a0303a792afap-11"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R1_A_13N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.72be19a48286cp-8"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R1_A_26N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.8cbe9d8844dc9p-8"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R1_A_28N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.86130fbaf86a5p-8"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_A_13N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.08b27d193fe72p-3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_A_26N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.1fdf2c6d1e7fbp-3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_A_28N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.11a05d62c7110p-3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_B_13N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.12e2f76cfa626p+3"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_B_26N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.fb90b9471f1a3p+2"
+        }
+      },
+      {
+        "artifact_type": "ScalarEvidenceEntry",
+        "outcome": "AVAILABLE",
+        "param_id": "__R2_B_28N_499_2MHZ",
+        "raw_value": null,
+        "value": {
+          "binary64": "0x1.a622445e1b420p+3"
+        }
+      }
+    ],
+    "identity": "b59d67a6f763b231637546b444f8cda1988c76fa1624216257293fe26e914967",
+    "output_ids": [
+      "__DW_AB_13N",
+      "__DW_AB_26N",
+      "__DW_AB_28N",
+      "__KEX_AB",
+      "__PB",
+      "__R1_A_13N_499_2MHZ",
+      "__R1_A_26N_499_2MHZ",
+      "__R1_A_28N_499_2MHZ",
+      "__R2_A_13N_499_2MHZ",
+      "__R2_A_26N_499_2MHZ",
+      "__R2_A_28N_499_2MHZ",
+      "__R2_B_13N_499_2MHZ",
+      "__R2_B_26N_499_2MHZ",
+      "__R2_B_28N_499_2MHZ"
+    ],
+    "scope_reportable": true,
+    "source_family": "local_covariance",
+    "source_identity": "10bccef0b32e99cf2a9b180e587ec945bcd0ece120226820b80f369b6502ec58",
+    "units": [
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified",
+      "unspecified"
+    ]
+  },
+  "operations": [
+    {
+      "artifact_identity": "2d55e52dacfa7534c20bf1d6d00214f29d3b9f0e2991220597edd06d7baf9554",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "689a759deae7ab294af170b68bb2469514ac6a6d0c72c856ad64803b21bbb48e",
+      "occurrence_identity": "27106139f50549d79536fbb34925ebcf",
+      "request_identity": "bd53af7bce7dc98cf9d56666e8566928d45e05c1395db1e97d19e15fac8a08df",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "residual_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "10bccef0b32e99cf2a9b180e587ec945bcd0ece120226820b80f369b6502ec58",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "020b02d10fe1813fe176c200ed1818a8657395f311e0a8d72c016cdaab6f0cfc",
+      "occurrence_identity": "09ada8cbea9c473aa34b612663decf7d",
+      "request_identity": "2809a3a7ebc4a5169ae099983768728572b953c1ac00120a165818871d53674b",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "covariance",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "b59d67a6f763b231637546b444f8cda1988c76fa1624216257293fe26e914967",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "4dad918534cbb0d0ecf78297f2be27c5a81e2e52c18c9177520d9b21eb9afb9f",
+      "occurrence_identity": "01d850c501a34fde83417a4765506473",
+      "request_identity": "70f356ce5081b59177c3a6dc787bf017a1245b11b52adc8259c92840ab402330",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "7b370181f361191418cf7bf2fd707be58002874d4a50af18249b9fcd55d9386c",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "c70ba071036c33bdc8063afce7557174426aecb64f58ccfc06a8da019f4d288f",
+      "occurrence_identity": "d5c6c4224d6d4c4dbf0e47a79fa23d72",
+      "request_identity": "d9f85c55c5c2be6375f8a6431a7b06ecf227f404b4dc4ab092bf192105b29bc6",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "correlations",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "9a58b09824d181f00f288a781bedd331f14332743679fd6c7ee41e72565527f5",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "2b66027ccdba9765d01e5c68dfa7bd53617ae4ae2cbecc0a00b26b78931560ae",
+      "occurrence_identity": "bcab6f01efae43948277d09c200881b2",
+      "request_identity": "6133fa0bee112b06c598d0abba6c9386524002758ebbd5214e12a451d1ed81bf",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constraint_linearization",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "c8d2450058ae2df20759092c09417c7d48a7f663e592949953f06d3e1e560927",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "000b65cce27f3638c9540d2c4f72a6e7cbd6bbe0f2698e9695447a1e845074e6",
+      "occurrence_identity": "e72a0d753b804b83bd48a03d28d27a59",
+      "request_identity": "d55c4f8e1bb89a344eef2f0212fddb3aa881747f0e4fc8ff96d78f535f22f1b9",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constrained_propagation",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "a1e92fd403a87780e006214d0ddc4a163c82aee5303570b3f9c1b4b22fa59043",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "fe59e0c653212b5d6f80ad44ae157052e2ffbafd88c14c0e4c444e5045feec64",
+      "occurrence_identity": "4a1d474bd8954309986eb5df73512544",
+      "request_identity": "d124b73717e122802efce89283008f52429bc30fa794d1e242806adea3835d2c",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constrained_marginal_errors",
+      "terminal": "completed"
+    },
+    {
+      "artifact_identity": "977f7b94e87cbd9b0e91b6c345c133af29c8d0067f011d14bb6aadd6b8256d42",
+      "artifact_type": "DerivationOperation",
+      "failure": null,
+      "identity": "6d414b76fe3cf6ee2435336f082e62538f0c054223d3b2033b41a4a9dbb54c01",
+      "occurrence_identity": "c77308befd924f3586e38a5bc7ec0228",
+      "request_identity": "ca2692e7c5a768d5fabf28297e3843418dda4f71662fb2f66aed01cb57776faa",
+      "resolved_environment_identity": "92758a76af497e74c41f0b12df7894b5eb5243b3a0c12070c62f784a46f07887",
+      "stage": "constrained_correlations",
+      "terminal": "completed"
+    }
+  ],
+  "policy_identity": "b09ac447cf3767815a1029f101e336910f3d440364fd4e54d508b8e288d023b1",
+  "rank_diagnostic": {
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "artifact_type": "RankDiagnostic",
+    "controlled_ids": [
+      "__DW_AB_13N",
+      "__DW_AB_26N",
+      "__DW_AB_28N",
+      "__KEX_AB",
+      "__PB",
+      "__R1_A_13N_499_2MHZ",
+      "__R1_A_26N_499_2MHZ",
+      "__R1_A_28N_499_2MHZ",
+      "__R2_A_13N_499_2MHZ",
+      "__R2_A_26N_499_2MHZ",
+      "__R2_A_28N_499_2MHZ",
+      "__R2_B_13N_499_2MHZ",
+      "__R2_B_26N_499_2MHZ",
+      "__R2_B_28N_499_2MHZ"
+    ],
+    "equilibration_scales": [
+      {
+        "binary64": "0x1.53687c46276f1p-6"
+      },
+      {
+        "binary64": "0x1.584b34034cdc9p-6"
+      },
+      {
+        "binary64": "0x1.f39e2f79f013dp-6"
+      },
+      {
+        "binary64": "0x1.1dbfb4f6cea3ap+0"
+      },
+      {
+        "binary64": "0x1.60538288a0543p-13"
+      },
+      {
+        "binary64": "0x1.6fef36aacb69cp-8"
+      },
+      {
+        "binary64": "0x1.87e486ee17d1ep-8"
+      },
+      {
+        "binary64": "0x1.7e89958c70b28p-8"
+      },
+      {
+        "binary64": "0x1.e19c370fac4bcp-4"
+      },
+      {
+        "binary64": "0x1.0c754ebf923a5p-3"
+      },
+      {
+        "binary64": "0x1.003897b84255dp-3"
+      },
+      {
+        "binary64": "0x1.0870cbffee001p+3"
+      },
+      {
+        "binary64": "0x1.efdca2e683266p+2"
+      },
+      {
+        "binary64": "0x1.9b3312922a74fp+3"
+      }
+    ],
+    "identifiable_projector_binary64_sha256": "cee44f5103f63db7321c457d7d295241010e2e317fa247b383f6e8f25803ec4c",
+    "identity": "ca4b42d6b245706d25bf83a108c5d5f9a4ff98933ea98066fa5133ae289cd138",
+    "normalized_singular_values": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.8174a4fd977ddp-1"
+      },
+      {
+        "binary64": "0x1.7d9fc3b2b25b2p-1"
+      },
+      {
+        "binary64": "0x1.77e960a7a7666p-1"
+      },
+      {
+        "binary64": "0x1.6fb1d45a7ef3cp-1"
+      },
+      {
+        "binary64": "0x1.6ec680f6f1c5dp-1"
+      },
+      {
+        "binary64": "0x1.60d722c6de1cfp-1"
+      },
+      {
+        "binary64": "0x1.52f9fa002995cp-1"
+      },
+      {
+        "binary64": "0x1.496516e553034p-1"
+      },
+      {
+        "binary64": "0x1.44d1f146382b5p-1"
+      },
+      {
+        "binary64": "0x1.3b599b2b2e041p-1"
+      },
+      {
+        "binary64": "0x1.3499206f8d59dp-1"
+      },
+      {
+        "binary64": "0x1.17aba093f5de9p-1"
+      },
+      {
+        "binary64": "0x1.1d98fd5288acap-3"
+      }
+    ],
+    "null_projector_binary64_sha256": "d3ba001fdd680bb82ebc0beedd1915f4fde93568af7133de9763fb8cc9999764",
+    "projector_shape": [
+      14,
+      14
+    ],
+    "rank": 14,
+    "request_identity": "2809a3a7ebc4a5169ae099983768728572b953c1ac00120a165818871d53674b",
+    "scaled_column_norms": [
+      {
+        "binary64": "0x1.0000000000002p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.ffffffffffffep-1"
+      },
+      {
+        "binary64": "0x1.0000000000001p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.fffffffffffffp-1"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000001p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.fffffffffffffp-1"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.ffffffffffffep-1"
+      },
+      {
+        "binary64": "0x1.0000000000001p+0"
+      }
+    ],
+    "singular_values": [
+      {
+        "binary64": "0x1.78460cc9b6d6ap+0"
+      },
+      {
+        "binary64": "0x1.1b4665bd61baep+0"
+      },
+      {
+        "binary64": "0x1.18758a17147f9p+0"
+      },
+      {
+        "binary64": "0x1.1442d146e77b0p+0"
+      },
+      {
+        "binary64": "0x1.0e38e6718532bp+0"
+      },
+      {
+        "binary64": "0x1.0d8bf502223e1p+0"
+      },
+      {
+        "binary64": "0x1.034e43c3d993dp+0"
+      },
+      {
+        "binary64": "0x1.f23be87969368p-1"
+      },
+      {
+        "binary64": "0x1.e4269bb95d553p-1"
+      },
+      {
+        "binary64": "0x1.dd6d3c00e3d65p-1"
+      },
+      {
+        "binary64": "0x1.cf81e628873f8p-1"
+      },
+      {
+        "binary64": "0x1.c59558ed0c43ep-1"
+      },
+      {
+        "binary64": "0x1.9b109abfa29aap-1"
+      },
+      {
+        "binary64": "0x1.a3c6da2ab247ep-3"
+      }
+    ],
+    "source_jacobian_identity": "2d55e52dacfa7534c20bf1d6d00214f29d3b9f0e2991220597edd06d7baf9554",
+    "subspaces": [],
+    "threshold": {
+      "binary64": "0x1.0e725930fb6a4p-43"
+    },
+    "weak_projector_binary64_sha256": "d3ba001fdd680bb82ebc0beedd1915f4fde93568af7133de9763fb8cc9999764",
+    "weak_threshold": {
+      "binary64": "0x1.8a8d2f24cf621p-20"
+    }
+  },
+  "request_identity": "318902c34f794045940d250149f6e509209ce2476f6c5c853dfc128e73842b9b",
+  "residual_jacobian": {
+    "accepted_evaluation_identity": "275e9af41417a0dae026b47ec61d6a5d8a30e56ed7a4a31305b28c7456f7dd81",
+    "accepted_occurrence_identity": "a146536665074d67800407a20a3b2512",
+    "accepted_result_identity": "707404a1b2c88cc0445336fc7daf37a9f1b170a14242a440d24831e40052fd02",
+    "accepted_vector": [
+      {
+        "binary64": "0x1.0f2a5637f1797p+2"
+      },
+      {
+        "binary64": "0x1.512c899278180p+2"
+      },
+      {
+        "binary64": "0x1.ad0dcbae2aa29p+2"
+      },
+      {
+        "binary64": "0x1.d72d49daa8e50p+5"
+      },
+      {
+        "binary64": "0x1.083210fac501fp-6"
+      },
+      {
+        "binary64": "0x1.716259abb3debp+0"
+      },
+      {
+        "binary64": "0x1.ac90274b18f6ap+0"
+      },
+      {
+        "binary64": "0x1.b543311f239edp+0"
+      },
+      {
+        "binary64": "0x1.d86029a577192p+3"
+      },
+      {
+        "binary64": "0x1.b595f3913a76dp+3"
+      },
+      {
+        "binary64": "0x1.a3a309fc90ea6p+3"
+      },
+      {
+        "binary64": "0x1.def10e0b12bcbp+6"
+      },
+      {
+        "binary64": "0x1.664d67b7e0c26p+6"
+      },
+      {
+        "binary64": "0x1.a2a9df420b036p+7"
+      }
+    ],
+    "artifact_type": "ResidualJacobianEvidence",
+    "calibration_identity": "native-product-local-covariance-numerics-v2",
+    "columns": [],
+    "complete_reliable": true,
+    "constraint_program_identity": "c2e73e704bac787be3739639af2de83d6506223e40d5a776ba2201204886ff8b",
+    "controlled_ids": [
+      "__DW_AB_13N",
+      "__DW_AB_26N",
+      "__DW_AB_28N",
+      "__KEX_AB",
+      "__PB",
+      "__R1_A_13N_499_2MHZ",
+      "__R1_A_26N_499_2MHZ",
+      "__R1_A_28N_499_2MHZ",
+      "__R2_A_13N_499_2MHZ",
+      "__R2_A_26N_499_2MHZ",
+      "__R2_A_28N_499_2MHZ",
+      "__R2_B_13N_499_2MHZ",
+      "__R2_B_26N_499_2MHZ",
+      "__R2_B_28N_499_2MHZ"
+    ],
+    "coordinate_scales": [
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      },
+      {
+        "binary64": "0x1.0000000000000p+0"
+      }
+    ],
+    "evaluation_count": 0,
+    "evaluation_plan_identity": "a52fbf906b447df62227178439bea9bf63826a52b0af55858a91e00a0ff12746",
+    "evaluator_parameterization_identity": "0a4cc08ec559ba977f9ba3f09f0b4a53b6e1a593fe5824581c929d2a41bf83b2",
+    "identity": "2d55e52dacfa7534c20bf1d6d00214f29d3b9f0e2991220597edd06d7baf9554",
+    "matrix_binary64_sha256": "4d2883c09e6a2f8cf2c5f496c61f349e87f7cfb81ba2d601c7d440ff95645238",
+    "matrix_shape": [
+      368,
+      14
+    ],
+    "method": "retained-scipy-final-2-point",
+    "numerical_compatibility_requirement": "binary64-retained-scipy-2point-gesdd-column-equilibrated-v1",
+    "parameterization_identity": "31cd883cfc7d9ca406bc952775f2f65f6968c39ac7d5d1ca565591b592fbe1c1",
+    "policy_identity": "b09ac447cf3767815a1029f101e336910f3d440364fd4e54d508b8e288d023b1",
+    "problem_identity": "f9e5a94e014a3b82b8904216f6122866d6852e690fe9bea5520fdc7e45f5a97f",
+    "request_identity": "bd53af7bce7dc98cf9d56666e8566928d45e05c1395db1e97d19e15fac8a08df",
+    "source_revision": 1,
+    "source_snapshot_occurrence_identity": "2196461ed7734eb28acb10f2cd241590",
+    "trajectory_fingerprint": "057a4299a2061dcb38e07064ce64963b6aacda7402d1fd5142859a69f79453db"
+  },
+  "schema_version": 2
+}

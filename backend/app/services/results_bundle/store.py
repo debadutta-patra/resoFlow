@@ -94,6 +94,40 @@ def get_summary(run_dir: Union[str, Path]) -> Dict[str, Any]:
     raise FileNotFoundError(f"Neither summary.json nor results.json found in {r_dir}")
 
 
+def get_run_overview(run_dir: Union[str, Path]) -> Optional[Dict[str, Any]]:
+    """Methods-page run overview cached at ingest (None for bundles built before it existed)."""
+    path = Path(run_dir).resolve() / "results" / "run_overview.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def get_grid_surface(run_dir: Union[str, Path], step: str, x: str, y: str) -> Optional[Dict[str, Any]]:
+    """A cached GRID χ² surface; the pair is matched in either order (axes swapped when needed)."""
+    path = Path(run_dir).resolve() / "results" / "grid_surfaces.json"
+    if not path.is_file():
+        return None
+    surfaces = json.loads(path.read_text(encoding="utf-8"))
+    xs, ys = x.strip().upper(), y.strip().upper()
+    hit = surfaces.get(f"{step}|{xs}|{ys}")
+    if hit is not None:
+        return hit
+    swapped = surfaces.get(f"{step}|{ys}|{xs}")
+    if swapped is None:
+        return None
+    transpose = lambda m: [list(r) for r in zip(*m)] if m else m  # noqa: E731
+    mp = swapped.get("min_point") or {}
+    return {
+        "x_param": swapped["y_param"],
+        "y_param": swapped["x_param"],
+        "x": swapped["y"],
+        "y": swapped["x"],
+        "z_chisqr": transpose(swapped.get("z_chisqr")),
+        "z_delta": transpose(swapped.get("z_delta")),
+        "min_point": {"x": mp.get("y"), "y": mp.get("x"), "chisqr": mp.get("chisqr")},
+    }
+
+
 def get_report_model(run_dir: Union[str, Path]) -> ReportModel:
     """
     Load and deserialize ReportModel from results/report_model.json.

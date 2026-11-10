@@ -1,3 +1,4 @@
+import StartingValuesMenu from './chemex/StartingValuesMenu';
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
@@ -24,12 +25,9 @@ import {
   ChevronRight,
   Copy,
   Download,
-  FastForward,
   Loader2,
   Play,
-  RefreshCw,
   RotateCcw,
-  Sparkles,
   Square,
   Workflow,
   X,
@@ -50,7 +48,7 @@ import {
   peakFitPicks,
   seedCpmgResiduesFromProfiles,
 } from "../lib/cpmgConfig";
-import { startingProvenance, type ParameterConfig } from "../lib/parameterConfig";
+import { startingProvenance } from "../lib/parameterConfig";
 import { evaluateCpmgDiagnostics, type CpmgDiagnosticsResult } from "../lib/cpmgDiagnostics";
 import { getNucleusInfoForModule } from "../lib/experimentPlugin";
 import { chemexConfigHash, experimentsFingerprint, findLineage, isRunActive, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from "../lib/chemexRun";
@@ -536,87 +534,6 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     }
   };
 
-  const handleUseGridMinAsStarting = async () => {
-    if (!analysisResults) return;
-    try {
-      const stepToUse = analysisResults.step_order?.[0] || 'STEP1';
-      const res = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/steps/${stepToUse}/grid`);
-      const gridData = res.data;
-      if (gridData && gridData.min_point && gridData.min_point.coordinates) {
-        const coords = gridData.min_point.coordinates;
-        const { nextConfig, updatedCount } = applyGridCoordinatesToCpmgConfig(parameterConfig, coords);
-        if (updatedCount > 0) {
-          setParameterConfig(nextConfig);
-          setSuccessMsg(`Updated starting parameters with grid minimum (${updatedCount} parameters updated).`);
-          setTimeout(() => setSuccessMsg(''), 5000);
-        }
-      } else {
-        alert('No grid search minimum coordinates found for this step.');
-      }
-    } catch (err) {
-      console.error('Failed to fetch grid minimum:', err);
-      alert('Failed to load grid search minimum coordinates.');
-    }
-  };
-
-  const handleUseFittedAsStarting = () => {
-    if (!analysisResults) return;
-    let updated = false;
-    const now = new Date().toISOString();
-    const nextConfig: ParameterConfig = {
-      ...parameterConfig,
-      globals: { ...parameterConfig.globals },
-      residues: { ...parameterConfig.residues },
-    };
-
-    const activeGlobals = analysisResults.global || analysisResults.globals || {};
-    if (activeGlobals.pb !== undefined) {
-      const pbVal = typeof activeGlobals.pb === 'number' ? activeGlobals.pb : activeGlobals.pb?.value;
-      if (pbVal !== undefined && !isNaN(pbVal)) {
-        nextConfig.globals.pb = {
-          value: parseFloat(pbVal.toFixed(4)),
-          source: { kind: 'manual', at: now },
-        };
-        updated = true;
-      }
-    }
-    if (activeGlobals.kex_ab !== undefined) {
-      const kexVal = typeof activeGlobals.kex_ab === 'number' ? activeGlobals.kex_ab : activeGlobals.kex_ab?.value;
-      if (kexVal !== undefined && !isNaN(kexVal)) {
-        nextConfig.globals.kex_ab = {
-          value: parseFloat(kexVal.toFixed(2)),
-          source: { kind: 'manual', at: now },
-        };
-        updated = true;
-      }
-    }
-
-    if (analysisResults.residues) {
-      for (const [res, rData] of Object.entries(analysisResults.residues)) {
-        const p = (rData as any)?.parameters;
-        if (p && (p.cs_a !== undefined || p.dw_ab !== undefined || p.dw !== undefined)) {
-          const existing = nextConfig.residues[res] || {};
-          const cs_a = p.cs_a !== undefined ? (typeof p.cs_a === 'number' ? p.cs_a : p.cs_a.value) : existing.cs_a?.value;
-          const dwRaw = p.dw_ab !== undefined ? (typeof p.dw_ab === 'number' ? p.dw_ab : p.dw_ab.value) : (p.dw !== undefined ? (typeof p.dw === 'number' ? p.dw : p.dw.value) : undefined);
-          const dw_ab = dwRaw !== undefined ? parseFloat(dwRaw.toFixed(3)) : existing.dw_ab?.value;
-
-          nextConfig.residues[res] = {
-            ...existing,
-            ...(cs_a !== undefined ? { cs_a: { value: parseFloat(cs_a.toFixed(3)), source: { kind: 'manual', at: now } } } : {}),
-            ...(dw_ab !== undefined ? { dw_ab: { value: dw_ab, source: { kind: 'manual', at: now } } } : {}),
-          };
-          updated = true;
-        }
-      }
-    }
-
-    if (updated) {
-      setParameterConfig(nextConfig);
-      setSuccessMsg('Updated starting parameters with values from completed fit.');
-      setTimeout(() => setSuccessMsg(''), 4000);
-    }
-  };
-
   const handleRestore = async () => {
     if (!window.confirm("This will restore the last version of your results. Current results will become the new backup. Proceed?")) return;
     try {
@@ -817,52 +734,26 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
             <FitModeHelp />
           </div>
 
-          {status === 'COMPLETED' && analysisResults && (
-            <button
-              onClick={handleUseFittedAsStarting}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 transition-all"
-              title="Copy fitted parameters (pb, kex, chemical shifts, dw) into the starting values of the Parameters tab"
-            >
-              <RefreshCw className="w-3 h-3 text-blue-500" />
-              <span>Use fitted as starting</span>
-            </button>
-          )}
-
-          {/* Use Grid Minimum as Starting */}
-          {(status === "COMPLETED" || status === "FAILED" || status === "CANCELLED") &&
-            analysisResults?.steps &&
-            Object.values(analysisResults.steps).some((s: any) => s?.has_grid) && (
-              <button
-                onClick={handleUseGridMinAsStarting}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-semibold rounded-lg border border-amber-200 dark:border-amber-800 transition-all"
-                title="Populate starting parameters with grid minimum values"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>Use grid minimum as starting</span>
-              </button>
-          )}
+          <StartingValuesMenu
+            overview={methodEditor.runOverview.overview}
+            parameterConfig={parameterConfig}
+            onApply={(next, message) => {
+              setParameterConfig(next);
+              notify(message, 5000);
+            }}
+            onContinueFromRun={status === "COMPLETED" ? handleContinueRun : undefined}
+            disabled={isFitting}
+          />
 
           {hasBackup && (
             <button
               onClick={handleRestore}
               disabled={isFitting || status === "RUNNING" || status === "CANCELLING"}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200 transition-all disabled:opacity-50"
-              title="Restore previous run results from backup"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:text-amber-700 text-xs font-bold rounded-lg border border-amber-200 dark:border-amber-300 transition-all disabled:opacity-50"
+              title="Swap the current results with the previous run's results (backup). Starting values are not changed."
             >
               <RotateCcw size={13} />
-              <span>Restore Last fit</span>
-            </button>
-          )}
-
-          {status === "COMPLETED" && (
-            <button
-              onClick={handleContinueRun}
-              disabled={isFitting}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-bold rounded-lg border border-purple-200 dark:border-purple-800 transition-all disabled:opacity-50"
-              title="Create a new run initialized from this run's restart.toml"
-            >
-              <FastForward size={13} />
-              <span>Continue from Run</span>
+              <span>Restore previous results</span>
             </button>
           )}
 
@@ -1150,6 +1041,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
               startingValues={parameterEditor.startingValues}
               startingProvenance={startingProvenance(parameterConfig, "peak fit")}
               committedByStep={committedByStep}
+              resultsSteps={analysisResults?.steps}
               onNavigateToParameters={() => setActiveTab("parameters")}
               notify={notify}
               readOnly={runLocked}

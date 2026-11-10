@@ -270,6 +270,16 @@ def _ingest_results_locked(
         summary_path = tmp_dir / "summary.json"
         summary_path.write_text(json.dumps(to_json_serializable(full_results), indent=2), encoding="utf-8")
 
+        # 3b. Methods-page run overview + GRID surfaces (cached so page visits never re-parse)
+        try:
+            from .run_overview import build_run_overview
+
+            overview, surfaces = build_run_overview(Path(target_dir), run_res)
+            (tmp_dir / "run_overview.json").write_text(json.dumps(to_json_serializable(overview)), encoding="utf-8")
+            (tmp_dir / "grid_surfaces.json").write_text(json.dumps(to_json_serializable(surfaces)), encoding="utf-8")
+        except Exception as ov_exc:
+            logger.warning("Failed building run overview during ingest: %s", ov_exc)
+
         # 4. Populate results.sqlite
         conn = sqlite3.connect(str(db_path))
         try:

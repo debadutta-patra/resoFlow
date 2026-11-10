@@ -1,0 +1,19 @@
+[GLOBAL]
+KAB =  2.00000e+00 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([KEX_AB] * [PB])
+KBA =  1.98000e+02 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([KEX_AB] * [PA])
+PA  =  9.90000e-01 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; (1.0 - [PB])
+
+[CS_B]
+13N =  1.12622e+02 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([CS_A, NUC->13N] + [DW_AB, NUC->13N])
+26N =  1.21103e+02 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([CS_A, NUC->26N] + [DW_AB, NUC->26N])
+28N =  1.20775e+02 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([CS_A, NUC->28N] + [DW_AB, NUC->28N])
+
+["R1_B, B0->499.2MHZ"]
+13N =  1.45032e+00 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R1_A, NUC->13N, B0->499.2MHZ])
+26N =  1.68062e+00 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R1_A, NUC->26N, B0->499.2MHZ])
+28N =  1.72101e+00 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R1_A, NUC->28N, B0->499.2MHZ])
+
+["R2_B, B0->499.2MHZ"]
+13N =  1.36504e+01 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R2_A])
+26N =  1.23866e+01 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R2_A])
+28N =  1.19042e+01 # error unavailable: withheld: GRID coordinates were selected on a discrete profiled surface, not by a full continuous Direct TRF; ([R2_A])

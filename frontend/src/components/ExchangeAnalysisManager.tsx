@@ -1,8 +1,9 @@
+import StartingValuesMenu from './chemex/StartingValuesMenu';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import {
-  Play, ChevronLeft, ChevronRight, FastForward,
+  Play, ChevronLeft, ChevronRight,
   Beaker, Loader2, RotateCcw, Square, Workflow, Sparkles, RefreshCw, Sliders, MinusCircle, PlusCircle,
   Activity, X, Check, AlertCircle, Download, AlertTriangle, ChevronDown, ChevronUp, ArrowUpDown, LayoutGrid, Maximize2, FileText, Search
 } from 'lucide-react';
@@ -812,27 +813,26 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
             </button>
           )}
 
+          <StartingValuesMenu
+            overview={methodEditor.runOverview.overview}
+            parameterConfig={parameterConfig}
+            onApply={(next, message) => {
+              setParameterConfig(next);
+              notify(message, 5000);
+            }}
+            onContinueFromRun={status === 'COMPLETED' ? handleContinueRun : undefined}
+            disabled={isFitting}
+          />
+
           {analysis.has_backup && (
             <button
               onClick={handleRestoreBackup}
               disabled={isRestoring || isFitting}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200 transition-all disabled:opacity-50"
-              title="Restore previous run results from backup"
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:text-amber-700 text-xs font-bold rounded-lg border border-amber-200 dark:border-amber-300 transition-all disabled:opacity-50"
+              title="Swap the current results with the previous run's results (backup). Starting values are not changed."
             >
               <RotateCcw size={13} />
-              <span>Restore Last fit</span>
-            </button>
-          )}
-
-          {status === 'COMPLETED' && (
-            <button
-              onClick={handleContinueRun}
-              disabled={isFitting}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-bold rounded-lg border border-purple-200 dark:border-purple-800 transition-all disabled:opacity-50"
-              title="Create a new run initialized from this run's restart.toml"
-            >
-              <FastForward size={13} />
-              <span>Continue from Run</span>
+              <span>Restore previous results</span>
             </button>
           )}
 
@@ -1499,6 +1499,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
           startingValues={parameterEditor.startingValues}
           startingProvenance={startingProvenance(parameterConfig, 'Pick CEST')}
           committedByStep={committedByStep}
+          resultsSteps={analysisResults?.steps}
           onNavigateToParameters={() => setActiveTab('parameters')}
           notify={notify}
           readOnly={runLocked}

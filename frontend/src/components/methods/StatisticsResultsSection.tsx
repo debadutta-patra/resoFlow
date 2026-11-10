@@ -118,6 +118,28 @@ function normalizeCorrelations(corrObj: any): { parameters: string[]; matrix: nu
   return undefined;
 }
 
+/** Shape a step's raw MCMC result (results bundle) for McmcDiagnosticsTab; also used by the Methods step tabs. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function toMcmcMethodData(mcmc: any, normalize: (c: any) => any = c => c) {
+  return {
+    method_name: 'MCMC',
+    status: mcmc.status || 'complete',
+    summary: mcmc.summary,
+    correlations: normalize(mcmc.correlations),
+    diagnostics: mcmc.diagnostics,
+    plots_pdf: mcmc.plots_pdf,
+    has_plots_pdf: !!mcmc.plots_pdf,
+    failures: mcmc.failures,
+    retained_samples: mcmc.diagnostics?.retained_samples ?? (mcmc.samples ? mcmc.samples.length : 0),
+    steps: mcmc.diagnostics?.steps,
+    discarded_steps: mcmc.diagnostics?.discarded_steps,
+    acceptance_fraction_mean: mcmc.diagnostics?.acceptance_fraction_mean,
+    burn_in_warning: mcmc.diagnostics?.burn_in_warning,
+    autocorrelation_warning: mcmc.diagnostics?.autocorrelation_warning,
+    autocorrelation_status: mcmc.diagnostics?.autocorrelation_status,
+  };
+}
+
 export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> = ({
   projectUuid,
   analysisUuid,
@@ -186,25 +208,7 @@ export const StatisticsResultsSection: React.FC<StatisticsResultsSectionProps> =
       };
     }
     if (uncertaintyStatistics.mcmc) {
-      const mcmc = uncertaintyStatistics.mcmc;
-      methods.mcmc = {
-        method_name: 'MCMC',
-        status: mcmc.status || 'complete',
-        summary: mcmc.summary,
-        correlations: normalizeCorrelations(mcmc.correlations),
-        diagnostics: mcmc.diagnostics,
-        plots_pdf: mcmc.plots_pdf,
-        has_plots_pdf: !!mcmc.plots_pdf,
-        failures: mcmc.failures,
-        retained_samples:
-          mcmc.diagnostics?.retained_samples ?? (mcmc.samples ? mcmc.samples.length : 0),
-        steps: mcmc.diagnostics?.steps,
-        discarded_steps: mcmc.diagnostics?.discarded_steps,
-        acceptance_fraction_mean: mcmc.diagnostics?.acceptance_fraction_mean,
-        burn_in_warning: mcmc.diagnostics?.burn_in_warning,
-        autocorrelation_warning: mcmc.diagnostics?.autocorrelation_warning,
-        autocorrelation_status: mcmc.diagnostics?.autocorrelation_status,
-      };
+      methods.mcmc = toMcmcMethodData(uncertaintyStatistics.mcmc, normalizeCorrelations);
     }
     if (uncertaintyStatistics.covariance) {
       const cov = uncertaintyStatistics.covariance;
