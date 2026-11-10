@@ -1,5 +1,10 @@
 import type { ParameterConfig, ParamValue } from './parameterConfig';
 import { isResidueExcluded } from './parameterConfig';
+import { isTcModel, obsoleteTcKeys, plainShiftResidues } from './tcModel';
+import { topologyFor } from './kineticDerived';
+
+/** State letters of an n-state model ("abc" for 3st), else null. */
+const topologyStates = (model?: string): string | null => topologyFor(model ?? '')?.states ?? null;
 import type { MethodConfig, Step } from './methodConfig';
 import { getNucleusInfoForModule } from './experimentPlugin';
 import { effectiveBounds, fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from './chemexDefaults';
@@ -12,7 +17,9 @@ export interface ParameterIssue {
   severity: 'warning' | 'info';
   message: string;
   /** One-click fix offered next to the issue. */
-  quickFix?: { label: string; kind: 'set_global'; key: string; value: number };
+  quickFix?:
+    | { label: string; kind: 'set_global'; key: string; value: number }
+    | { label: string; kind: 'convert_tc' };
 }
 
 export interface ValidationOptions {
@@ -27,6 +34,10 @@ export interface ValidationOptions {
   defaults?: ParamDefaultsLookup;
   /** Dispersion experiments: warn when DW_AB starts at ChemEx's 0 and offer this [GLOBAL] value. */
   zeroDwQuickFix?: { value: number };
+  /** Kinetic model (enables `.tc` checks). */
+  model?: string;
+  /** Distinct experiment temperatures (resoFlow analyses use one). */
+  temperatureCount?: number;
 }
 
 /** Bound checks for one value: inverted bounds, and a start value ChemEx would reject. */
@@ -92,6 +103,24 @@ function fittedNames(step: Step, lookup: ParamDefaultsLookup): Set<string> {
     }
   }
   return names;
+}
+
+/**
+ * Whether `name` is optimised in `step`: an explicit FIT (table, FIT rule, GRID), else ChemEx's
+ * default role unless the table or a FIX/CONSTRAIN rule overrides it (last rule wins).
+ */
+function isFitted(step: Step, name: string, lookup: ParamDefaultsLookup): boolean {
+  const upper = name.toUpperCase();
+  let fitted = !!lookup(upper)?.vary;
+  const row = (step.parameters || []).find(p => p.name.toUpperCase() === upper);
+  if (row && row.mode !== 'default') fitted = row.mode === 'fit' || row.mode === 'grid';
+  for (const rule of step.roleRules || []) {
+    for (const entry of rule.entries) {
+      const target = entry.split(/[,=]/)[0].trim().replace(/^\[|\]$/g, '').toUpperCase();
+      if (target === upper) fitted = rule.action === 'FIT';
+    }
+  }
+  return fitted;
 }
 
 /** True when a parameter carries explicit bounds anywhere in the config. */
@@ -266,7 +295,50 @@ export function validateParameterConfig(
     }
   }
 
-  // 5. MCMC samples a uniform prior over the effective bounds.
+  // 5. `.tc` models: plain CS_A/DW_AB freeze the shifts; free order-0/order-1 pairs are
+  //    degenerate at a single temperature; DWP/DWM were removed.
+  if (isTcModel(options.model)) {
+    const plain = plainShiftResidues(config);
+    if (plain.length > 0) {
+      issues.push({
+        id: 'tc-plain-shifts',
+        scope: 'global',
+        paramKey: 'CS_A/DW_AB',
+        severity: 'warning',
+        message: `${plain.length} residue${plain.length === 1 ? ' sets' : 's set'} plain CS_A/DW_AB. Under .tc these are model-owned: ChemEx accepts them but turns them into fixed constants, so the CS0/CS1 and DW0/DW1 coefficients no longer apply and DW is not fitted. Set CS0_A/DW0_AB instead.`,
+        quickFix: { label: 'Move to CS0_A / DW0_AB', kind: 'convert_tc' },
+      });
+    }
+    const obsolete = obsoleteTcKeys(config);
+    if (obsolete.length > 0) {
+      issues.push({
+        id: 'tc-obsolete-dwp-dwm',
+        scope: 'global',
+        paramKey: obsolete.join(', '),
+        severity: 'warning',
+        message: `${obsolete.join(', ')} were removed in ChemEx 2026.9 (no alias); ChemEx refuses the file. Re-import it to convert: DW0_AX = DWP_AX + TREF·DWM_AX, DW1_AX = DWM_AX.`,
+      });
+    }
+    const singleT = (options.temperatureCount ?? 1) <= 1;
+    if (singleT && methodConfig?.steps) {
+      for (const step of methodConfig.steps) {
+        const stateLetters = (topologyStates(options.model) ?? 'ab').slice(1).toUpperCase().split('');
+        const pairs = [['CS0_A', 'CS1_A'], ...stateLetters.map(s => [`DW0_A${s}`, `DW1_A${s}`])].filter(
+          ([a, b]) => isFitted(step, a, lookup) && isFitted(step, b, lookup)
+        );
+        if (pairs.length === 0) continue;
+        issues.push({
+          id: `tc-degenerate-${step.id}`,
+          scope: 'global',
+          paramKey: pairs.map(p => p.join('/')).join(', '),
+          severity: 'warning',
+          message: `Step "${step.name}" fits ${pairs.map(p => `${p[0]} and ${p[1]}`).join(', ')} with data at a single temperature: an order-0 and order-1 coefficient then enter only as one combination and cannot be estimated independently. Fix or constrain one of each pair (e.g. FIX DW1_AB), or add data at other temperatures.`,
+        });
+      }
+    }
+  }
+
+  // 6. MCMC samples a uniform prior over the effective bounds.
   if (methodConfig?.steps) {
     for (const step of methodConfig.steps) {
       if (!step.statistics?.mcmc?.enabled) continue;

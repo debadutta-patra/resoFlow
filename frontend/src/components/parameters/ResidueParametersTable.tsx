@@ -38,6 +38,9 @@ import { fallbackDefaults, fmtDefault, type ParamDefaultsLookup } from '../../li
 import { NumericField } from './NumericField';
 import { residueTreatment, resolvedStepFor } from '../../lib/parameterRoleChip';
 import type { ParameterIssue } from '../../lib/parameterValidation';
+import { tcDerived } from '../../lib/tcModel';
+
+const DEFAULT_START_NAMES = ['cs_a', 'dw_ab'];
 import type { ResolvedStep } from '../../lib/resolvedRoles';
 import type { MethodConfig } from '../../lib/methodConfig';
 import type { ResidueProfileCell } from '../../lib/experimentPlugin';
@@ -77,7 +80,18 @@ export interface ResidueParametersTableProps {
   issuesByResidue?: Record<string, ParameterIssue[]>;
   /** Scroll to and highlight this residue (nonce changes on every request). */
   focus?: { resKey: string; nonce: number } | null;
+  /** `.tc` model: edit CS0_A/CS1_A/DW0_AB/DW1_AB; CS_A/DW_AB are derived at `temperatureC`. */
+  tc?: { tref: number; temperatureC: number };
+  /** Per-residue starting parameters counted for "ChemEx default" (default CS_A, DW_AB). */
+  startNames?: string[];
 }
+
+const TC_COLUMNS: Array<{ key: 'cs0_a' | 'cs1_a' | 'dw0_ab' | 'dw1_ab'; label: string; title: string }> = [
+  { key: 'cs0_a', label: 'CS0_A (ppm)', title: 'State-A shift at TREF' },
+  { key: 'cs1_a', label: 'CS1_A (ppm/°C)', title: 'State-A shift temperature coefficient' },
+  { key: 'dw0_ab', label: 'DW0_AB (ppm)', title: 'CS_B − CS_A at TREF' },
+  { key: 'dw1_ab', label: 'DW1_AB (ppm/°C)', title: 'Temperature coefficient of CS_B − CS_A' },
+];
 
 const BOUND_PARAMS: Array<{ key: 'cs_a' | 'dw_ab' | 'r1_a' | 'r2_a'; label: string }> = [
   { key: 'cs_a', label: 'CS_A' },
@@ -170,6 +184,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
   resolvedSteps,
   issuesByResidue = {},
   focus = null,
+  tc,
+  startNames = DEFAULT_START_NAMES,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
@@ -375,7 +391,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
     let withIssues = 0;
 
     for (const r of allRows) {
-      if (!r.isExcluded && unsetStartingParams(config, r.resKey, ['cs_a', 'dw_ab']).length > 0) chemexDefault++;
+      if (!r.isExcluded && unsetStartingParams(config, r.resKey, startNames).length > 0) chemexDefault++;
       if (r.isStale && !r.isExcluded) staleAll++;
       if (issuesFor(r.resKey).length > 0) withIssues++;
       if (r.isExcluded) {
@@ -405,7 +421,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       withIssues,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- issuesFor reads issuesByResidue/profiles
-  }, [allRows, config, issuesByResidue, profiles]);
+  }, [allRows, config, issuesByResidue, profiles, startNames]);
 
   // Filter & Sort
   const filteredRows = useMemo(() => {
@@ -435,7 +451,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
         return row.hasNoBPick && !row.isExcluded;
       }
       if (sourceFilter === 'chemex_default') {
-        return !row.isExcluded && unsetStartingParams(config, row.resKey, ['cs_a', 'dw_ab']).length > 0;
+        return !row.isExcluded && unsetStartingParams(config, row.resKey, startNames).length > 0;
       }
       if (sourceFilter === 'issues') {
         return issuesFor(row.resKey).length > 0;
@@ -471,7 +487,7 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
       return sortAsc ? cmp : -cmp;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- issuesFor reads issuesByResidue/profiles
-  }, [allRows, searchTerm, sourceFilter, sortField, sortAsc, config, issuesByResidue, profiles]);
+  }, [allRows, searchTerm, sourceFilter, sortField, sortAsc, config, issuesByResidue, profiles, startNames]);
 
   // Paginated slice
   const paginatedRows = useMemo(() => {
@@ -557,7 +573,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
     onChange({ ...config, residues: { ...config.residues, [row.resKey]: entry } });
   };
 
-  const columnCount = (expectsBPicks ? 9 : 8) + 1 + (showRates ? 2 : 0);
+  const shiftColumns = tc ? TC_COLUMNS.length : expectsBPicks ? 3 : 2;
+  const columnCount = 6 + shiftColumns + 1 + (showRates ? 2 : 0);
 
   // ── Focus a residue (from a validation item): show it, then scroll & highlight. ──
   const [focusNonce, setFocusNonce] = useState<number | null>(null);
@@ -805,6 +822,16 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </th>
+                {tc ? (
+                  <>
+                    {TC_COLUMNS.map(c => (
+                      <th key={c.key} className="px-3 py-2.5" title={c.title}>
+                        {c.label}
+                      </th>
+                    ))}
+                  </>
+                ) : (
+                  <>
                 <th
                   onClick={() => toggleSort('cs_a')}
                   className="px-3 py-2.5 cursor-pointer hover:text-slate-900 dark:hover:text-white"
@@ -837,6 +864,8 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                     <ArrowUpDown className="w-3 h-3" />
                   </div>
                 </th>
+                  </>
+                )}
                 {showRates && <th className="px-3 py-2.5">R1_A (s⁻¹)</th>}
                 {showRates && <th className="px-3 py-2.5">R2_A (s⁻¹)</th>}
                 <th className="px-3 py-2.5">Profile</th>
@@ -923,6 +952,30 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                           })()}
                         </td>
 
+                        {tc ? (
+                          <>
+                            {TC_COLUMNS.map(c => (
+                              <td key={c.key} className="px-3 py-2">
+                                <NumericField
+                                  ariaLabel={`${c.label} for ${row.label}`}
+                                  value={row.params[c.key]?.value}
+                                  onCommit={v => handleCellEdit(row.resKey, c.key, v)}
+                                  placeholder={`ChemEx ${fmtDefault(defaults(c.key)?.value)}`}
+                                  className="w-24 px-2 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-800 dark:text-slate-200"
+                                />
+                                {c.key === 'dw0_ab' && (() => {
+                                  const d = tcDerived(row.params, tc.tref, tc.temperatureC);
+                                  return (
+                                    <div className="text-[9px] text-slate-400 mt-0.5" title={`Derived by ChemEx at ${tc.temperatureC} °C (TREF ${tc.tref} °C)`}>
+                                      @{fmtDefault(tc.temperatureC)} °C: CS_A {d.cs_a === null ? '—' : d.cs_a.toFixed(3)} · DW_AB {d.dw_ab === null ? '—' : d.dw_ab.toFixed(3)}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                            ))}
+                          </>
+                        ) : (
+                          <>
                         {/* CS_A Input */}
                         <td className="px-3 py-2">
                           <NumericField
@@ -977,6 +1030,9 @@ export const ResidueParametersTable: React.FC<ResidueParametersTableProps> = ({
                             <div className="text-[9px] text-slate-400 mt-0.5">{pickNoun} {row.pickDw.toFixed(3)} · not applied</div>
                           )}
                         </td>
+
+                          </>
+                        )}
 
                         {showRates &&
                           (['r1_a', 'r2_a'] as const).map(k => (

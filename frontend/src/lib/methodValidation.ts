@@ -111,6 +111,10 @@ export function deBreadthError(param: string, qualifier: string | undefined, cat
 
 /** Why a method action may not target this parameter name (model-owned / not estimable), or null. */
 export function protectedTargetError(name: string, action: 'FIT' | 'FIX' | 'CONSTRAIN' | 'SEARCH', catalog?: ParameterCatalog | null): string | null {
+  // TREF (.tc reference temperature) is protected whatever the catalogue says (ChemEx rejects it).
+  if (name.trim().toUpperCase() === 'TREF') {
+    return 'TREF is a protected model constant: it cannot be a FIT/FIX/CONSTRAIN/GRID/DE target. Set its scalar value in [GLOBAL] of parameters.toml.';
+  }
   const entry = catalog?.[name.toUpperCase()];
   if (!entry) return null;
   if (entry.protected) return `${entry.name} is model-derived (protected); method roles cannot change it.`;

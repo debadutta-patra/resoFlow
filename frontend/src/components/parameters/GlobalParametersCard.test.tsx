@@ -107,3 +107,25 @@ describe('TAUC_A estimator', () => {
     expect(latest.globals.tauc_a?.value).toBe(10);
   });
 });
+
+describe('.tc TREF field', () => {
+  it('renders TREF with °C, no bounds row and no role chip', async () => {
+    const { globalRoleChip } = await import('../../lib/parameterRoleChip');
+    const step = { id: 's', name: 'S', parameters: [], residueMode: 'all' as const, residues: [] };
+    render(
+      <GlobalParametersCard
+        config={{ globals: {}, residues: {} }}
+        onChange={() => {}}
+        catalogGlobals={['PB', 'KEX_AB', 'TREF', 'TAUC_A']}
+        roleChip={k => globalRoleChip(k, step, undefined, 0)}
+        model="2st.tc"
+      />
+    );
+    const tref = document.getElementById('global-tref') as HTMLInputElement;
+    expect(tref.placeholder).toBe('ChemEx default: 25');
+    expect(screen.getByText('°C')).toBeDefined();
+    const bounds = screen.getAllByRole('button', { name: /Bounds/ });
+    expect(bounds).toHaveLength(3); // PB, KEX_AB, TAUC_A — none for TREF
+    expect(screen.getAllByRole('button', { name: /^(FIT|FIX)$/ })).toHaveLength(3);
+  });
+});

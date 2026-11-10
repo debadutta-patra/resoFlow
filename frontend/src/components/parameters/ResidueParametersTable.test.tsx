@@ -130,3 +130,37 @@ describe('ResidueParametersTable issues', () => {
     expect(screen.getByLabelText('1 validation issue')).toBeDefined();
   });
 });
+
+describe('ResidueParametersTable .tc mode', () => {
+  it('edits CS0_A/CS1_A/DW0_AB/DW1_AB and shows CS_A/DW_AB derived at the analysis temperature', () => {
+    let latest: ParameterConfig = { globals: {}, residues: {} };
+    function TcHarness() {
+      const [config, setConfig] = useState<ParameterConfig>({
+        globals: {},
+        residues: { '3N': { cs0_a: { value: 118, source: { kind: 'manual' } }, cs1_a: { value: -0.01, source: { kind: 'manual' } } } },
+      });
+      return (
+        <ResidueParametersTable
+          config={config}
+          onChange={c => {
+            setConfig(c);
+            latest = c;
+          }}
+          picks={{}}
+          profiles={[{ residue: '3N' }]}
+          tc={{ tref: 25, temperatureC: 35 }}
+          startNames={['cs0_a', 'dw0_ab']}
+        />
+      );
+    }
+    render(<TcHarness />);
+    expect(screen.queryByLabelText('CS_A for 3N')).toBeNull();
+    expect(screen.getByText(/@35 °C: CS_A 117\.900 · DW_AB —/)).toBeDefined();
+    const dw0 = screen.getByLabelText('DW0_AB (ppm) for 3N');
+    fireEvent.focus(dw0);
+    fireEvent.change(dw0, { target: { value: '-2.5' } });
+    fireEvent.blur(dw0);
+    expect(latest.residues['3N'].dw0_ab?.value).toBe(-2.5);
+    expect(screen.getByText(/DW_AB -2\.500/)).toBeDefined();
+  });
+});

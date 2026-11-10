@@ -20,6 +20,7 @@ import type { SourceRunSummary, TargetAnalysisMeta } from '../../lib/compatibili
 import { validateParameterConfig } from '../../lib/parameterValidation';
 import { fmtDefault } from '../../lib/chemexDefaults';
 import { toCelsius } from '../../lib/taucEstimate';
+import { convertPlainShiftsToTc, isTcModel } from '../../lib/tcModel';
 import { useLastRunParameters } from '../../hooks/useLastRunParameters';
 import { legacyExclusionNotice } from '../../lib/parameterToml';
 import { GlobalParametersCard } from './GlobalParametersCard';
@@ -109,9 +110,14 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
         selectedModule,
         defaults: editor.defaults,
         zeroDwQuickFix: capabilities.zeroDwQuickFix,
+        model: targetAnalysis.model,
       }),
-    [parameterConfig, profiles, methodConfig, selectedModule, editor.defaults, capabilities.zeroDwQuickFix]
+    [parameterConfig, profiles, methodConfig, selectedModule, editor.defaults, capabilities.zeroDwQuickFix, targetAnalysis.model]
   );
+
+  const tc = isTcModel(targetAnalysis.model);
+  // Per-residue starting parameters: the .tc coefficients replace CS_A / DW_AB.
+  const startNames = useMemo(() => (tc ? ['cs0_a', 'dw0_ab'] : ['cs_a', 'dw_ab']), [tc]);
 
   const issuesByResidue = useMemo(() => {
     const out: Record<string, ParameterIssue[]> = {};
@@ -122,13 +128,18 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
   // Residues (with data, not excluded) that will start CS_A / DW_AB from ChemEx's defaults.
   const defaultStart = useMemo(() => {
     const active = profiles.filter(p => !isResidueExcluded(parameterConfig, p.residue, profiles));
-    const starting = active.filter(p => unsetStartingParams(parameterConfig, p.residue, ['cs_a', 'dw_ab']).length > 0);
+    const starting = active.filter(p => unsetStartingParams(parameterConfig, p.residue, startNames).length > 0);
     return { total: active.length, count: starting.length };
-  }, [profiles, parameterConfig]);
+  }, [profiles, parameterConfig, startNames]);
 
   const applyQuickFix = (issue: ParameterIssue) => {
     const fix = issue.quickFix;
-    if (!fix || fix.kind !== 'set_global') return;
+    if (!fix) return;
+    if (fix.kind === 'convert_tc') {
+      editor.setParameterConfig(prev => convertPlainShiftsToTc(prev));
+      notify?.('Moved CS_A → CS0_A and DW_AB → DW0_AB');
+      return;
+    }
     editor.setParameterConfig(prev => ({
       ...prev,
       globals: {
@@ -261,8 +272,9 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
               <strong>
                 {defaultStart.count} of {defaultStart.total}
               </strong>{' '}
-              residue{defaultStart.total === 1 ? '' : 's'} will start from ChemEx defaults (CS_A {fmtDefault(editor.defaults('cs_a')?.value)} ppm and/or DW_AB{' '}
-              {fmtDefault(editor.defaults('dw_ab')?.value)} ppm).
+              residue{defaultStart.total === 1 ? '' : 's'} will start from ChemEx defaults ({startNames[0].toUpperCase()}{' '}
+              {fmtDefault(editor.defaults(startNames[0])?.value)} ppm and/or {startNames[1].toUpperCase()}{' '}
+              {fmtDefault(editor.defaults(startNames[1])?.value)} ppm).
             </span>
           </span>
         </div>
@@ -341,6 +353,8 @@ export const ParametersTab: React.FC<ParametersTabProps> = ({
               resolvedSteps={resolvedSteps}
               issuesByResidue={issuesByResidue}
               focus={focusRow}
+              tc={tc ? { tref: parameterConfig.globals?.tref?.value ?? editor.defaults('tref')?.value ?? 25, temperatureC: toCelsius(targetAnalysis.temperature) } : undefined}
+              startNames={startNames}
             />
           </div>
         </div>

@@ -576,7 +576,7 @@ export function unsetStartingParams(config: ParameterConfig, resKey: string, nam
   });
 }
 
-export type ResidueCell = 'cs_a' | 'cs_b' | 'dw_ab' | 'r1_a' | 'r2_a';
+export type ResidueCell = 'cs_a' | 'cs_b' | 'dw_ab' | 'r1_a' | 'r2_a' | 'cs0_a' | 'cs1_a' | 'dw0_ab' | 'dw1_ab';
 
 /**
  * Edit one residue cell. `undefined` clears it (ChemEx's default, or [GLOBAL], applies).

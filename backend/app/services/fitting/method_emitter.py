@@ -628,10 +628,47 @@ def compact_statistics(stats: Optional[StatisticsModel]) -> Optional[str]:
     return ", ".join(parts) or None
 
 
+#: Model constants no method action may target (ChemEx rejects them; .tc reference temperature).
+PROTECTED_METHOD_TARGETS = frozenset({"TREF"})
+
+
+class ProtectedTargetError(ValueError):
+    """A method step targets a protected model constant (e.g. TREF) with FIT/FIX/CONSTRAIN/GRID/DE."""
+
+
+def _target_name(entry: str) -> str:
+    """Parameter name an action entry targets: "[DW_AB, NUC->3N] = …" / "KEX_AB, B0->600MHz" → name."""
+    head = re.split(r"[,=]", entry.strip(), maxsplit=1)[0]
+    return head.strip().strip("[]").strip().upper()
+
+
+def reject_protected_targets(config: MethodConfigModel) -> None:
+    """Raise ProtectedTargetError if any step targets TREF (or another protected constant)."""
+    for idx, step in enumerate(config.steps):
+        name = step_display_name(step, idx)
+        for action, entries in step_role_actions(step):
+            for entry in entries:
+                target = _target_name(entry)
+                if target in PROTECTED_METHOD_TARGETS:
+                    raise ProtectedTargetError(
+                        f"{target} is a protected model constant (step {name!r}, {action}): it cannot be a "
+                        f"FIT/FIX/CONSTRAIN/GRID/DE target. Set its scalar value in [GLOBAL] of parameters.toml."
+                    )
+        search = step.search
+        if search and search.mode != "none":
+            for axis in search.axes:
+                if axis.param.strip().upper() in PROTECTED_METHOD_TARGETS:
+                    raise ProtectedTargetError(
+                        f"{axis.param.strip().upper()} is a protected model constant (step {name!r}, "
+                        f"{search.mode.upper()} axis): it cannot be searched."
+                    )
+
+
 def emit_method_toml_v2(config: MethodConfigModel) -> str:
     """Serializes a MethodConfigModel into canonical ChemEx v2 method.toml (FORMAT_VERSION = 2)."""
     if config.raw_override and config.raw_override.strip():
-        return config.raw_override
+        return config.raw_override  # verbatim; ChemEx itself rejects protected targets here
+    reject_protected_targets(config)
 
     lines: List[str] = ["FORMAT_VERSION = 2"]
 

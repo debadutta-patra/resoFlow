@@ -21,7 +21,7 @@ from .. import models, security
 from ..routers.analysis import _get_analysis_run_dir
 from ..schemas import MethodConfigSchema
 from ..services.fitting.chemex_workspace import stage_validation_workspace
-from ..services.fitting.method_emitter import MethodConfigModel, emit_method_toml_v2
+from ..services.fitting.method_emitter import MethodConfigModel, ProtectedTargetError, emit_method_toml_v2
 from ..services.fitting.method_resolution import (
     missing_inputs_message,
     step_timings_with_evaluations,
@@ -192,7 +192,10 @@ def validate_method_endpoint(
     ROLES actions, scoped to its INCLUDE/EXCLUDE, and per-axis search resolution.
     """
     if req.config is not None:
-        method_toml = emit_method_toml_v2(MethodConfigModel(**req.config.model_dump()))
+        try:
+            method_toml = emit_method_toml_v2(MethodConfigModel(**req.config.model_dump()))
+        except ProtectedTargetError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     elif (req.method_toml or req.toml) is not None:
         method_toml = req.method_toml if req.method_toml is not None else req.toml
     else:

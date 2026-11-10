@@ -91,6 +91,8 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
   profiles,
   picks,
 }) => {
+  // Protected model constants (e.g. .tc TREF) cannot be FIT/FIX/CONSTRAIN/GRID/DE targets.
+  const methodTargets = useMemo(() => editor.availableParamsMeta.filter(p => !p.protected), [editor.availableParamsMeta]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showSequence, setShowSequence] = useState(false);
@@ -495,7 +497,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               <ParameterTable
                 step={activeStep}
                 onChange={editor.handleStepChange}
-                availableParams={editor.availableParamsMeta}
+                availableParams={methodTargets}
                 startingValues={startingValues}
                 onNavigateToParameters={onNavigateToParameters}
                 searchTargets={searchTargets}
@@ -536,7 +538,7 @@ export const MethodsTab: React.FC<MethodsTabProps> = ({
               step={activeStep}
               onChange={editor.handleStepChange}
               family={editor.family}
-              availableParams={editor.availableParamsMeta}
+              availableParams={methodTargets}
               startingValues={startingValues}
               readOnly={readOnly}
               catalog={editor.baselineRoles.catalog}

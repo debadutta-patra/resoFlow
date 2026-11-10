@@ -467,3 +467,11 @@ def test_last_run_parameters_endpoint(db_session, test_project, auth_headers):
     (archived / "parameters.toml").write_text("[GLOBAL]\nPB = 0.05\n", encoding="utf-8")
     assert client.get(url, headers=auth_headers).json()["parameter_toml"] == "[GLOBAL]\nPB = 0.05\n"
     assert client.get(url).status_code == 401
+
+
+def test_method_validate_refuses_tref_targets(db_session, test_project, auth_headers):
+    analysis = _make_analysis(db_session, test_project, "analysis-tref-target")
+    config = {"steps": [{"id": "s1", "name": "STEP1", "parameters": [{"name": "TREF", "mode": "fit"}], "residueMode": "all", "residues": []}]}
+    res = client.post(_resolve_url(test_project, analysis.analysis_uuid), json={"config": config}, headers=auth_headers)
+    assert res.status_code == 422
+    assert "TREF is a protected model constant" in res.json()["detail"]
