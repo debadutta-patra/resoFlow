@@ -36,7 +36,8 @@ import {
 } from '../lib/parameterConfig';
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
-import { CpmgDispersionTab, type CpmgProfileItem } from './cpmg/CpmgDispersionTab';
+import { CpmgDispersionTab, type CpmgProfileItem, type RexSeedRecord } from './cpmg/CpmgDispersionTab';
+import { fitCurvesFromResults } from '../lib/cpmgInspection';
 import { PickCestPanel, type PickKey, type CestMasks } from './cest/PickCestPanel';
 import { fittedShiftsFromResults } from '../lib/cestPicking';
 import { EMPTY_REVIEW, type ReviewBook, type ReviewPage, type ReviewState } from '../lib/residueReview';
@@ -217,6 +218,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
   const [pickMode, setPickMode] = useState<PickKey>('cs_a');
   const [residueReview, setResidueReview] = useState<ReviewBook>({});
   const [cestMasks, setCestMasks] = useState<CestMasks>({});
+  const [rexSeed, setRexSeed] = useState<RexSeedRecord | null>(null);
   const setReviewFor = (page: ReviewPage, update: (prev: ReviewState) => ReviewState) =>
     setResidueReview(prev => ({ ...prev, [page]: update(prev[page] ?? EMPTY_REVIEW) }));
 
@@ -426,6 +428,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       if (cfg.picks) setPicks(cfg.picks);
       if (cfg.residue_review) setResidueReview(normalizeReviewBook(cfg.residue_review));
       if (cfg.cest_masks) setCestMasks(cfg.cest_masks);
+      if (cfg.rex_seed) setRexSeed(cfg.rex_seed);
 
       if (cfg.last_run_hash) setLastRunConfigHash(cfg.last_run_hash);
       if (cfg.last_run_timestamp) setLastRunTimestamp(cfg.last_run_timestamp);
@@ -569,6 +572,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     picks,
     residue_review: residueReview,
     cest_masks: cestMasks,
+    rex_seed: rexSeed,
     ...chemexPayload(),
     excluded_residues: parameterConfig.excludedResidues || [],
   };
@@ -1223,6 +1227,13 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
               setReview={update => setReviewFor('dispersion', update)}
               gapContext={gapContext}
               exportName={`${analysis.name}_dispersion`}
+              projectUuid={projectUuid}
+              analysisUuid={analysis.analysis_uuid}
+              fitCurves={fitCurvesFromResults(analysisResults)}
+              cestPicks={picks}
+              cestSourceLabel="Pick CEST"
+              rexSeed={rexSeed}
+              onRexSeed={setRexSeed}
               onBulkSetExcludedResidues={handleBulkSetExcluded}
               onSeedDeltaOmega={handleSeedSingleDw}
               onBulkSeedDeltaOmega={handleBulkSeedDw}

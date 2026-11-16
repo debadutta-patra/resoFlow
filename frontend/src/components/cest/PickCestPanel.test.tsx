@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 
 const plots: any[] = [];

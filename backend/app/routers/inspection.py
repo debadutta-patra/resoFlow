@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from .. import models
 from ..services.inspection.cest_one_state import fit_one_state, flag_high_r2
+from ..services.inspection.cpmg_screening import screen_profile
 from ..services.inspection.cest_sources import (
     cest_profiles_from_config,
     experiment_inputs,
@@ -85,3 +86,36 @@ def cest_one_state_fits(
             fits[res] = fit
     stats = flag_high_r2({r: f.get("r2") for r, f in fits.items() if "r2" in f})
     return {"fits": fits, "r2_stats": stats, "time_t1": t1}
+
+
+class CpmgExperimentIn(BaseModel):
+    b0: Optional[float] = None
+    nu_cpmg: list[float] = Field(default_factory=list)
+    r2eff: list[float] = Field(default_factory=list)
+    r2eff_err: list[Optional[float]] = Field(default_factory=list)
+
+
+class CpmgProfileIn(BaseModel):
+    residue: str
+    experiments: list[CpmgExperimentIn] = Field(default_factory=list)
+
+
+class CpmgScreeningRequest(BaseModel):
+    profiles: list[CpmgProfileIn]
+    #: Flag residues whose duplicate spread exceeds the reported error by this factor.
+    factor: float = Field(default=3.0, gt=0)
+
+
+@router.post("/cpmg/screening")
+def cpmg_screening(
+    body: CpmgScreeningRequest,
+    analysis: models.Analysis = Depends(get_analysis),
+) -> dict[str, Any]:
+    """Rex (lowest − highest ν_CPMG mean, with error) and pooled duplicate error per residue."""
+    return {
+        "factor": body.factor,
+        "residues": {
+            p.residue: screen_profile([e.model_dump() for e in p.experiments], factor=body.factor)
+            for p in body.profiles
+        },
+    }

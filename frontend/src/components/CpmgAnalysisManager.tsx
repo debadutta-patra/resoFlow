@@ -37,7 +37,8 @@ import {
 
 import { CpmgModuleSelector, CPMG_MODULES } from "./cpmg/CpmgModuleSelector";
 import { CpmgSetupForm } from "./cpmg/CpmgSetupForm";
-import { CpmgDispersionTab, type CpmgProfileItem } from "./cpmg/CpmgDispersionTab";
+import { CpmgDispersionTab, type CpmgProfileItem, type RexSeedRecord } from "./cpmg/CpmgDispersionTab";
+import { fitCurvesFromResults } from "../lib/cpmgInspection";
 import { CpmgResultsTab, type CpmgResultResidue } from "./cpmg/CpmgResultsTab";
 import type { ResidueItem } from "./methods/ResidueSelector";
 import { MethodsTab } from "./methods/MethodsTab";
@@ -200,7 +201,40 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   // ── Dispersion Inspection Tab State ──
   const [profiles, setProfiles] = useState<CpmgProfileItem[]>([]);
   const [currentProfileIdx, setCurrentProfileIdx] = useState(0);
+
+  // Pick CEST picks from a CEST analysis in the same project, for Δω inheritance/consistency.
+  const cestRunsKey = (allAnalyses as Array<{ analysis_uuid: string; analysis_type?: string; name?: string }>)
+    .filter(a => a.analysis_type === "15N-CEST")
+    .map(a => `${a.analysis_uuid}|${a.name ?? ""}`)
+    .join(",");
+  useEffect(() => {
+    if (!cestRunsKey) return;
+    const cestRuns = cestRunsKey.split(",").map(k => {
+      const [analysis_uuid, name] = k.split("|");
+      return { analysis_uuid, name };
+    });
+    let live = true;
+    (async () => {
+      for (const run of cestRuns) {
+        try {
+          const res = await api.get(`/api/projects/${projectUuid}/analysis/${run.analysis_uuid}/cest/config`);
+          const picks = res?.data?.config?.picks;
+          if (picks && Object.keys(picks).length > 0) {
+            if (live) setCestPicks({ label: run.name || run.analysis_uuid, picks });
+            return;
+          }
+        } catch {
+          /* no saved config for this run */
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [cestRunsKey, projectUuid]);
   const [residueReview, setResidueReview] = useState<ReviewBook>({});
+  const [rexSeed, setRexSeed] = useState<RexSeedRecord | null>(null);
+  const [cestPicks, setCestPicks] = useState<{ label: string; picks: Record<string, { cs_a?: number | null; cs_b?: number | null }> } | null>(null);
 
   const notify = (msg: string, ms = 3000) => {
     setSuccessMsg(msg);
@@ -374,6 +408,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         if (c.setupValues) setSetupValues(c.setupValues);
         if (c.model) setModel(c.model);
         if (c.residue_review) setResidueReview(normalizeReviewBook(c.residue_review));
+        if (c.rex_seed) setRexSeed(c.rex_seed);
         if (c.fit_mode) setFitMode(c.fit_mode);
         if (c.last_run_hash) setLastRunConfigHash(c.last_run_hash);
         if (c.last_run_timestamp) setLastRunTimestamp(c.last_run_timestamp);
@@ -434,6 +469,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         profiles,
         generatedExperiments,
         residue_review: residueReview,
+        rex_seed: rexSeed,
   };
   const { dirty: unsaved, markClean } = useUnsavedChanges(savePayload);
 
@@ -1013,6 +1049,13 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
               setReview={update => setResidueReview(prev => ({ ...prev, dispersion: update(prev.dispersion ?? EMPTY_REVIEW) }))}
               gapContext={gapContext}
               exportName={`${analysis.name}_dispersion`}
+              projectUuid={projectUuid}
+              analysisUuid={analysis.analysis_uuid}
+              fitCurves={fitCurvesFromResults(analysisResults)}
+              cestPicks={cestPicks?.picks}
+              cestSourceLabel={cestPicks ? `Pick CEST (${cestPicks.label})` : undefined}
+              rexSeed={rexSeed}
+              onRexSeed={setRexSeed}
               onBulkSetExcludedResidues={handleBulkSetExcluded}
               onSeedDeltaOmega={handleSeedSingleDw}
               onBulkSeedDeltaOmega={handleBulkSeedDw}
