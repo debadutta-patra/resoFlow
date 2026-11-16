@@ -16,6 +16,7 @@ from ..services.fitting.experiments.cest_builder import build_cest_experiment
 from ..services.fitting.experiments.cpmg_builder import build_cpmg_experiment
 from ..services.fitting.chemex_runner import run_chemex_job, cancel_chemex_job, is_chemex_container_running
 from ..services.path_utils import to_container_path, to_host_path
+from ..services.inspection.cest_sources import sync_masks_into_experiments, write_experiment_tomls
 from .deps import get_analysis
 from ..services.fitting.param_catalog import method_parameters_response
 from ..services.fitting.config_normalizer import merge_chemex_config, normalize_chemex_config
@@ -95,6 +96,7 @@ def generate_exchange_files(
 
     # Data structures for Pick CEST and Inspect Dispersion
     grouped_cest_profiles: Dict[str, List[Dict[str, Any]]] = {}
+    hsqc_shifts: Dict[str, float] = {}
     grouped_cpmg_profiles: Dict[str, Dict[str, Any]] = {}
 
     for spectrum in spectra:
@@ -226,6 +228,8 @@ def generate_exchange_files(
                     fr = ip.get("full_residue")
                     if r and fr:
                         residue_mapping[r] = fr
+                    if r and ip.get("cs_hsqc") is not None:
+                        hsqc_shifts.setdefault(r, ip["cs_hsqc"])
 
             except Exception as e:
                 logger.warning(f"Failed to build CEST experiment for {spectrum.name}: {e}")
@@ -298,6 +302,7 @@ def generate_exchange_files(
         cest_profiles.append({
             "residue": r,
             "full_residue": residue_mapping.get(r, r),
+            "cs_hsqc": hsqc_shifts.get(r),
             "experiments": grouped_cest_profiles[r],
         })
 
@@ -357,7 +362,13 @@ def generate_exchange_files(
         "method_config": existing_cfg.get("method_config"),
         "excluded_residues": excluded_residues,
         "picks": request.get("picks") or existing_cfg.get("picks", {}),
+        # Review state survives regeneration.
+        "residue_review": request.get("residue_review") or existing_cfg.get("residue_review", {}),
+        "cest_masks": request.get("cest_masks") or existing_cfg.get("cest_masks", {}),
+        "filter_planes": request.get("filter_planes") or existing_cfg.get("filter_planes", []),
+        "rex_seed": existing_cfg.get("rex_seed"),
     }
+    write_experiment_tomls(sync_masks_into_experiments(cfg_to_save))
 
     with open(config_path, "w") as f:
         json.dump(cfg_to_save, f, indent=2, default=str)
@@ -420,6 +431,8 @@ def update_exchange_config(
             pass
 
     existing_cfg = merge_chemex_config(existing_cfg, request)
+    # Offset masks (Pick CEST) → filter_planes of each CEST experiment TOML.
+    write_experiment_tomls(sync_masks_into_experiments(existing_cfg))
     with open(cfg_path, "w") as f:
         json.dump(existing_cfg, f, indent=2, default=str)
 

@@ -20,6 +20,24 @@ def _parse_f3list(path: str) -> list:
                 pass
     return values
 
+def _peak_position_ppm(planes: list) -> float | None:
+    """Median fitted 15N position across planes (center_y_ppm), or None when absent."""
+    vals = []
+    for plane in planes:
+        v = plane.get("center_y_ppm", plane.get("Y_PPM"))
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if v == v and v != 0.0:
+            vals.append(v)
+    if not vals:
+        return None
+    vals.sort()
+    m = len(vals) // 2
+    return vals[m] if len(vals) % 2 else 0.5 * (vals[m - 1] + vals[m])
+
+
 def build_cest_experiment(
     block_settings: Dict[str, Any],
     spectrum: Any,
@@ -174,7 +192,9 @@ def build_cest_experiment(
         inspection_profiles.append({
             "residue": residue_label,
             "full_residue": full_residue_label,
-            "profile": profile_pts
+            "profile": profile_pts,
+            # Peak position in the indirect (15N) dimension from peak fitting, as a CS_A hint.
+            "cs_hsqc": _peak_position_ppm(planes),
         })
 
         if is_res_excluded(residue_label):

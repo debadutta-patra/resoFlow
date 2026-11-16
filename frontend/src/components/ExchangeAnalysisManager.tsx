@@ -37,7 +37,8 @@ import {
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
 import { CpmgDispersionTab, type CpmgProfileItem } from './cpmg/CpmgDispersionTab';
-import { PickCestPanel, type PickKey } from './cest/PickCestPanel';
+import { PickCestPanel, type PickKey, type CestMasks } from './cest/PickCestPanel';
+import { fittedShiftsFromResults } from '../lib/cestPicking';
 import { EMPTY_REVIEW, type ReviewBook, type ReviewPage, type ReviewState } from '../lib/residueReview';
 import { normalizeReviewBook } from '../lib/residueReview';
 import { useProjectSettings } from '../hooks/useProjectSettings';
@@ -215,6 +216,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
   const [picks, setPicks] = useState<Record<string, CestPick>>({});
   const [pickMode, setPickMode] = useState<PickKey>('cs_a');
   const [residueReview, setResidueReview] = useState<ReviewBook>({});
+  const [cestMasks, setCestMasks] = useState<CestMasks>({});
   const setReviewFor = (page: ReviewPage, update: (prev: ReviewState) => ReviewState) =>
     setResidueReview(prev => ({ ...prev, [page]: update(prev[page] ?? EMPTY_REVIEW) }));
 
@@ -423,6 +425,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       if (cfg.residue_mapping) setResidueMapping(cfg.residue_mapping);
       if (cfg.picks) setPicks(cfg.picks);
       if (cfg.residue_review) setResidueReview(normalizeReviewBook(cfg.residue_review));
+      if (cfg.cest_masks) setCestMasks(cfg.cest_masks);
 
       if (cfg.last_run_hash) setLastRunConfigHash(cfg.last_run_hash);
       if (cfg.last_run_timestamp) setLastRunTimestamp(cfg.last_run_timestamp);
@@ -565,6 +568,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     cpmg_carrier: cpmgCarrier,
     picks,
     residue_review: residueReview,
+    cest_masks: cestMasks,
     ...chemexPayload(),
     excluded_residues: parameterConfig.excludedResidues || [],
   };
@@ -1186,6 +1190,11 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
               setReview={update => setReviewFor('pick_cest', update)}
               gapContext={gapContext}
               exportName={`${analysis.name}_pick_cest`}
+              masks={cestMasks}
+              setMasks={update => setCestMasks(update)}
+              fittedShifts={fittedShiftsFromResults(analysisResults)}
+              projectUuid={projectUuid}
+              analysisUuid={analysis.analysis_uuid}
             />
           ) : (
             <div className="flex flex-col items-center justify-center p-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-center">

@@ -28,6 +28,7 @@ from .deps import get_project, get_analysis
 from ..celery_app import celery_app
 from ..services.fitting.cest_report import generate_cest_pdf_report
 from ..services.fitting.cest_tasks import _update_experiment_toml_exclusions
+from ..services.inspection.cest_sources import sync_masks_into_experiments, write_experiment_tomls
 from ..services.fitting.param_catalog import method_parameters_response
 from ..services.fitting.config_normalizer import merge_chemex_config, normalize_chemex_config
 from ..services.fitting.run_dirs import chemex_run_dir, load_chemex_config
@@ -1085,6 +1086,9 @@ def save_cest_config(
             existing_config = json.load(f)
 
     existing_config = merge_chemex_config(existing_config, request)
+
+    # Offset masks (Pick CEST) → filter_planes of each experiment TOML (written below).
+    sync_masks_into_experiments(existing_config)
 
     # Sync exclusions to experiment TOML files on disk
     param_cfg = existing_config.get("parameter_config") or {}
@@ -2414,10 +2418,12 @@ def get_cest_profiles(
     # Convert dictionary to sorted list of profiles
     profiles = []
     residue_mapping = config.get("residue_mapping", {})
+    hsqc_shifts = config.get("hsqc_shifts", {})
     for res in sorted(grouped_profiles.keys()):
         profiles.append({
             "residue": res,
             "full_residue": residue_mapping.get(res, res),
+            "cs_hsqc": hsqc_shifts.get(res),
             "experiments": grouped_profiles[res]
         })
 
@@ -2472,6 +2478,7 @@ def generate_cest_files(
     experiment_tomls = []
     metadata = {}
     skipped_reasons = []
+    hsqc_shifts: dict = {}
 
     config_path = os.path.join(run_dir, "config.json")
     existing_cfg_temp = {}
@@ -2566,6 +2573,9 @@ def generate_cest_files(
             
             for res_label, fp in gen_exp.written_data_files.items():
                 generated_data_files[f"{res_label}:{b1_label}"] = fp
+            for ip in gen_exp.inspection_profiles:
+                if ip.get("cs_hsqc") is not None and ip.get("residue") not in hsqc_shifts:
+                    hsqc_shifts[ip["residue"]] = ip["cs_hsqc"]
                 
             metadata[b1_label] = {
                 "b1": b1,
@@ -2590,6 +2600,8 @@ def generate_cest_files(
     existing_config["spectrum_ids"] = spectrum_ids
     existing_config["generatedExperiments"] = experiment_tomls
     existing_config["metadata"] = metadata
+    existing_config["hsqc_shifts"] = hsqc_shifts
+    write_experiment_tomls(sync_masks_into_experiments(existing_config))
 
     with open(config_path, "w") as f:
         json.dump(existing_config, f, indent=2)

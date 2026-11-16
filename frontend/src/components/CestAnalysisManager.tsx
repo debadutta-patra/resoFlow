@@ -42,7 +42,8 @@ import {
 import { ModuleSelectorCard } from './cest/ModuleSelectorCard';
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
-import { PickCestPanel, type PickKey } from './cest/PickCestPanel';
+import { PickCestPanel, type PickKey, type CestMasks } from './cest/PickCestPanel';
+import { fittedShiftsFromResults } from '../lib/cestPicking';
 import { EMPTY_REVIEW, normalizeReviewBook, type ReviewBook } from '../lib/residueReview';
 import { useProjectSettings } from '../hooks/useProjectSettings';
 import { GridSearchSection } from './grid/GridSearchSection';
@@ -358,6 +359,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const [picks, setPicks] = useState<Record<string, CestPick>>({});
   const [pickMode, setPickMode] = useState<PickKey>('cs_a');
   const [residueReview, setResidueReview] = useState<ReviewBook>({});
+  const [cestMasks, setCestMasks] = useState<CestMasks>({});
 
   const notify = (msg: string, ms = 3000) => {
     setSuccessMsg(msg);
@@ -551,6 +553,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         if (c.fit_mode) setFitMode(c.fit_mode);
         if (c.picks) setPicks(c.picks);
         if (c.residue_review) setResidueReview(normalizeReviewBook(c.residue_review));
+        if (c.cest_masks) setCestMasks(c.cest_masks);
         if (c.spectrum_ids) setSelectedSpectrumIds(c.spectrum_ids);
         if (c.generatedExperiments) setGeneratedExperiments(c.generatedExperiments);
         if (c.last_run_hash) setLastRunConfigHash(c.last_run_hash);
@@ -663,6 +666,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     ...chemexPayload(),
     picks,
     residue_review: residueReview,
+    cest_masks: cestMasks,
     spectrum_ids: selectedSpectrumIds,
     generatedExperiments,
     selected_module: selectedModule,
@@ -1222,6 +1226,11 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               gapContext={gapContext}
               onSelectResidue={selectProfileResidue}
               exportName={`${analysis.name}_pick_cest`}
+              masks={cestMasks}
+              setMasks={update => setCestMasks(update)}
+              fittedShifts={fittedShiftsFromResults(analysisResults)}
+              projectUuid={projectUuid}
+              analysisUuid={analysis.analysis_uuid}
             />
           )}
 
