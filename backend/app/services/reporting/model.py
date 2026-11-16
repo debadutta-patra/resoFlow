@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
+from .residue_review import load_residue_review
 from .uncertainty import (
     UncertaintyResolver,
     UncertaintySource,
@@ -623,6 +624,7 @@ class ReportModel:
     sequence_summary: Optional[Dict[str, Any]] = None
     excluded_residues: Optional[list[str]] = None
     spectral_density: Optional[Dict[str, Any]] = None
+    residue_review: Optional[list[dict[str, Any]]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert model to plain JSON-serializable types for API and golden tests."""
@@ -648,6 +650,8 @@ class ReportModel:
             d["sequence_summary"] = to_json_serializable(self.sequence_summary)
         if self.spectral_density is not None:
             d["spectral_density"] = to_json_serializable(self.spectral_density)
+        if self.residue_review:
+            d["residue_review"] = list(self.residue_review)
         if self.is_multi_step:
             d["is_multi_step"] = True
             d["step_order"] = list(self.step_order)
@@ -690,6 +694,7 @@ class ReportModel:
             sequence_summary=d.get("sequence_summary"),
             excluded_residues=d.get("excluded_residues"),
             spectral_density=d.get("spectral_density"),
+            residue_review=d.get("residue_review"),
         )
 
 
@@ -1246,4 +1251,5 @@ def build_report_model(
         sequence_summary=sequence_summary,
         excluded_residues=list(excluded_residues) if excluded_residues else None,
         spectral_density=spectral_density,
+        residue_review=load_residue_review(a_dir),
     )

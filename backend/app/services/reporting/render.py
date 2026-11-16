@@ -1160,6 +1160,7 @@ def build_report_context(
         "statistics_data": statistics_data,
         "grid_1d_plots": grid_1d_plots,
         "spectral_density_data": spectral_density_data,
+        "residue_review": model.residue_review or [],
         "steps_data": steps_data,
         "prov": model.provenance,
         "prov_data": prov_data,

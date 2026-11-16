@@ -56,6 +56,8 @@ import { getNucleusInfoForModule } from "../lib/experimentPlugin";
 import { chemexConfigHash, experimentsFingerprint, findLineage, isRunActive, preflightChemexValidation, RERUN_CONFIRM_MESSAGE } from "../lib/chemexRun";
 import { useMethodEditor } from "../hooks/useMethodEditor";
 import { useParameterEditor } from "../hooks/useParameterEditor";
+import { useProjectSettings } from "../hooks/useProjectSettings";
+import { EMPTY_REVIEW, normalizeReviewBook, type ReviewBook } from "../lib/residueReview";
 import { cpmgPlugin } from "../plugins/cpmgPlugin";
 
 interface Spectrum {
@@ -198,6 +200,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   // ── Dispersion Inspection Tab State ──
   const [profiles, setProfiles] = useState<CpmgProfileItem[]>([]);
   const [currentProfileIdx, setCurrentProfileIdx] = useState(0);
+  const [residueReview, setResidueReview] = useState<ReviewBook>({});
 
   const notify = (msg: string, ms = 3000) => {
     setSuccessMsg(msg);
@@ -273,6 +276,8 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
   }, [moduleDef, is0013]);
 
   const nucleusInfo = useMemo(() => getNucleusInfoForModule(resolvedModuleName), [resolvedModuleName]);
+  const { sequence, settings: projectSettings } = useProjectSettings(projectUuid);
+  const gapContext = useMemo(() => ({ sequence, offset: projectSettings.sequence_offset }), [sequence, projectSettings.sequence_offset]);
 
   const selectedSpectraFields = useMemo(() => {
     const selected = spectra.filter((s) => selectedSpectrumIds.includes(s.id));
@@ -368,6 +373,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         if (c.isDoubleQuantum !== undefined) setIsDoubleQuantum(c.isDoubleQuantum);
         if (c.setupValues) setSetupValues(c.setupValues);
         if (c.model) setModel(c.model);
+        if (c.residue_review) setResidueReview(normalizeReviewBook(c.residue_review));
         if (c.fit_mode) setFitMode(c.fit_mode);
         if (c.last_run_hash) setLastRunConfigHash(c.last_run_hash);
         if (c.last_run_timestamp) setLastRunTimestamp(c.last_run_timestamp);
@@ -427,6 +433,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         setupValues,
         profiles,
         generatedExperiments,
+        residue_review: residueReview,
   };
   const { dirty: unsaved, markClean } = useUnsavedChanges(savePayload);
 
@@ -1001,6 +1008,11 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
               onSelectIndex={(idx) => setCurrentProfileIdx(idx)}
               parameterConfig={parameterConfig}
               onToggleExcludeResidue={handleToggleExclude}
+              isExcluded={parameterEditor.isExcluded}
+              review={residueReview.dispersion ?? EMPTY_REVIEW}
+              setReview={update => setResidueReview(prev => ({ ...prev, dispersion: update(prev.dispersion ?? EMPTY_REVIEW) }))}
+              gapContext={gapContext}
+              exportName={`${analysis.name}_dispersion`}
               onBulkSetExcludedResidues={handleBulkSetExcluded}
               onSeedDeltaOmega={handleSeedSingleDw}
               onBulkSeedDeltaOmega={handleBulkSeedDw}

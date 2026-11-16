@@ -1,17 +1,12 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
+import { useResidueBrowser } from "../../hooks/useResidueBrowser";
+import { ResidueNavBar, ResidueNotePanel, ResidueTable, type ResidueColumn, type ReviewExport } from "../review/ResidueBrowser";
+import { EMPTY_REVIEW, buildBrowserRows, isFlagged, noteOf, type GapContext, type ReviewState } from "../../lib/residueReview";
 import { Plot } from "../Plot";
 import { fallbackDefaults } from "../../lib/chemexDefaults";
 import { useTheme } from "../../context/ThemeContext";
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Sparkles,
-  CheckCircle2,
-  XCircle,
-  BarChart2,
-} from "lucide-react";
+import { Sparkles, BarChart2 } from "lucide-react";
 import { estimateDeltaOmegaFastExchange } from "../../lib/cpmgReduction";
 import type { CpmgParameterConfig } from "../../lib/cpmgConfig";
 
@@ -40,9 +35,16 @@ export interface CpmgProfileItem {
 
 export interface CpmgDispersionTabProps {
   profiles: CpmgProfileItem[];
-  currentIndex: number;
-  onSelectIndex: (idx: number) => void;
+  /** Kept in sync with the browser selection (index into `profiles`). */
+  currentIndex?: number;
+  onSelectIndex?: (idx: number) => void;
   parameterConfig: CpmgParameterConfig;
+  /** SpinSystemKey-aware exclusion test (falls back to the config's excluded list). */
+  isExcluded?: (resKey: string) => boolean;
+  review?: ReviewState;
+  setReview?: (update: (prev: ReviewState) => ReviewState) => void;
+  gapContext?: GapContext;
+  exportName?: string;
   onToggleExcludeResidue: (resKey: string) => void;
   onBulkSetExcludedResidues: (excluded: string[]) => void;
   onSeedDeltaOmega: (resKey: string, dwPpm: number) => void;
@@ -53,9 +55,13 @@ export interface CpmgDispersionTabProps {
 
 export const CpmgDispersionTab: React.FC<CpmgDispersionTabProps> = ({
   profiles = [],
-  currentIndex = 0,
   onSelectIndex,
   parameterConfig,
+  isExcluded: isExcludedProp,
+  review: reviewProp,
+  setReview: setReviewProp,
+  gapContext,
+  exportName = "inspect_dispersion",
   onToggleExcludeResidue,
   onBulkSetExcludedResidues,
   onSeedDeltaOmega: _onSeedDeltaOmega,
@@ -68,27 +74,74 @@ export const CpmgDispersionTab: React.FC<CpmgDispersionTabProps> = ({
 
   const safeProfiles = useMemo(() => Array.isArray(profiles) ? profiles : [], [profiles]);
 
-  const [searchTerm, setSearchTerm] = useState("");
   const [rexCutoff, setRexCutoff] = useState<number>(2.0);
   const [showScreeningModal, setShowScreeningModal] = useState(false);
 
-  const currentProfile = safeProfiles[currentIndex] || safeProfiles[0];
   const excludedSet = useMemo(
     () => new Set(parameterConfig?.excludedResidues || []),
     [parameterConfig?.excludedResidues]
   );
+  const isExcluded = useCallback(
+    (id: string) => (isExcludedProp ? isExcludedProp(id) : excludedSet.has(id)),
+    [isExcludedProp, excludedSet]
+  );
 
-  const isCurrentExcluded = currentProfile ? excludedSet.has(currentProfile.residue) : false;
+  // Review state: owned by the page when provided, else local (unsaved).
+  const [localReview, setLocalReview] = useState<ReviewState>(EMPTY_REVIEW);
+  const review = reviewProp ?? localReview;
+  const setReview = setReviewProp ?? ((u: (prev: ReviewState) => ReviewState) => setLocalReview(u));
 
-  const filteredProfiles = useMemo(() => {
-    if (!searchTerm.trim()) return safeProfiles;
-    const q = searchTerm.toLowerCase();
-    return safeProfiles.filter(
-      (p) =>
-        (p?.residue || "").toLowerCase().includes(q) ||
-        (p?.full_residue || "").toLowerCase().includes(q)
-    );
-  }, [safeProfiles, searchTerm]);
+  const rows = useMemo(
+    () => buildBrowserRows(safeProfiles.map(p => ({ id: p.residue, label: p.full_residue || p.residue })), gapContext),
+    [safeProfiles, gapContext]
+  );
+  const browser = useResidueBrowser({
+    rows,
+    review,
+    setReview,
+    isExcluded,
+    toggleExclude: onToggleExcludeResidue,
+    active: true,
+  });
+  const currentProfile = safeProfiles.find(p => p.residue === browser.selectedId);
+  React.useEffect(() => {
+    const i = safeProfiles.findIndex(p => p.residue === browser.selectedId);
+    if (i >= 0) onSelectIndex?.(i);
+  }, [browser.selectedId, safeProfiles, onSelectIndex]);
+
+  const maxRexOf = (p: CpmgProfileItem | undefined) => Math.max(...(p?.experiments || []).map((e) => e?.rex || 0), 0);
+  const profileOf = (id: string) => safeProfiles.find(p => p.residue === id);
+  const columns: ResidueColumn[] = [
+    {
+      key: "rex",
+      header: "Rex (s⁻¹)",
+      className: "text-right",
+      render: id => maxRexOf(profileOf(id)).toFixed(1),
+      sortValue: id => maxRexOf(profileOf(id)),
+    },
+    {
+      key: "dw",
+      header: `|Δω| (${unitLabel})`,
+      className: "text-right text-purple-600 dark:text-purple-400",
+      render: id => {
+        const dw = profileOf(id)?.estimated_dw;
+        return typeof dw === "number" && !isNaN(dw) ? dw.toFixed(2) : "·";
+      },
+      sortValue: id => profileOf(id)?.estimated_dw ?? null,
+    },
+  ];
+  const buildExport = (): ReviewExport => ({
+    baseName: exportName,
+    columns: ["rex", "estimated_dw"],
+    rows: rows.filter(r => r.present).map(r => ({
+      residue: r.id,
+      status: browser.status(r.id),
+      flagged: isFlagged(review, r.id),
+      note: noteOf(review, r.id),
+      values: { rex: maxRexOf(profileOf(r.id)), estimated_dw: profileOf(r.id)?.estimated_dw ?? null },
+    })),
+    meta: { page: "Inspect Dispersion" },
+  });
 
   // Screening statistics
   const screeningCounts = useMemo(() => {
@@ -139,72 +192,30 @@ export const CpmgDispersionTab: React.FC<CpmgDispersionTabProps> = ({
   // Field color palette
   const fieldPalette = ["#3b82f6", "#a855f7", "#06b6d4", "#f43f5e", "#10b981", "#f59e0b"];
 
-  const btnSecondary = "px-3 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg transition-all flex items-center gap-1";
   const sectionCls = "bg-slate-50 dark:bg-slate-800/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700";
 
   return (
     <div className="space-y-4 animate-in fade-in">
       {/* Top Header Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onSelectIndex(Math.max(0, currentIndex - 1))}
-            disabled={currentIndex === 0 || safeProfiles.length === 0}
-            className={`${btnSecondary} disabled:opacity-40`}
-            title="Previous residue"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-
-          <select
-            value={currentIndex}
-            onChange={(e) => onSelectIndex(Number(e.target.value))}
-            className="text-xs py-1.5 px-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-200 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
-          >
-            {safeProfiles.map((p, i) => {
-              const isEx = excludedSet.has(p.residue);
-              return (
-                <option key={i} value={i}>
-                  {p.full_residue || p.residue} {isEx ? "(Excluded)" : ""}
-                </option>
-              );
-            })}
-          </select>
-
-          <button
-            onClick={() => onSelectIndex(Math.min(safeProfiles.length - 1, currentIndex + 1))}
-            disabled={currentIndex >= safeProfiles.length - 1 || safeProfiles.length === 0}
-            className={`${btnSecondary} disabled:opacity-40`}
-            title="Next residue"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-
-          {currentProfile && (
-            <button
-              type="button"
-              onClick={() => onToggleExcludeResidue(currentProfile.residue)}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                isCurrentExcluded
-                  ? "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/50"
-                  : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300"
-              }`}
-              title={
-                isCurrentExcluded
-                  ? "Include this residue in parameters (uncomment in parameters.toml)"
-                  : "Exclude this residue from parameters (comment out in parameters.toml)"
-              }
-            >
-              {isCurrentExcluded ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              ) : (
-                <XCircle className="w-3.5 h-3.5 text-rose-500" />
-              )}
-              <span>{isCurrentExcluded ? "Excluded (Click to Include)" : "Exclude"}</span>
-            </button>
-          )}
-        </div>
-
+      <ResidueNavBar browser={browser} buildExport={buildExport}>
+        <button
+          type="button"
+          onClick={browser.acceptAndNext}
+          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 dark:bg-indigo-600 text-white rounded-lg text-xs font-bold"
+          title="Accept and go to the next residue (Enter)"
+        >
+          Accept & Next
+        </button>
+        <button
+          type="button"
+          onClick={() => browser.markNoExcited()}
+          className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-bold"
+          title="No exchange contribution for this residue (N)"
+        >
+          No excited state
+        </button>
+      </ResidueNavBar>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
           <button
@@ -378,83 +389,11 @@ export const CpmgDispersionTab: React.FC<CpmgDispersionTabProps> = ({
                 config={{ displayModeBar: false, responsive: true }}
               />
             </div>
+            <ResidueNotePanel browser={browser} label={currentProfile.full_residue || currentProfile.residue} />
           </div>
 
-          {/* Residue Selection Table (1 Col) */}
-          <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col h-[480px]">
-            <div className="p-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Filter residues..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-2 py-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
-                />
-              </div>
-            </div>
-
-            <div className="overflow-auto flex-1">
-              <table className="w-full text-xs text-left">
-                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider z-10 border-b border-slate-200 dark:border-slate-700">
-                  <tr>
-                    <th className="px-3 py-2">Residue</th>
-                    <th className="px-3 py-2 text-right">Rex (s⁻¹)</th>
-                    <th className="px-3 py-2 text-right">|Δω| ({unitLabel})</th>
-                    <th className="px-3 py-2 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                  {filteredProfiles.map((p, idx) => {
-                    const isEx = p?.residue ? excludedSet.has(p.residue) : false;
-                    const isCurrent = currentProfile?.residue === p?.residue;
-                    const maxRex = Math.max(...(p?.experiments || []).map((e) => e?.rex || 0), 0);
-
-                    return (
-                      <tr
-                        key={p?.residue || idx}
-                        onClick={() => onSelectIndex(idx)}
-                        className={`cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors ${
-                          isCurrent
-                            ? "bg-blue-50 dark:bg-blue-900/30"
-                            : isEx
-                            ? "opacity-50 bg-slate-100/40 dark:bg-slate-900/40"
-                            : ""
-                        }`}
-                      >
-                        <td className="px-3 py-2 font-bold text-slate-800 dark:text-slate-200">
-                          <span className={isEx ? "line-through text-slate-400" : ""}>
-                            {p?.full_residue || p?.residue}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
-                          {typeof maxRex === "number" && !isNaN(maxRex) ? maxRex.toFixed(1) : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-purple-600 dark:text-purple-400 font-semibold">
-                          {typeof p?.estimated_dw === "number" && !isNaN(p.estimated_dw) ? p.estimated_dw.toFixed(2) : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (p?.residue) onToggleExcludeResidue(p.residue);
-                            }}
-                            className={`p-1 rounded transition-colors ${
-                              isEx ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" : "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30"
-                            }`}
-                            title={isEx ? "Excluded from analysis" : "Included in analysis"}
-                          >
-                            {isEx ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* Residue browser table (1 Col) */}
+          <ResidueTable browser={browser} columns={columns} className="h-[480px]" />
         </div>
       ) : (
         <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-500">

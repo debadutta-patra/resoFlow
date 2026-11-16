@@ -1,0 +1,18 @@
+<!-- Residue review notes and flags (Pick CEST / Inspect Dispersion) -->
+<h2>Residue Review Notes</h2>
+<table class="residue-table">
+  <thead>
+    <tr><th style="width:14%;">Residue</th><th style="width:18%;">Page</th><th style="width:16%;">Status</th><th style="width:8%;">Flag</th><th>Note</th></tr>
+  </thead>
+  <tbody>
+    {% for row in residue_review %}
+    <tr>
+      <td><strong>{{ row.residue }}</strong></td>
+      <td>{{ row.page }}</td>
+      <td>{{ row.status }}</td>
+      <td>{% if row.flagged %}&#9873;{% endif %}</td>
+      <td>{{ row.note }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

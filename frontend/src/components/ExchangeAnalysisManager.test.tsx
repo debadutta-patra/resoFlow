@@ -359,8 +359,8 @@ describe('ExchangeAnalysisManager', () => {
     fireEvent.click(acceptBtn);
 
     // Selected residue dropdown should now be VAL-16N
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select.value).toBe('1');
+    const select = screen.getByRole('combobox', { name: 'Residue' }) as HTMLSelectElement;
+    expect(select.value).toBe('16N');
   });
 
   it('supports raw TOML editing and preview toggle in Parameters tab', async () => {

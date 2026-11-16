@@ -9,7 +9,7 @@ import {
   ChevronLeft, ChevronRight, Check, AlertCircle,
   Beaker, Loader2, RotateCcw, Square,
   Workflow, Copy, Download, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info,
-  MinusCircle, PlusCircle, Activity, ArrowUpDown, LayoutGrid, Maximize2, Search
+  Activity, ArrowUpDown, LayoutGrid, Maximize2, Search
 } from 'lucide-react';
 import Plot, { PLOT_COLORS } from './Plot';
 import { formatUncertainty } from '../lib/uncertaintyFormatter';
@@ -42,6 +42,9 @@ import {
 import { ModuleSelectorCard } from './cest/ModuleSelectorCard';
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
+import { PickCestPanel, type PickKey } from './cest/PickCestPanel';
+import { EMPTY_REVIEW, normalizeReviewBook, type ReviewBook } from '../lib/residueReview';
+import { useProjectSettings } from '../hooks/useProjectSettings';
 import { GridSearchSection } from './grid/GridSearchSection';
 import { getNucleusInfoForModule } from '../lib/experimentPlugin';
 import nmrSpectraDark from '../assets/nmr_spectra_dark.jpg';
@@ -353,8 +356,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const [profiles, setProfiles] = useState<CestProfile[]>([]);
   const [currentProfileIdx, setCurrentProfileIdx] = useState(0);
   const [picks, setPicks] = useState<Record<string, CestPick>>({});
-  type PickMode = 'cs_a' | 'cs_b' | 'cs_c' | 'cs_d' | 'cs_e' | 'cs_f';
-  const [pickMode, setPickMode] = useState<PickMode>('cs_a');
+  const [pickMode, setPickMode] = useState<PickKey>('cs_a');
+  const [residueReview, setResidueReview] = useState<ReviewBook>({});
 
   const notify = (msg: string, ms = 3000) => {
     setSuccessMsg(msg);
@@ -448,6 +451,8 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const effectiveParameterToml = parameterEditor.effectiveParameterToml;
   const staleParamCount = parameterEditor.staleResidues.length;
   const nucleusInfo = useMemo(() => getNucleusInfoForModule(selectedModule), [selectedModule]);
+  const { sequence, settings: projectSettings } = useProjectSettings(projectUuid);
+  const gapContext = useMemo(() => ({ sequence, offset: projectSettings.sequence_offset }), [sequence, projectSettings.sequence_offset]);
 
   // Run honesty hash
   const currentConfigHash = chemexConfigHash({
@@ -545,6 +550,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         if (c.model) setModel(c.model);
         if (c.fit_mode) setFitMode(c.fit_mode);
         if (c.picks) setPicks(c.picks);
+        if (c.residue_review) setResidueReview(normalizeReviewBook(c.residue_review));
         if (c.spectrum_ids) setSelectedSpectrumIds(c.spectrum_ids);
         if (c.generatedExperiments) setGeneratedExperiments(c.generatedExperiments);
         if (c.last_run_hash) setLastRunConfigHash(c.last_run_hash);
@@ -656,6 +662,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const savePayload = {
     ...chemexPayload(),
     picks,
+    residue_review: residueReview,
     spectrum_ids: selectedSpectrumIds,
     generatedExperiments,
     selected_module: selectedModule,
@@ -887,29 +894,29 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     }
   };
 
-  const handleProfileClick = (event: any) => {
-    if (!profiles[currentProfileIdx]) return;
-    const residue = profiles[currentProfileIdx].residue;
-    let x: number | undefined = event.points?.[0]?.x;
-    if (event.event && event.points?.[0]?.xaxis) {
-      const xaxis = event.points[0].xaxis;
-      const xPixel = event.event.layerX - (xaxis._offset || 0);
-      const preciseX = xaxis.p2c(xPixel);
-      if (preciseX !== undefined && !isNaN(preciseX)) x = preciseX;
-    }
-    if (x === undefined) return;
-    setPicks(prevPicks => {
-      const residuePicks = prevPicks[residue] || { 
-        cs_a: null, cs_b: null, cs_c: null, cs_d: null, cs_e: null, cs_f: null 
-      };
-      return { ...prevPicks, [residue]: { ...residuePicks, [pickMode]: x } };
-    });
-    const stateMatch = model.match(/^(\d)st/);
-    const numStates = stateMatch ? parseInt(stateMatch[1], 10) : 2;
-    const modes: PickMode[] = ['cs_a', 'cs_b', 'cs_c', 'cs_d', 'cs_e', 'cs_f'];
-    const currentModeIdx = modes.indexOf(pickMode);
-    const nextModeIdx = (currentModeIdx + 1) % numStates;
-    setPickMode(modes[nextModeIdx]);
+  const selectProfileResidue = React.useCallback(
+    (id: string) => {
+      const i = profiles.findIndex(p => p.residue === id);
+      if (i >= 0) setCurrentProfileIdx(i);
+    },
+    [profiles]
+  );
+
+  const EMPTY_PICK: CestPick = { cs_a: null, cs_b: null, cs_c: null, cs_d: null, cs_e: null, cs_f: null };
+  /** Set (or clear) one pick; returns its undo. Parameters re-sync from picks explicitly. */
+  const applyPick = (residue: string, key: PickKey, x: number | null): (() => void) => {
+    const before = picks[residue];
+    setPicks(prev => ({
+      ...prev,
+      [residue]: { ...EMPTY_PICK, ...prev[residue], [key]: x },
+    }));
+    return () =>
+      setPicks(prev => {
+        const next = { ...prev };
+        if (before) next[residue] = before;
+        else delete next[residue];
+        return next;
+      });
   };
 
   const tabCls = (key: TabKey) =>
@@ -933,7 +940,6 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
   const r1Analyses = (allAnalyses || []).filter(a => a.analysis_type === 'R1' && a.status === 'COMPLETED');
   const r2Analyses = (allAnalyses || []).filter(a => a.analysis_type === 'R2' && a.status === 'COMPLETED');
   const currentProfile = profiles[currentProfileIdx];
-  const currentPick = currentProfile ? picks[currentProfile.residue] : null;
 
   const toggleSpectrumSelection = (id: number) => {
     setSelectedSpectrumIds(prev => {
@@ -1199,196 +1205,24 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
           )}
 
           {activeTab === 'pick_cest' && (
-            <div className="space-y-4 animate-in fade-in">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setCurrentProfileIdx(Math.max(0, currentProfileIdx - 1))} disabled={currentProfileIdx === 0} className={btnSecondary}><ChevronLeft className="w-4 h-4" /></button>
-                  <select value={currentProfileIdx} onChange={e => setCurrentProfileIdx(Number(e.target.value))} className={`${inputCls} w-48`}>
-                    {profiles.map((p, i) => {
-                      const isEx = isResidueExcluded(parameterConfig, p.residue, profiles);
-                      return (
-                        <option key={i} value={i}>
-                          {p.full_residue || p.residue} {isEx ? '(Excluded)' : (picks[p.residue]?.cs_a != null ? '✓' : '')}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <button onClick={() => setCurrentProfileIdx(Math.min(profiles.length - 1, currentProfileIdx + 1))} disabled={currentProfileIdx >= profiles.length - 1} className={btnSecondary}><ChevronRight className="w-4 h-4" /></button>
-
-                  {currentProfile && (
-                    <button
-                      type="button"
-                      onClick={() => handleToggleExcludeResidue(currentProfile.residue)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                        isResidueExcluded(parameterConfig, currentProfile.residue, profiles)
-                          ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/50'
-                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300'
-                      }`}
-                      title={
-                        isResidueExcluded(parameterConfig, currentProfile.residue, profiles)
-                          ? 'Include this residue in parameters (uncomment in parameters.toml)'
-                          : 'Exclude this residue from parameters (comment out in parameters.toml)'
-                      }
-                    >
-                      {isResidueExcluded(parameterConfig, currentProfile.residue, profiles) ? (
-                        <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />
-                      ) : (
-                        <MinusCircle className="w-3.5 h-3.5 text-rose-500" />
-                      )}
-                      <span>
-                        {isResidueExcluded(parameterConfig, currentProfile.residue, profiles)
-                          ? 'Excluded (Click to Include)'
-                          : 'Exclude'}
-                      </span>
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-bold px-3 py-1 rounded-full border ${pickMode === 'cs_a' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-purple-100 text-purple-700 border-purple-300'}`}>Click to set: {pickMode.toUpperCase()}</span>
-                  <button onClick={() => { if (currentProfileIdx < profiles.length - 1) { setCurrentProfileIdx(currentProfileIdx + 1); setPickMode('cs_a'); } }} className={btnPrimary}>Accept & Next</button>
-                </div>
-              </div>
-              {currentProfile && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2">
-                    {isResidueExcluded(parameterConfig, currentProfile.residue, profiles) && (
-                      <div className="mb-2 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg text-xs text-rose-700 dark:text-rose-300 font-semibold flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <MinusCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                          <span>This residue is excluded and commented out in the ChemEx parameter file.</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleExcludeResidue(currentProfile.residue)}
-                          className="underline hover:text-rose-900 dark:hover:text-white cursor-pointer ml-2"
-                        >
-                          Include Residue
-                        </button>
-                      </div>
-                    )}
-                    <Plot
-                      data={currentProfile.experiments.filter(e => !e.error).map((exp, idx) => {
-                        const allPoints = exp.offsets.map((o, i) => ({
-                          o,
-                          i: exp.intensities[i],
-                          err: exp.uncertainties ? exp.uncertainties[i] : 0,
-                          planeIdx: i,
-                        }));
-                        const refPoint = allPoints.find(p => p.o < -10000);
-                        const i0 = (refPoint && refPoint.i !== 0) ? refPoint.i : 1.0;
-                        const points = allPoints.filter(p => p.o > -10000);
-                        const toPpm = (hz: number) => hz / ((exp.b0 || 600.0) * nucleusInfo.xiRatio) + (exp.carrier || 0.0);
-                        const color = idx === 0 ? PLOT_COLORS.primary : '#9333ea';
-                        return {
-                          x: points.map(p => toPpm(p.o)),
-                          y: points.map(p => Math.max(0, p.i / i0)),
-                          error_y: {
-                            type: 'data',
-                            array: points.map(p => Math.abs((p.err || 0) / i0)),
-                            visible: true,
-                            color: color,
-                            thickness: 1.5,
-                            width: 3.5,
-                          },
-                          type: 'scatter',
-                          mode: 'lines+markers',
-                          line: { shape: 'spline' },
-                          marker: {
-                            color: points.map(p => filterPlanes.includes(p.planeIdx) ? '#94a3b8' : color),
-                            size: points.map(p => filterPlanes.includes(p.planeIdx) ? 6 : 8),
-                            symbol: points.map(p => filterPlanes.includes(p.planeIdx) ? 'x' : 'circle'),
-                            line: { width: 1.2, color: '#ffffff' },
-                          },
-                          name: `B1: ${exp.b1}Hz`,
-                        };
-                      })}
-                      layout={{
-                        xaxis: { title: `Shift (${nucleusInfo.unitLabel})`, autorange: 'reversed' },
-                        yaxis: { title: 'I / I₀', autorange: true },
-                        margin: { l: 60, r: 30, t: 40, b: 60 },
-                        shapes: [
-                          ...((['cs_a', 'cs_b', 'cs_c', 'cs_d', 'cs_e', 'cs_f'] as const).slice(0, parseInt(model || '2')).map((key, idx) => {
-                            const val = currentPick?.[key];
-                            return val != null ? { type: 'line', x0: val, x1: val, y0: 0, y1: 1, yref: 'paper', line: { color: [PLOT_COLORS.primary, '#ef4444', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'][idx], width: 2, dash: 'dash' } } : null;
-                          }).filter(Boolean) as any),
-                        ]
-                      }}
-                      style={{ width: '100%', height: '400px' }}
-                      onClick={handleProfileClick}
-                    />
-                  </div>
-                  
-                  <div className="lg:col-span-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden h-[416px] flex flex-col">
-                    <div className="overflow-auto flex-1">
-                      <table className="w-full text-xs text-left">
-                        <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider z-10">
-                          <tr>
-                            <th className="px-4 py-2">Residue</th>
-                            <th className="px-4 py-2">CS_A ({nucleusInfo.unitLabel})</th>
-                            <th className="px-4 py-2">CS_B ({nucleusInfo.unitLabel})</th>
-                            {parseInt(model) >= 3 && <th className="px-4 py-2">CS_C</th>}
-                            <th className="px-4 py-2 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                          {profiles.map((p, idx) => {
-                            const pk = picks[p.residue];
-                            const isEx = isResidueExcluded(parameterConfig, p.residue, profiles);
-                            return (
-                              <tr
-                                key={p.residue}
-                                onClick={() => setCurrentProfileIdx(idx)}
-                                className={`cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-900/10 ${
-                                  isEx
-                                    ? 'opacity-60 bg-slate-100/50 dark:bg-slate-900/50'
-                                    : currentProfile.residue === p.residue
-                                    ? 'bg-blue-50 dark:bg-blue-900/30'
-                                    : ''
-                                }`}
-                              >
-                                <td className="px-4 py-2 font-bold">
-                                  <span className={isEx ? 'line-through text-slate-400 dark:text-slate-500' : ''}>
-                                    {p.full_residue || p.residue}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2">{pk?.cs_a?.toFixed(3) || '—'}</td>
-                                <td className="px-4 py-2">{pk?.cs_b?.toFixed(3) || '—'}</td>
-                                {parseInt(model) >= 3 && <td className="px-4 py-2">{pk?.cs_c?.toFixed(3) || '—'}</td>}
-                                <td className="px-4 py-2 text-right">
-                                  <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-                                    {pk?.cs_a != null && !isEx && <Check size={14} className="text-emerald-500 inline" />}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleExcludeResidue(p.residue)}
-                                      className={`p-1 rounded transition-colors ${
-                                        isEx
-                                          ? 'text-rose-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-                                          : 'text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
-                                      }`}
-                                      title={
-                                        isEx
-                                          ? 'Include this residue (uncomment in parameter file)'
-                                          : 'Exclude this residue (comment out in parameter file)'
-                                      }
-                                    >
-                                      {isEx ? (
-                                        <PlusCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                                      ) : (
-                                        <MinusCircle className="w-3.5 h-3.5" />
-                                      )}
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <PickCestPanel
+              profiles={profiles}
+              picks={picks}
+              onPick={applyPick}
+              pickMode={pickMode}
+              setPickMode={setPickMode}
+              model={model}
+              xiRatio={nucleusInfo.xiRatio}
+              unitLabel={nucleusInfo.unitLabel}
+              filterPlanes={filterPlanes}
+              isExcluded={parameterEditor.isExcluded}
+              toggleExclude={handleToggleExcludeResidue}
+              review={residueReview.pick_cest ?? EMPTY_REVIEW}
+              setReview={update => setResidueReview(prev => ({ ...prev, pick_cest: update(prev.pick_cest ?? EMPTY_REVIEW) }))}
+              gapContext={gapContext}
+              onSelectResidue={selectProfileResidue}
+              exportName={`${analysis.name}_pick_cest`}
+            />
           )}
 
           {activeTab === 'parameters' && (

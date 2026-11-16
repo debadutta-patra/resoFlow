@@ -49,6 +49,11 @@
     {% endif %}
   {% endif %}
 
+  {% if residue_review %}
+  <div class="page-break"></div>
+  {% include "_residue_review.html" %}
+  {% endif %}
+
   <div class="page-break"></div>
   {% include "_provenance.html" %}
 {% endblock %}
