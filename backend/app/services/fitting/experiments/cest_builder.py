@@ -25,6 +25,7 @@ def _peak_position_ppm(
     intensity_field: str = "height",
     ppm_range: tuple[float, float] | None = None,
     min_fraction: float = 0.5,
+    peak: dict | None = None,
 ) -> float | None:
     """Fitted 15N peak position (ppm) of one residue, used to seed CS_A.
 
@@ -33,6 +34,9 @@ def _peak_position_ppm(
     saturated, near-vanished peak has a poorly defined centre. Returns None when no
     position is available or it lies outside ``ppm_range`` (the saturation offsets),
     which happens when the 15N dimension is folded.
+
+    Peak fits that share one centre across planes store it on the peak, not on each
+    plane; ``peak`` (the peak-level record) is then used.
     """
     def num(v):
         try:
@@ -52,6 +56,12 @@ def _peak_position_ppm(
         if pos is None:
             continue
         pts.append((pos, num(plane.get(intensity_field))))
+    if not pts and peak is not None:
+        for key in ("center_y_ppm", "y_ppm", "Y_PPM"):
+            pos = num(peak.get(key))
+            if pos is not None and pos != 0.0:
+                pts = [(pos, None)]
+                break
     if not pts:
         return None
     intensities = [abs(i) for _, i in pts if i is not None]
@@ -117,7 +127,7 @@ def build_cest_experiment(
         fit_data = json.load(f)
 
     results = fit_data.get("results", [])
-    use_height = block_settings.get("use_height", True)
+    use_height = block_settings.get("use_height", False)
     val_field = "height" if use_height else "amp"
     err_field = "height_err" if use_height else "amp_err"
 
@@ -131,6 +141,7 @@ def build_cest_experiment(
                 "res_num": peak.get("res_num") or peak.get("RES_NUM"),
                 "res_name": peak.get("res_name") or peak.get("RES_NAME"),
                 "planes": [],
+                "peak": peak,
             }
         if "planes" in peak:
             for plane in sorted(peak["planes"], key=lambda p: p.get("plane", 0)):
@@ -226,7 +237,7 @@ def build_cest_experiment(
             "full_residue": full_residue_label,
             "profile": profile_pts,
             # Peak position in the indirect (15N) dimension from peak fitting, as a CS_A hint.
-            "cs_hsqc": _peak_position_ppm(planes, val_field, (float(freq_arr.min()), float(freq_arr.max()))),
+            "cs_hsqc": _peak_position_ppm(planes, val_field, (float(freq_arr.min()), float(freq_arr.max())), peak=data.get("peak")),
         })
 
         if is_res_excluded(residue_label):

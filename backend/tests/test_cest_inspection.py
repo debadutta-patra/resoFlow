@@ -341,3 +341,12 @@ def test_peak_position_uses_amp_when_requested():
         {"center_y_ppm": 130.0, "height": 100.0, "amp": 1.0},
     ]
     assert _peak_position_ppm(planes, intensity_field="amp") == pytest.approx(118.0)
+
+
+def test_peak_position_falls_back_to_peak_level_centre():
+    # Fits sharing one centre across planes store it on the peak, not on each plane.
+    planes = [{"amp": 10.0, "height": 1.0, "plane": i} for i in range(5)]
+    peak = {"center_y_ppm": 120.296, "Y_PPM": 120.3}
+    assert _peak_position_ppm(planes, "amp", peak=peak) == pytest.approx(120.296)
+    assert _peak_position_ppm(planes, "amp", ppm_range=(100.0, 115.0), peak=peak) is None
+    assert _peak_position_ppm(planes, "amp") is None

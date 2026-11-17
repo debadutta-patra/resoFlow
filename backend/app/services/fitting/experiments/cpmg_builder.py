@@ -36,7 +36,7 @@ def build_cpmg_experiment(
     meta = MODULE_METADATA.get(selected_module, {})
     xi_ratio = meta.get("xi_ratio", 0.101329118)
 
-    use_height = block_settings.get("use_height", True)
+    use_height = block_settings.get("use_height", False)
     val_field = "height" if use_height else "amp"
     err_field = "height_err" if use_height else "amp_err"
 

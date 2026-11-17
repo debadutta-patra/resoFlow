@@ -268,8 +268,8 @@ describe('ExchangeAnalysisManager', () => {
     expect(saveBtn.disabled).toBe(true);
     expect(screen.queryByTestId('unsaved-dot')).toBeNull();
 
-    const intensity = Array.from(container.querySelectorAll('select')).find(sel => (sel as HTMLSelectElement).value === 'height') as HTMLSelectElement;
-    fireEvent.change(intensity, { target: { value: 'amp' } });
+    const intensity = Array.from(container.querySelectorAll('select')).find(sel => (sel as HTMLSelectElement).value === 'amp') as HTMLSelectElement; // amplitude is the default
+    fireEvent.change(intensity, { target: { value: 'height' } });
     expect(screen.getByTestId('unsaved-dot')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: /Save \(unsaved changes\)/ }));
 
@@ -277,7 +277,7 @@ describe('ExchangeAnalysisManager', () => {
       '/api/projects/proj-123/analysis/test-uuid-123/exchange/config',
       expect.objectContaining({
         model: '2st',
-        use_height: false,
+        use_height: true,
         cest_module_name: 'cest_15n',
         cpmg_module_name: 'cpmg_15n_ip',
       })

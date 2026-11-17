@@ -2601,6 +2601,7 @@ def generate_cest_files(
     existing_config["generatedExperiments"] = experiment_tomls
     existing_config["metadata"] = metadata
     existing_config["hsqc_shifts"] = hsqc_shifts
+    existing_config["use_height"] = bool(request.get("use_height", False))
     write_experiment_tomls(sync_masks_into_experiments(existing_config))
 
     with open(config_path, "w") as f:

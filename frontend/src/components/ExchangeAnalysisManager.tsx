@@ -199,7 +199,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
   // Experiment Setup State
   const [selectedSpectrumIds, setSelectedSpectrumIds] = useState<number[]>([]);
   const [model, setModel] = useState<string>('2st');
-  const [useHeight, setUseHeight] = useState<boolean>(true);
+  const [useHeight, setUseHeight] = useState<boolean>(false); // amplitude by default
   const [cestModuleName, setCestModuleName] = useState<string>('cest_15n');
   const [cpmgModuleName, setCpmgModuleName] = useState<string>('cpmg_15n_ip');
   const [b1Distribution, setB1Distribution] = useState<B1DistributionConfig>({ type: 'dephasing' });

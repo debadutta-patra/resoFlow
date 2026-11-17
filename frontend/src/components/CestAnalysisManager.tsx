@@ -298,7 +298,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
 
   // ── Experiment Tab State ──
   const [selectedSpectrumIds, setSelectedSpectrumIds] = useState<number[]>([]);
-  const [useHeight, setUseHeight] = useState(true);
+  const [useHeight, setUseHeight] = useState(false); // amplitude by default
   const [model, setModel] = useState('2st');
   const [fitMode, setFitMode] = useState<'global' | 'individual'>('global');
   const [r1AnalysisUuid, setR1AnalysisUuid] = useState('');
@@ -564,6 +564,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         if (c.last_run_hash) setLastRunConfigHash(c.last_run_hash);
         if (c.last_run_timestamp) setLastRunTimestamp(c.last_run_timestamp);
         if (c.selected_module) setSelectedModule(c.selected_module);
+        if (typeof c.use_height === 'boolean') setUseHeight(c.use_height);
         if (c.module_extra_values) setModuleExtraValues(c.module_extra_values);
         if (c.module_flags) setModuleFlags(c.module_flags);
         if (c.b1_distribution) setB1Distribution(c.b1_distribution);

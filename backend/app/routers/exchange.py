@@ -78,7 +78,7 @@ def generate_exchange_files(
     cest_module_name = request.get("cest_module_name") or existing_cfg.get("cest_module_name") or "cest_15n"
     cpmg_module_name = request.get("cpmg_module_name") or existing_cfg.get("cpmg_module_name") or "cpmg_15n_ip"
     model = request.get("model") or existing_cfg.get("model") or "2st"
-    use_height = request.get("use_height", existing_cfg.get("use_height", True))
+    use_height = request.get("use_height", existing_cfg.get("use_height", False))
 
     param_cfg_temp = existing_cfg.get("parameter_config") or {}
     excluded_residues = list(set(

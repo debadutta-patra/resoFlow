@@ -193,7 +193,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
     temperature: 298.15,
   });
 
-  const [useHeight, setUseHeight] = useState(true);
+  const [useHeight, setUseHeight] = useState(false); // amplitude by default
   const [model, setModel] = useState("2st");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedExperiments, setGeneratedExperiments] = useState<any[]>([]);
@@ -401,6 +401,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         const c = res.data.config;
         if (c.selectedSpectrumIds) setSelectedSpectrumIds(c.selectedSpectrumIds);
         if (c.selectedParentModule) setSelectedParentModule(c.selectedParentModule);
+        if (typeof c.useHeight === 'boolean') setUseHeight(c.useHeight);
         if (c.is0013 !== undefined) setIs0013(c.is0013);
         if (c.isAntiTrosy !== undefined) setIsAntiTrosy(c.isAntiTrosy);
         if (c.isSmallProtein !== undefined) setIsSmallProtein(c.isSmallProtein);
@@ -461,6 +462,7 @@ export const CpmgAnalysisManager: React.FC<CpmgAnalysisManagerProps> = ({
         selectedSpectrumIds,
         selectedParentModule,
         resolvedModuleName,
+        useHeight,
         is0013,
         isAntiTrosy,
         isSmallProtein,
