@@ -3,6 +3,7 @@ import { mainDipPpm, offsetHzToPpm } from './cestProfileSeed';
 import {
   createDefaultParameterConfig,
   dropLegacyDefaultGlobals,
+  seedCsAFromPeakPositions,
   seedCsAFromProfiles,
   startingValuesFromGlobals,
   unsetStartingParams,
@@ -73,6 +74,53 @@ describe('seedCsAFromProfiles', () => {
       p.residue === '4N' ? null : 118
     );
     expect(seeded).toEqual([]);
+  });
+});
+
+describe('seedCsAFromPeakPositions', () => {
+  const peaks = [
+    { residue: '1N', cs_hsqc: 118.1234 },
+    { residue: '2N', cs_hsqc: 119 },
+    { residue: '3N', cs_hsqc: 120 },
+    { residue: '4N', cs_hsqc: 121 },
+    { residue: '5N', cs_hsqc: 122 },
+    { residue: '6N', cs_hsqc: null },
+    { residue: '7N', cs_hsqc: 123 },
+  ];
+  const config: ParameterConfig = {
+    globals: {},
+    residues: {
+      '2N': { cs_a: { value: 120, source: { kind: 'manual' } } },
+      '3N': { cs_a: { value: 117, source: { kind: 'estimated_from_profile' } } },
+      '4N': { cs_a: { value: 99, lower: 90, upper: 130, source: { kind: 'peak_position', at: 'before' } } },
+      '7N': { cs_a: { value: 110, source: { kind: 'inherited', sourceRunId: 'r', sourceRunLabel: 'r', at: 'x' } } },
+    },
+  };
+  const picks = { '5N': { cs_a: 117.5, cs_b: null } };
+
+  it('fills unset CS_A and refreshes earlier peak seeds only', () => {
+    const { config: next, seeded } = seedCsAFromPeakPositions(config, peaks, picks, 'now');
+    expect(seeded.sort()).toEqual(['1N', '4N']);
+    expect(next.residues['1N'].cs_a).toEqual({ value: 118.123, source: { kind: 'peak_position', at: 'now' } });
+    expect(next.residues['4N'].cs_a).toMatchObject({ value: 121, lower: 90, upper: 130, source: { kind: 'peak_position' } });
+    expect(next.residues['2N'].cs_a?.value).toBe(120); // manual
+    expect(next.residues['3N'].cs_a?.value).toBe(117); // dip estimate the user asked for
+    expect(next.residues['5N']).toBeUndefined(); // picked
+    expect(next.residues['6N']).toBeUndefined(); // no peak position
+    expect(next.residues['7N'].cs_a?.value).toBe(110); // inherited
+  });
+
+  it('is idempotent: an unchanged peak position is not re-seeded', () => {
+    const once = seedCsAFromPeakPositions(config, peaks, picks, 'now').config;
+    const again = seedCsAFromPeakPositions(once, peaks, picks, 'later');
+    expect(again.seeded).toEqual([]);
+    expect(again.config).toBe(once);
+  });
+
+  it('the explicit dip estimate may replace a peak-position seed', () => {
+    const seededCfg = seedCsAFromPeakPositions({ globals: {}, residues: {} }, [{ residue: '1N', cs_hsqc: 118 }], {}, 'now').config;
+    const { seeded } = seedCsAFromProfiles(seededCfg, [{ residue: '1N' }], {}, () => 118.4, 'now');
+    expect(seeded).toEqual(['1N']);
   });
 });
 

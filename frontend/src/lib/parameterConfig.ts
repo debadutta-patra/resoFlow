@@ -9,7 +9,8 @@ export type SourceKind =
   | 'imported'
   | 'inherited'
   | 'estimated_from_rex'
-  | 'estimated_from_profile';
+  | 'estimated_from_profile'
+  | 'peak_position';
 
 export type Source =
   | { kind: 'pick'; pickSetHash: string; at: string }
@@ -19,7 +20,9 @@ export type Source =
   | { kind: 'inherited'; sourceRunId: string; sourceRunLabel: string; at: string }
   | { kind: 'estimated_from_rex'; at?: string }
   /** CS_A estimated from the residue's main (deepest) CEST dip. */
-  | { kind: 'estimated_from_profile'; at?: string };
+  | { kind: 'estimated_from_profile'; at?: string }
+  /** CS_A from the residue's fitted 15N peak position (peak fitting), set when data files are generated. */
+  | { kind: 'peak_position'; at?: string };
 
 export interface ParamValue {
   value: number;
@@ -148,6 +151,8 @@ export function dropLegacyDefaultGlobals(config: ParameterConfig): { config: Par
 export interface ProfileRef {
   residue: string;
   full_residue?: string;
+  /** Fitted 15N peak position (ppm) recorded at data-file generation (CEST profiles). */
+  cs_hsqc?: number | null;
 }
 
 /**
@@ -468,6 +473,8 @@ function sourceLabel(source: Source | undefined, pickLabel: string): string {
       return 'Rex estimate';
     case 'estimated_from_profile':
       return 'profile estimate';
+    case 'peak_position':
+      return 'peak position';
     default:
       return 'default';
   }
@@ -538,7 +545,16 @@ export function withValue(pv: ParamValue | undefined, value: number, source: Sou
 }
 
 /** Starting value sources that a bulk estimate may replace (never picks or user/imported values). */
-const REPLACEABLE: ReadonlySet<SourceKind> = new Set<SourceKind>(['default', 'estimated_from_profile']);
+const REPLACEABLE: ReadonlySet<SourceKind> = new Set<SourceKind>(['default', 'estimated_from_profile', 'peak_position']);
+/** The automatic peak-position seed only fills unset CS_A or refreshes its own earlier values. */
+const PEAK_REPLACEABLE: ReadonlySet<SourceKind> = new Set<SourceKind>(['default', 'peak_position']);
+
+export interface SeedCsAOptions {
+  /** Source recorded on seeded values (default: estimated_from_profile). */
+  kind?: 'estimated_from_profile' | 'peak_position';
+  /** Existing CS_A sources that may be overwritten (default: REPLACEABLE). */
+  replace?: ReadonlySet<SourceKind>;
+}
 
 /**
  * Seed CS_A from each profile's estimate for residues that have no pick and no
@@ -548,9 +564,12 @@ export function seedCsAFromProfiles(
   config: ParameterConfig,
   profiles: ProfileRef[],
   picks: Record<string, PickSetData>,
-  estimate: (profile: ProfileRef) => number | null,
-  at: string = new Date().toISOString()
+  estimate: (profile: ProfileRef) => number | null | undefined,
+  at: string = new Date().toISOString(),
+  options: SeedCsAOptions = {}
 ): { config: ParameterConfig; seeded: string[] } {
+  const kind = options.kind ?? 'estimated_from_profile';
+  const replace = options.replace ?? REPLACEABLE;
   const residues = { ...config.residues };
   const seeded: string[] = [];
   const hasPick = (key: string) => {
@@ -563,16 +582,36 @@ export function seedCsAFromProfiles(
     const key = profile.residue;
     if (!key || hasPick(key) || isResidueExcluded(config, key, profiles)) continue;
     const current = residues[key]?.cs_a;
-    if (current && !REPLACEABLE.has(current.source.kind)) continue;
+    if (current && !replace.has(current.source.kind)) continue;
     const ppm = estimate(profile);
-    if (ppm === null || !Number.isFinite(ppm)) continue;
-    residues[key] = {
-      ...residues[key],
-      cs_a: withValue(current, Number(ppm.toFixed(3)), { kind: 'estimated_from_profile', at }),
-    };
+    if (ppm == null || !Number.isFinite(ppm)) continue;
+    const value = Number(ppm.toFixed(3));
+    if (current && current.source.kind === kind && current.value === value) continue;
+    residues[key] = { ...residues[key], cs_a: withValue(current, value, { kind, at }) };
     seeded.push(key);
   }
   return { config: seeded.length ? { ...config, residues } : config, seeded };
+}
+
+/** A profile's fitted 15N peak position (ppm), when data-file generation recorded one. */
+export function peakPositionOf(profile: ProfileRef): number | null {
+  const v = profile.cs_hsqc;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Auto-fill CS_A from the fitted peak positions recorded at data-file generation.
+ * Fills residues with no pick and no CS_A (or a ChemEx default), and refreshes CS_A values
+ * that came from an earlier peak-position seed; never touches picks or user, imported,
+ * inherited or dip-estimated values.
+ */
+export function seedCsAFromPeakPositions(
+  config: ParameterConfig,
+  profiles: ProfileRef[],
+  picks: Record<string, PickSetData>,
+  at: string = new Date().toISOString()
+): { config: ParameterConfig; seeded: string[] } {
+  return seedCsAFromProfiles(config, profiles, picks, peakPositionOf, at, { kind: 'peak_position', replace: PEAK_REPLACEABLE });
 }
 
 /**

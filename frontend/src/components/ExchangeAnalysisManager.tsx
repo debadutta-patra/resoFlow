@@ -29,6 +29,7 @@ import {
   computePickHash,
   MINOR_STATES,
   canonicalizeParameterConfig,
+  seedCsAFromPeakPositions,
   isResidueExcluded,
   sortSpinKeys,
   applyGridCoordinatesToConfig,
@@ -542,10 +543,15 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
       const base = (data.parameter_config && Object.keys(data.parameter_config.residues || {}).length > 0)
         ? data.parameter_config
         : parameterConfig;
-      parameterEditor.replaceConfig(canonicalizeParameterConfig(base, nextCombined));
+      // Auto-fill CS_A from the fitted peak positions (never over picks or user values).
+      const seededPeaks = seedCsAFromPeakPositions(canonicalizeParameterConfig(base, nextCombined), newCest, data.picks || picks);
+      parameterEditor.replaceConfig(seededPeaks.config);
 
       onUpdate?.();
-      setSuccessMsg("Exchange experiment files generated successfully!");
+      setSuccessMsg(
+        "Exchange experiment files generated successfully!" +
+          (seededPeaks.seeded.length ? ` CS_A set from the fitted peak position for ${seededPeaks.seeded.length} residue${seededPeaks.seeded.length === 1 ? '' : 's'}.` : '')
+      );
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
       console.error("Generate failed:", err);

@@ -30,6 +30,7 @@ import { cestPlugin } from '../plugins/cestPlugin';
 import StatisticsResultsSection from './methods/StatisticsResultsSection';
 import {
   canonicalizeParameterConfig,
+  seedCsAFromPeakPositions,
   isResidueExcluded,
   sortSpinKeys,
   deduplicateSpinKeys,
@@ -728,7 +729,24 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
         ...moduleFlags,
       });
       setGeneratedExperiments(res.data.experiments || []);
-      setSuccessMsg(`Generated ${res.data.total_data_files} data files and ${res.data.experiments?.length || 0} experiment TOMLs`);
+      // Reload the profiles (they carry each residue's fitted peak position) and auto-fill
+      // CS_A from it where there is no pick and no user value.
+      let seededCount = 0;
+      try {
+        const pr = await api.get(`/api/projects/${projectUuid}/analysis/${analysis.analysis_uuid}/cest/profiles`);
+        const nextProfiles: CestProfile[] = pr.data.profiles || [];
+        if (nextProfiles.length > 0) {
+          setProfiles(nextProfiles);
+          const seed = (cfg: typeof parameterConfig) =>
+            seedCsAFromPeakPositions(canonicalizeParameterConfig(cfg, nextProfiles), nextProfiles, picks);
+          seededCount = seed(parameterConfig).seeded.length;
+          setParameterConfig(prev => seed(prev).config);
+        }
+      } catch { /* profiles load again when Pick CEST opens */ }
+      setSuccessMsg(
+        `Generated ${res.data.total_data_files} data files and ${res.data.experiments?.length || 0} experiment TOMLs` +
+          (seededCount ? ` · CS_A set from the fitted peak position for ${seededCount} residue${seededCount === 1 ? '' : 's'}` : '')
+      );
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Failed to generate CEST files');

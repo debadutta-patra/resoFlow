@@ -22,6 +22,7 @@ export type DisplayBadgeState =
   | 'imported'
   | 'inherited'
   | 'from_profile'
+  | 'peak_position'
   | 'rex_estimate';
 
 interface ParameterBadgeProps {
@@ -64,6 +65,8 @@ export const ParameterBadge: React.FC<ParameterBadgeProps> = ({
     state = 'imported';
   } else if (source?.kind === 'estimated_from_profile') {
     state = 'from_profile';
+  } else if (source?.kind === 'peak_position') {
+    state = 'peak_position';
   } else if (source?.kind === 'estimated_from_rex') {
     state = 'rex_estimate';
   } else {
@@ -135,6 +138,13 @@ export const ParameterBadge: React.FC<ParameterBadgeProps> = ({
     from_profile: {
       label: 'From profile',
       title: 'Estimated from the main (deepest) dip of the profile' + (timeFormatted ? ` at ${timeFormatted}` : ''),
+      classes: 'bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-700',
+      Icon: Activity,
+      iconColor: 'text-teal-600 dark:text-teal-400',
+    },
+    peak_position: {
+      label: 'Peak position',
+      title: 'Fitted 15N peak position from peak fitting, set when the data files were generated' + (timeFormatted ? ` at ${timeFormatted}` : ''),
       classes: 'bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-700',
       Icon: Activity,
       iconColor: 'text-teal-600 dark:text-teal-400',

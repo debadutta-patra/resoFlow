@@ -302,3 +302,42 @@ def test_one_state_endpoint_on_exchange_layout(tmp_path):
     assert out["fits"]["7N"]["r1"] == pytest.approx(1.5, rel=1e-3)
     assert out["fits"]["7N"]["r1_fixed"] is False
     assert out["r2_stats"]["flagged"] == []
+
+
+# --- Fitted peak position used to seed CS_A ---------------------------------
+
+from app.services.fitting.experiments.cest_builder import _peak_position_ppm
+
+
+def test_peak_position_uses_strong_planes_only():
+    # Saturated planes (small height) have unreliable centres; they must not shift the median.
+    planes = [
+        {"center_y_ppm": 118.20, "height": 1000.0},
+        {"center_y_ppm": 118.22, "height": 950.0},
+        {"center_y_ppm": 118.18, "height": 900.0},
+        {"center_y_ppm": 125.0, "height": 40.0},
+        {"center_y_ppm": 111.0, "height": 30.0},
+        {"center_y_ppm": 126.0, "height": 20.0},
+    ]
+    assert _peak_position_ppm(planes) == pytest.approx(118.20)
+
+
+def test_peak_position_fallback_keys_and_missing():
+    assert _peak_position_ppm([{"y_ppm": 120.5}, {"Y_PPM": 120.7}]) == pytest.approx(120.6)
+    assert _peak_position_ppm([{"height": 1.0}, {"center_y_ppm": None}]) is None
+    assert _peak_position_ppm([]) is None
+
+
+def test_peak_position_outside_offset_range_is_dropped():
+    # A folded 15N dimension puts the apparent peak outside the CEST offsets.
+    planes = [{"center_y_ppm": 95.0, "height": 1.0}]
+    assert _peak_position_ppm(planes, ppm_range=(105.0, 135.0)) is None
+    assert _peak_position_ppm(planes, ppm_range=(90.0, 135.0)) == pytest.approx(95.0)
+
+
+def test_peak_position_uses_amp_when_requested():
+    planes = [
+        {"center_y_ppm": 118.0, "height": 1.0, "amp": 10.0},
+        {"center_y_ppm": 130.0, "height": 100.0, "amp": 1.0},
+    ]
+    assert _peak_position_ppm(planes, intensity_field="amp") == pytest.approx(118.0)

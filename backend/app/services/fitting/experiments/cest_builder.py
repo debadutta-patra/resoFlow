@@ -20,22 +20,54 @@ def _parse_f3list(path: str) -> list:
                 pass
     return values
 
-def _peak_position_ppm(planes: list) -> float | None:
-    """Median fitted 15N position across planes (center_y_ppm), or None when absent."""
-    vals = []
-    for plane in planes:
-        v = plane.get("center_y_ppm", plane.get("Y_PPM"))
+def _peak_position_ppm(
+    planes: list,
+    intensity_field: str = "height",
+    ppm_range: tuple[float, float] | None = None,
+    min_fraction: float = 0.5,
+) -> float | None:
+    """Fitted 15N peak position (ppm) of one residue, used to seed CS_A.
+
+    Median of the per-plane fitted centres (center_y_ppm, else y_ppm / Y_PPM), taken over
+    the planes whose intensity is at least ``min_fraction`` of the strongest plane: a
+    saturated, near-vanished peak has a poorly defined centre. Returns None when no
+    position is available or it lies outside ``ppm_range`` (the saturation offsets),
+    which happens when the 15N dimension is folded.
+    """
+    def num(v):
         try:
             v = float(v)
         except (TypeError, ValueError):
+            return None
+        return v if v == v and v not in (float("inf"), float("-inf")) else None
+
+    pts = []
+    for plane in planes:
+        pos = None
+        for key in ("center_y_ppm", "y_ppm", "Y_PPM"):
+            pos = num(plane.get(key))
+            if pos is not None and pos != 0.0:
+                break
+            pos = None
+        if pos is None:
             continue
-        if v == v and v != 0.0:
-            vals.append(v)
-    if not vals:
+        pts.append((pos, num(plane.get(intensity_field))))
+    if not pts:
         return None
-    vals.sort()
+    intensities = [abs(i) for _, i in pts if i is not None]
+    if intensities and max(intensities) > 0:
+        cut = min_fraction * max(intensities)
+        strong = [p for p, i in pts if i is not None and abs(i) >= cut]
+        vals = sorted(strong or [p for p, _ in pts])
+    else:
+        vals = sorted(p for p, _ in pts)
     m = len(vals) // 2
-    return vals[m] if len(vals) % 2 else 0.5 * (vals[m - 1] + vals[m])
+    pos = vals[m] if len(vals) % 2 else 0.5 * (vals[m - 1] + vals[m])
+    if ppm_range is not None:
+        lo, hi = min(ppm_range), max(ppm_range)
+        if not lo <= pos <= hi:
+            return None
+    return pos
 
 
 def build_cest_experiment(
@@ -194,7 +226,7 @@ def build_cest_experiment(
             "full_residue": full_residue_label,
             "profile": profile_pts,
             # Peak position in the indirect (15N) dimension from peak fitting, as a CS_A hint.
-            "cs_hsqc": _peak_position_ppm(planes),
+            "cs_hsqc": _peak_position_ppm(planes, val_field, (float(freq_arr.min()), float(freq_arr.max()))),
         })
 
         if is_res_excluded(residue_label):
