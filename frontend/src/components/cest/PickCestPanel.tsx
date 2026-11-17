@@ -55,7 +55,10 @@ export interface CestProfileData {
 }
 
 export type PickKey = 'cs_a' | 'cs_b' | 'cs_c' | 'cs_d' | 'cs_e' | 'cs_f';
-export type CestPickSet = Partial<Record<PickKey, number | null>>;
+export type CestPickSet = Partial<Record<PickKey, number | null>> & {
+  /** CS_A auto-filled from the fitted peak position, not yet confirmed. */
+  cs_a_auto?: boolean;
+};
 /** Offset masks: experiment label (B1 label) → masked plane indices. */
 export type CestMasks = Record<string, number[]>;
 
@@ -118,6 +121,8 @@ export interface PickCestPanelProps {
   fittedShifts?: Record<string, { cs_a?: number | null; cs_b?: number | null }>;
   /** Switch the kinetic model (offered when picks need more states than the model has). */
   onChangeModel?: (model: string) => void;
+  /** Fill missing CS_A picks from the fitted peak positions; returns how many were filled. */
+  onInitFromPeaks?: () => number;
   /** For the one-state fit endpoint. */
   projectUuid?: string;
   analysisUuid?: string;
@@ -131,8 +136,12 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
   const {
     profiles, picks, onPick, pickMode, setPickMode, model, xiRatio, unitLabel, filterPlanes = [], masks, setMasks,
     isExcluded, toggleExclude, review, setReview, gapContext, onSelectResidue, exportName = 'pick_cest',
-    fittedShifts = {}, projectUuid, analysisUuid, onChangeModel,
+    fittedShifts = {}, projectUuid, analysisUuid, onChangeModel, onInitFromPeaks,
   } = props;
+  /** Residues with a fitted peak position but no CS_A pick yet. */
+  const missingPeakPicks = profiles.filter(
+    p => typeof p.cs_hsqc === 'number' && Number.isFinite(p.cs_hsqc) && picks[p.residue]?.cs_a == null
+  ).length;
   const nStates = numStatesOf(model);
   /** Number of states a residue's picks define (A plus the highest picked minor state). */
   const pickedStates = (p: CestPickSet | undefined) => {
@@ -177,7 +186,7 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
   // A picked residue counts as accepted unless a status was set explicitly (incl. a reset).
   const statusOverride = useCallback(
     (id: string, s: ReviewStatus, stored: string | undefined): ReviewStatus =>
-      s === 'unreviewed' && stored === undefined && picks[id]?.cs_a != null ? 'accepted' : s,
+      s === 'unreviewed' && stored === undefined && picks[id]?.cs_a != null && !picks[id]?.cs_a_auto ? 'accepted' : s,
     [picks]
   );
   const statusWarning = useCallback(
@@ -201,8 +210,10 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
     onAccept: id => {
       const prevMode = pickMode;
       setPickMode('cs_a');
-      // Accepting commits the suggested CS_A when nothing was picked.
-      const sug = picks[id]?.cs_a == null ? suggestionOf(id) : null;
+      // Accepting commits the suggested CS_A when nothing was picked, and confirms an
+      // auto-filled (peak position) CS_A.
+      const cur = picks[id];
+      const sug = cur?.cs_a == null ? suggestionOf(id) : cur.cs_a_auto ? { value: cur.cs_a, source: 'peak position' } : null;
       const undoPick = sug ? onPick(id, 'cs_a', sug.value) : null;
       return () => {
         undoPick?.();
@@ -454,7 +465,17 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
     {
       key: k,
       header: `${k.toUpperCase()} pick`,
-      render: (id: string) => fmt(picks[id]?.[k]) ?? <span className="text-slate-300 dark:text-slate-600">·</span>,
+      render: (id: string) => {
+        const v = fmt(picks[id]?.[k]);
+        if (!v) return <span className="text-slate-300 dark:text-slate-600">·</span>;
+        return k === 'cs_a' && picks[id]?.cs_a_auto ? (
+          <span className="italic opacity-70" title="From the fitted peak position; Accept or move it to confirm" data-auto="true">
+            {v}ᵖ
+          </span>
+        ) : (
+          v
+        );
+      },
       sortValue: (id: string) => picks[id]?.[k] ?? null,
       className: i === 0 ? 'text-blue-700 dark:text-blue-300' : 'text-rose-700 dark:text-rose-300',
     },
@@ -588,6 +609,11 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
                   return (
                     <span key={k} className={`${chip} inline-flex items-center gap-1`} style={{ borderColor: PICK_COLORS[i] + '66', color: PICK_COLORS[i] }} data-testid={`pick-chip-${k}`}>
                       CS_{state} {v.toFixed(3)}
+                      {k === 'cs_a' && pick?.cs_a_auto && (
+                        <span className="text-slate-500 italic" title="Initialised from the fitted peak position. Drag it, click to re-pick, or Accept to confirm" data-testid="cs-a-auto">
+                          (peak fit)
+                        </span>
+                      )}
                       {d && (
                         <span className="text-slate-600 dark:text-slate-300" title={`Δϖ = CS_${state} − CS_A`} data-testid={i === 1 ? 'delta-varpi' : `delta-varpi-${k}`}>
                           · Δϖ{i > 1 ? `_A${state}` : ''} {signed(d.ppm, 3)} ppm ({signed(d.hz, 1)} Hz)
@@ -643,6 +669,16 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
                   </span>
                 )}
                 <div className="ml-auto flex items-center gap-1.5">
+                  {onInitFromPeaks && missingPeakPicks > 0 && (
+                    <button
+                      type="button"
+                      className={toggleCls(false)}
+                      onClick={() => onInitFromPeaks()}
+                      title="Initialise the missing CS_A picks from each residue's fitted 15N peak position (peak fitting). Existing picks are kept."
+                    >
+                      CS_A from peak fit ({missingPeakPicks})
+                    </button>
+                  )}
                   <button type="button" className={toggleCls(showDiff)} onClick={() => setShowDiff(v => !v)} aria-pressed={showDiff} title="Lowest B1 minus highest B1, interpolated onto a common offset grid">
                     Difference trace
                   </button>

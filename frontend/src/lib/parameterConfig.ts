@@ -76,6 +76,8 @@ export interface PickSetData {
   cs_d?: number | null;
   cs_e?: number | null;
   cs_f?: number | null;
+  /** CS_A was auto-filled from the fitted peak position and not yet confirmed. */
+  cs_a_auto?: boolean;
 }
 
 import { fallbackDefaults, type ParamDefaultsLookup } from './chemexDefaults';
@@ -575,7 +577,7 @@ export function seedCsAFromProfiles(
   const hasPick = (key: string) => {
     const canonical = getCanonicalResidueKey(key, profiles);
     return Object.entries(picks || {}).some(
-      ([k, p]) => p?.cs_a != null && !Number.isNaN(p.cs_a) && getCanonicalResidueKey(k, profiles) === canonical
+      ([k, p]) => p?.cs_a != null && !Number.isNaN(p.cs_a) && !p.cs_a_auto && getCanonicalResidueKey(k, profiles) === canonical
     );
   };
   for (const profile of profiles) {

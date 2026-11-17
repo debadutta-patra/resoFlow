@@ -41,7 +41,7 @@ import { ProfileFilterControls } from './cest/ProfileFilterControls';
 import { CpmgDispersionTab, type CpmgProfileItem, type RexSeedRecord } from './cpmg/CpmgDispersionTab';
 import { fitCurvesFromResults } from '../lib/cpmgInspection';
 import { PickCestPanel, type PickKey, type CestMasks } from './cest/PickCestPanel';
-import { fittedShiftsFromResults } from '../lib/cestPicking';
+import { fittedShiftsFromResults, initPicksFromPeaks } from '../lib/cestPicking';
 import { EMPTY_REVIEW, type ReviewBook, type ReviewPage, type ReviewState } from '../lib/residueReview';
 import { normalizeReviewBook } from '../lib/residueReview';
 import { useProjectSettings } from '../hooks/useProjectSettings';
@@ -118,7 +118,11 @@ export interface CestPick {
   cs_d: number | null;
   cs_e: number | null;
   cs_f: number | null;
+  /** CS_A auto-filled from the fitted peak position, not yet confirmed. */
+  cs_a_auto?: boolean;
 }
+
+const EMPTY_CEST_PICK = { cs_a: null, cs_b: null, cs_c: null, cs_d: null, cs_e: null, cs_f: null };
 
 export interface ExchangeAnalysisManagerProps {
   analysis: Analysis;
@@ -544,13 +548,16 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         ? data.parameter_config
         : parameterConfig;
       // Auto-fill CS_A from the fitted peak positions (never over picks or user values).
-      const seededPeaks = seedCsAFromPeakPositions(canonicalizeParameterConfig(base, nextCombined), newCest, data.picks || picks);
+      const basePicks: Record<string, CestPick> = data.picks || picks;
+      const seededPeaks = seedCsAFromPeakPositions(canonicalizeParameterConfig(base, nextCombined), newCest, basePicks);
       parameterEditor.replaceConfig(seededPeaks.config);
+      const initPicks = initPicksFromPeaks(basePicks, newCest, EMPTY_CEST_PICK);
+      if (initPicks.filled.length) setPicks(initPicks.picks);
 
       onUpdate?.();
       setSuccessMsg(
         "Exchange experiment files generated successfully!" +
-          (seededPeaks.seeded.length ? ` CS_A set from the fitted peak position for ${seededPeaks.seeded.length} residue${seededPeaks.seeded.length === 1 ? '' : 's'}.` : '')
+          (initPicks.filled.length ? ` CS_A picks initialised from the fitted peak position for ${initPicks.filled.length} residue${initPicks.filled.length === 1 ? '' : 's'}.` : '')
       );
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
@@ -704,7 +711,8 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     const prevPick = picks[res];
     const prevParams = parameterConfig.residues[res];
     const empty = { cs_a: null, cs_b: null, cs_c: null, cs_d: null, cs_e: null, cs_f: null };
-    const updated = { ...empty, ...(prevPick || {}), [key]: x };
+    const updated: CestPick = { ...empty, ...(prevPick || {}), [key]: x };
+    if (key === 'cs_a') delete updated.cs_a_auto; // picked, moved or confirmed by the user
     setPicks(prev => ({ ...prev, [res]: updated }));
 
     // Mirror into the parameter config: CS_A, and DW_A* = CS_* − CS_A for every minor state.
@@ -738,6 +746,15 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
         return { ...prev, residues };
       });
     };
+  };
+
+  /** Initialise missing CS_A picks from the fitted peak positions (Pick CEST button). */
+  const handleInitPicksFromPeaks = (): number => {
+    const seeded = seedCsAFromPeakPositions(parameterConfig, cestProfiles, picks);
+    if (seeded.seeded.length) setParameterConfig(seeded.config);
+    const init = initPicksFromPeaks(picks, cestProfiles, EMPTY_CEST_PICK);
+    if (init.filled.length) setPicks(init.picks);
+    return init.filled.length;
   };
 
   const handleToggleExcludeResidue = parameterEditor.toggleExclude;
@@ -1194,6 +1211,7 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
               profiles={cestProfiles}
               picks={picks}
               onPick={applyPick}
+              onInitFromPeaks={handleInitPicksFromPeaks}
               pickMode={pickMode}
               setPickMode={setPickMode}
               model={model}

@@ -15,6 +15,7 @@ import {
   normalizeRows,
   rowBaseline,
   valueRange,
+  initPicksFromPeaks,
 } from './cestPicking';
 
 const XI = 0.101329118;
@@ -213,5 +214,40 @@ describe('heatmap ordering and colour scaling', () => {
   it('valueRange spans the data', () => {
     expect(valueRange([[0.2, null], [0.47, 0.3]])).toEqual([0.2, 0.47]);
     expect(valueRange([[null]])).toEqual([0, 1]);
+  });
+});
+
+describe('initPicksFromPeaks', () => {
+  const EMPTY = { cs_b: null };
+  type P = { cs_a?: number | null; cs_b?: number | null; cs_a_auto?: boolean };
+  const profiles = [
+    { residue: '1N', cs_hsqc: 118.12345 },
+    { residue: '2N', cs_hsqc: 119 },
+    { residue: '3N', cs_hsqc: 120 },
+    { residue: '4N', cs_hsqc: null },
+    { residue: '5N', cs_hsqc: 121 },
+  ];
+
+  it('fills missing CS_A, keeps user picks, refreshes auto values; matches by SpinSystemKey', () => {
+    const picks: Record<string, P> = {
+      G2N: { cs_a: 118.5, cs_b: 121 }, // user pick under an alias key
+      '3N': { cs_a: 119.5, cs_b: null, cs_a_auto: true }, // stale auto value
+      '5N': { cs_a: null, cs_b: 125 }, // only a minor pick
+    };
+    const { picks: next, filled } = initPicksFromPeaks(picks, profiles, EMPTY);
+    expect(filled.sort()).toEqual(['1N', '3N', '5N']);
+    expect(next['1N']).toEqual({ cs_b: null, cs_a: 118.123, cs_a_auto: true });
+    expect(next.G2N).toEqual({ cs_a: 118.5, cs_b: 121 });
+    expect(next['2N']).toBeUndefined();
+    expect(next['3N'].cs_a).toBe(120);
+    expect(next['5N']).toEqual({ cs_a: 121, cs_b: 125, cs_a_auto: true });
+    expect(next['4N']).toBeUndefined();
+  });
+
+  it('is idempotent', () => {
+    const once = initPicksFromPeaks({} as Record<string, P>, profiles, EMPTY).picks;
+    const again = initPicksFromPeaks(once, profiles, EMPTY);
+    expect(again.filled).toEqual([]);
+    expect(again.picks).toBe(once);
   });
 });

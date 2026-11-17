@@ -41,7 +41,7 @@ function profile(residue: string, cs: number, hsqc?: number) {
   };
 }
 
-function Harness(props: { fittedShifts?: any; initialPicks?: Record<string, CestPickSet>; model?: string; onChangeModel?: (m: string) => void }) {
+function Harness(props: { fittedShifts?: any; initialPicks?: Record<string, CestPickSet>; model?: string; onChangeModel?: (m: string) => void; onInitFromPeaks?: () => number }) {
   const [picks, setPicks] = useState<Record<string, CestPickSet>>(props.initialPicks ?? {});
   const [mode, setMode] = useState<PickKey>('cs_a');
   const [masks, setMasks] = useState<CestMasks>({});
@@ -53,7 +53,8 @@ function Harness(props: { fittedShifts?: any; initialPicks?: Record<string, Cest
         picks={picks}
         onPick={(res, key, v) => {
           const before = picks[res];
-          setPicks(p => ({ ...p, [res]: { ...p[res], [key]: v } }));
+          // Like the managers: a user CS_A pick clears the auto (peak position) marker.
+          setPicks(p => ({ ...p, [res]: { ...p[res], [key]: v, ...(key === 'cs_a' ? { cs_a_auto: undefined } : {}) } }));
           return () => setPicks(p => ({ ...p, [res]: before ?? {} }));
         }}
         pickMode={mode}
@@ -71,6 +72,7 @@ function Harness(props: { fittedShifts?: any; initialPicks?: Record<string, Cest
         fittedShifts={props.fittedShifts}
         projectUuid="p"
         analysisUuid="a"
+        onInitFromPeaks={props.onInitFromPeaks}
       />
       <pre data-testid="state">{JSON.stringify({ picks, masks, mode })}</pre>
     </>
@@ -141,6 +143,26 @@ describe('PickCestPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Accept & Next/ }));
     expect(state().picks['10N'].cs_a).toBe(117.9);
     expect(screen.getByText(/suggested CS_A 118.450 \(previous run\)/)).toBeDefined();
+  });
+
+  it('an auto-filled CS_A pick (peak fit) is marked, not counted as reviewed, and Accept confirms it', () => {
+    render(<Harness initialPicks={{ '10N': { cs_a: 117.9, cs_a_auto: true } }} />);
+    expect(screen.getByTestId('cs-a-auto').textContent).toContain('peak fit');
+    expect(document.querySelector('[data-auto="true"]')?.textContent).toContain('117.900');
+    expect(screen.getByTestId('review-progress').textContent).toBe('0 / 2 reviewed');
+    fireEvent.click(screen.getByRole('button', { name: /Accept & Next/ }));
+    expect(state().picks['10N']).toEqual({ cs_a: 117.9 });
+    expect(screen.getByTestId('review-progress').textContent).toBe('1 / 2 reviewed');
+  });
+
+  it('offers "CS_A from peak fit" while residues with a peak position lack a CS_A pick', () => {
+    const init = vi.fn(() => 1);
+    render(<Harness onInitFromPeaks={init} />);
+    fireEvent.click(screen.getByRole('button', { name: /CS_A from peak fit \(1\)/ }));
+    expect(init).toHaveBeenCalledTimes(1);
+    cleanup();
+    render(<Harness onInitFromPeaks={init} initialPicks={{ '10N': { cs_a: 117.9, cs_a_auto: true } }} />);
+    expect(screen.queryByRole('button', { name: /CS_A from peak fit/ })).toBeNull();
   });
 
   it('No excited state is distinct from unreviewed in the table', () => {

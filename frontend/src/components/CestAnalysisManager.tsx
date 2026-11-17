@@ -44,7 +44,7 @@ import { ModuleSelectorCard } from './cest/ModuleSelectorCard';
 import { NestedConfigGroup, type B1DistributionConfig } from './cest/NestedConfigGroup';
 import { ProfileFilterControls } from './cest/ProfileFilterControls';
 import { PickCestPanel, type PickKey, type CestMasks } from './cest/PickCestPanel';
-import { fittedShiftsFromResults } from '../lib/cestPicking';
+import { fittedShiftsFromResults, initPicksFromPeaks } from '../lib/cestPicking';
 import { EMPTY_REVIEW, normalizeReviewBook, type ReviewBook } from '../lib/residueReview';
 import { useProjectSettings } from '../hooks/useProjectSettings';
 import { GridSearchSection } from './grid/GridSearchSection';
@@ -206,7 +206,11 @@ interface CestPick {
   cs_d: number | null;
   cs_e: number | null;
   cs_f: number | null;
+  /** CS_A auto-filled from the fitted peak position, not yet confirmed. */
+  cs_a_auto?: boolean;
 }
+
+const EMPTY_CEST_PICK = { cs_a: null, cs_b: null, cs_c: null, cs_d: null, cs_e: null, cs_f: null };
 
 interface ProgressInfo {
   kind: string;
@@ -692,6 +696,15 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     }
   };
 
+  /** Initialise missing CS_A picks from the fitted peak positions (Pick CEST button). */
+  const handleInitPicksFromPeaks = (): number => {
+    const seeded = seedCsAFromPeakPositions(parameterConfig, profiles, picks);
+    if (seeded.seeded.length) setParameterConfig(seeded.config);
+    const init = initPicksFromPeaks(picks, profiles, EMPTY_CEST_PICK);
+    if (init.filled.length) setPicks(init.picks);
+    return init.filled.length;
+  };
+
   const handleToggleExcludeResidue = parameterEditor.toggleExclude;
 
   const loadProfiles = async () => {
@@ -739,13 +752,15 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
           setProfiles(nextProfiles);
           const seed = (cfg: typeof parameterConfig) =>
             seedCsAFromPeakPositions(canonicalizeParameterConfig(cfg, nextProfiles), nextProfiles, picks);
-          seededCount = seed(parameterConfig).seeded.length;
           setParameterConfig(prev => seed(prev).config);
+          const initPicks = initPicksFromPeaks(picks, nextProfiles, EMPTY_CEST_PICK);
+          seededCount = initPicks.filled.length;
+          if (seededCount) setPicks(initPicks.picks);
         }
       } catch { /* profiles load again when Pick CEST opens */ }
       setSuccessMsg(
         `Generated ${res.data.total_data_files} data files and ${res.data.experiments?.length || 0} experiment TOMLs` +
-          (seededCount ? ` · CS_A set from the fitted peak position for ${seededCount} residue${seededCount === 1 ? '' : 's'}` : '')
+          (seededCount ? ` · CS_A picks initialised from the fitted peak position for ${seededCount} residue${seededCount === 1 ? '' : 's'}` : '')
       );
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (e: any) {
@@ -924,14 +939,15 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
     [profiles]
   );
 
-  const EMPTY_PICK: CestPick = { cs_a: null, cs_b: null, cs_c: null, cs_d: null, cs_e: null, cs_f: null };
+  const EMPTY_PICK: CestPick = EMPTY_CEST_PICK;
   /** Set (or clear) one pick; returns its undo. Parameters re-sync from picks explicitly. */
   const applyPick = (residue: string, key: PickKey, x: number | null): (() => void) => {
     const before = picks[residue];
-    setPicks(prev => ({
-      ...prev,
-      [residue]: { ...EMPTY_PICK, ...prev[residue], [key]: x },
-    }));
+    setPicks(prev => {
+      const updated: CestPick = { ...EMPTY_PICK, ...prev[residue], [key]: x };
+      if (key === 'cs_a') delete updated.cs_a_auto; // picked, moved or confirmed by the user
+      return { ...prev, [residue]: updated };
+    });
     return () =>
       setPicks(prev => {
         const next = { ...prev };
@@ -1231,6 +1247,7 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               profiles={profiles}
               picks={picks}
               onPick={applyPick}
+              onInitFromPeaks={handleInitPicksFromPeaks}
               pickMode={pickMode}
               setPickMode={setPickMode}
               model={model}

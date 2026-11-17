@@ -117,6 +117,11 @@ describe('seedCsAFromPeakPositions', () => {
     expect(again.config).toBe(once);
   });
 
+  it('an auto-filled (unconfirmed) CS_A pick does not block the peak seed', () => {
+    const { seeded } = seedCsAFromPeakPositions({ globals: {}, residues: {} }, [{ residue: '1N', cs_hsqc: 118 }], { '1N': { cs_a: 118, cs_b: null, cs_a_auto: true } }, 'now');
+    expect(seeded).toEqual(['1N']);
+  });
+
   it('the explicit dip estimate may replace a peak-position seed', () => {
     const seededCfg = seedCsAFromPeakPositions({ globals: {}, residues: {} }, [{ residue: '1N', cs_hsqc: 118 }], {}, 'now').config;
     const { seeded } = seedCsAFromProfiles(seededCfg, [{ residue: '1N' }], {}, () => 118.4, 'now');

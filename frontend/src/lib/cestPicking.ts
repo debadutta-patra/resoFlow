@@ -7,6 +7,7 @@
 
 import { offsetHzToPpm } from './cestProfileSeed';
 import { SpinSystemKey } from './spinSystem';
+import { findKey } from './residueReview';
 
 export const REFERENCE_OFFSET_HZ = -10000;
 
@@ -314,4 +315,35 @@ export function fittedShiftsFromResults(results: any): Record<string, { cs_a: nu
     if (csA !== null || csB !== null) out[res] = { cs_a: csA, cs_b: csB };
   }
   return out;
+}
+
+
+/** A residue's picks plus whether CS_A was auto-filled from the fitted peak position (not yet confirmed). */
+export type AutoPickSet = { cs_a?: number | null; cs_a_auto?: boolean };
+
+/**
+ * Initialise CS_A picks from each profile's fitted 15N peak position (`cs_hsqc`).
+ * Fills residues with no CS_A pick and refreshes CS_A values that are still auto-filled;
+ * a CS_A the user picked, moved or confirmed is never touched. Auto-filled values carry
+ * `cs_a_auto: true` until confirmed. Residues are matched by SpinSystemKey.
+ */
+export function initPicksFromPeaks<P extends AutoPickSet>(
+  picks: Record<string, P>,
+  profiles: Array<{ residue: string; cs_hsqc?: number | null }>,
+  empty: Omit<P, 'cs_a' | 'cs_a_auto'>
+): { picks: Record<string, P>; filled: string[] } {
+  const next: Record<string, P> = { ...picks };
+  const filled: string[] = [];
+  for (const p of profiles) {
+    const v = p.cs_hsqc;
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    const key = findKey(next, p.residue) ?? p.residue;
+    const cur = next[key];
+    const value = Number(v.toFixed(3));
+    if (cur?.cs_a != null && !cur.cs_a_auto) continue;
+    if (cur?.cs_a_auto && cur.cs_a === value) continue;
+    next[key] = { ...empty, ...(cur || {}), cs_a: value, cs_a_auto: true } as P;
+    filled.push(key);
+  }
+  return { picks: filled.length ? next : picks, filled };
 }
