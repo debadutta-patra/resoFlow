@@ -183,8 +183,18 @@ describe('PickCestPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Overview heatmap/ }));
     const heat = plots.filter(p => p.data?.[0]?.type === 'heatmap');
     expect(heat).toHaveLength(2);
-    act(() => heat.at(-1).onClick({ points: [{ customdata: '11N' }] }));
+    const h = heat.at(-1);
+    // Lowest residue number on top; rows normalised to their own baseline by default.
+    expect(h.layout.yaxis.autorange).toBe('reversed');
+    expect(h.data[0].zmax).toBe(1);
+    expect(Math.max(...h.data[0].z[0].filter((v: number | null) => v !== null))).toBeCloseTo(1, 1);
+    act(() => h.onClick({ points: [{ customdata: ['11N', 0.5] }] }));
     expect(new URLSearchParams(window.location.search).get('res')).toBe('11N');
+    // Raw mode: colour range fitted to the panel's data, not 0–1.05.
+    fireEvent.click(screen.getByRole('button', { name: 'Raw I/I0' }));
+    const raw = plots.filter(p => p.data?.[0]?.type === 'heatmap').at(-1);
+    expect(raw.data[0].zmax).toBeLessThan(1.05);
+    expect(raw.data[0].zmin).toBeGreaterThan(0);
   });
 
   it('adds extra excited states (C) beyond the model, with Δϖ_AC and a model warning', () => {

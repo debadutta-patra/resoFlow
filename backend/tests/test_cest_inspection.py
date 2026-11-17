@@ -31,7 +31,7 @@ def _offsets(n=81, span_hz=1500.0):
     return np.linspace(-span_hz, span_hz, n)
 
 
-def _synthetic(cs, r2, r1, b1, scale=1.0, noise=0.0, minor=None, seed=0):
+def _synthetic(cs, r2, r1, b1, scale=1.0, noise=0.0, minor=None, seed=0, no_ref=False):
     """I/I0 profile with a reference plane first; optional extra Lorentzian minor dip."""
     offs = _offsets()
     y = scale * one_state_mz(offs, cs, r2, r1, B0, b1, CARRIER, T1, XI)
@@ -41,7 +41,9 @@ def _synthetic(cs, r2, r1, b1, scale=1.0, noise=0.0, minor=None, seed=0):
         y = y * (1 - depth / (1 + ((offs - hz_b) / width_hz) ** 2))
     rng = np.random.default_rng(seed)
     y = y + rng.normal(0, noise, y.size) if noise else y
-    return [-100000.0] + offs.tolist(), [1.0] + y.tolist(), [0.005] * (offs.size + 1)
+    # The reference plane has no saturation delay: scale · Mz(0) = scale.
+    ref = [] if no_ref else [scale]
+    return ([] if no_ref else [-100000.0]) + offs.tolist(), ref + y.tolist(), [0.005] * (len(ref) + offs.size)
 
 
 def _inputs(profile_kw, b1s=(25.0, 50.0)):
@@ -68,6 +70,23 @@ class TestOneStateModel:
         right = one_state_mz(cs_hz + d, 119.0, 12.0, 1.5, B0, 30.0, CARRIER, T1, XI)
         assert left == pytest.approx(right, abs=1e-12)
 
+    def test_dephasing_removes_nutation_wiggles(self):
+        # B1 = 50 Hz, low R2: homogeneous B1 oscillates (and goes negative) near resonance;
+        # with dephasing the profile falls monotonically into the dip.
+        offs = np.linspace(-300.0, 0.0, 301)  # carrier = CS, approach from one side
+        homog = one_state_mz(offs, CARRIER, 10.0, 1.5, B0, 50.0, CARRIER, T1, XI, dephasing=False)
+        deph = one_state_mz(offs, CARRIER, 10.0, 1.5, B0, 50.0, CARRIER, T1, XI)
+        assert np.any(np.diff(homog) > 1e-6) and homog.min() < 0
+        assert np.all(np.diff(deph) <= 1e-12) and deph.min() >= 0
+
+    def test_dephasing_keeps_the_effective_field_component(self):
+        # On resonance the effective field lies along x: Mz projects to 0 after dephasing...
+        on = one_state_mz(np.array([0.0]), CARRIER, 10.0, 1.5, B0, 50.0, CARRIER, T1, XI)
+        assert on[0] == pytest.approx(0.0, abs=1e-12)
+        # ...and far off resonance Mz is untouched (pure R1 decay, up to cos²θ ≈ 1).
+        far = one_state_mz(np.array([-5000.0]), CARRIER, 10.0, 1.5, B0, 50.0, CARRIER, T1, XI)
+        assert far[0] == pytest.approx(math.exp(-1.5 * T1), rel=1e-3)
+
     def test_dip_broadens_with_b1(self):
         offs = _offsets(1201)
         def width(b1):
@@ -78,12 +97,19 @@ class TestOneStateModel:
 
 
 class TestOneStateFit:
-    def test_recovers_known_parameters_from_noiseless_data(self):
-        fit = fit_one_state(_inputs(dict(cs=118.7, r2=11.0, r1=1.4, scale=0.98)), xi=XI, r1=1.4)
+    @pytest.mark.parametrize("cs,r1", [(116.3, 0.9), (118.7, 1.4), (121.2, 2.6)])
+    def test_recovers_cs_r2_and_r1_from_noiseless_data(self, cs, r1):
+        fit = fit_one_state(_inputs(dict(cs=cs, r2=11.0, r1=r1, scale=0.98)), xi=XI)
         assert fit["success"]
-        assert fit["cs_a"] == pytest.approx(118.7, abs=1e-4)
+        assert fit["r1_fixed"] is False and fit["b1_inhomogeneity"] == "dephasing"
+        assert fit["cs_a"] == pytest.approx(cs, abs=1e-4)
         assert fit["r2"] == pytest.approx(11.0, rel=1e-4)
-        assert fit["experiments"][0]["scale"] == pytest.approx(0.98, rel=1e-4)
+        assert fit["r1"] == pytest.approx(r1, rel=1e-4)
+
+    def test_recovers_parameters_shapes(self):
+        fit = fit_one_state(_inputs(dict(cs=118.7, r2=11.0, r1=1.4, scale=0.98)), xi=XI)
+        # Intensities are normalised by the reference plane, which the fit includes: scale = 1.
+        assert fit["experiments"][0]["scale"] == pytest.approx(1.0, rel=1e-6)
         exp0 = fit["experiments"][0]
         assert max(abs(r) for r in exp0["residuals"]) < 1e-4
         assert len(exp0["curve"]["x_ppm"]) == 400
@@ -91,19 +117,27 @@ class TestOneStateFit:
         assert len(exp0["x_ppm"]) == 81
         assert exp0["x_ppm"][40] == pytest.approx(CARRIER, abs=1e-9)
 
-    def test_only_r2_minus_r1_is_identifiable(self):
-        # Same data, different fixed R1: CS_A identical, R2 shifts by the R1 difference.
-        inputs = _inputs(dict(cs=118.2, r2=12.0, r1=1.5))
-        a = fit_one_state(inputs, xi=XI, r1=1.5)
+    def test_without_reference_plane_r1_is_held_fixed(self):
+        # Only R2 − R1 is determined then: changing the fixed R1 shifts R2 by the same amount.
+        inputs = _inputs(dict(cs=118.2, r2=12.0, r1=1.5, no_ref=True))
+        a = fit_one_state(inputs, xi=XI)
+        assert a["r1_fixed"] is True and a["r1_fixed_reason"] == "no reference plane"
+        assert a["r1"] == 1.5 and a["r2"] == pytest.approx(12.0, rel=1e-4)
         b = fit_one_state(inputs, xi=XI, r1=2.5)
-        assert a["cs_a"] == pytest.approx(b["cs_a"], abs=1e-4)
+        assert b["r1_fixed_reason"] == "given"
+        assert b["cs_a"] == pytest.approx(a["cs_a"], abs=1e-4)
         assert b["r2"] - a["r2"] == pytest.approx(1.0, rel=1e-3)
-        assert b["chisqr"] == pytest.approx(a["chisqr"], abs=1e-12)
+
+    def test_r1_can_be_held_fixed_on_request(self):
+        fit = fit_one_state(_inputs(dict(cs=118.2, r2=12.0, r1=1.5)), xi=XI, r1=1.5)
+        assert fit["r1_fixed"] is True and fit["r1_err"] is None
+        assert fit["r2"] == pytest.approx(12.0, rel=1e-4)
 
     def test_noisy_data_within_uncertainty(self):
-        fit = fit_one_state(_inputs(dict(cs=117.4, r2=14.0, r1=1.6, noise=0.005, seed=3)), xi=XI)
+        fit = fit_one_state(_inputs(dict(cs=117.4, r2=14.0, r1=2.2, noise=0.005, seed=3)), xi=XI)
         assert abs(fit["cs_a"] - 117.4) < 4 * fit["cs_a_err"] + 1e-3
         assert abs(fit["r2"] - 14.0) < 4 * fit["r2_err"] + 0.05
+        assert abs(fit["r1"] - 2.2) < 4 * fit["r1_err"] + 0.01
         assert fit["redchi"] == pytest.approx(1.0, abs=0.5)
 
     def test_unfit_minor_dip_inflates_r2_and_leaves_residual_structure(self):
@@ -111,7 +145,7 @@ class TestOneStateFit:
         clean = fit_one_state(_inputs(base), xi=XI)
         minor = fit_one_state(_inputs({**base, "minor": (119.5, 0.25, 60.0)}), xi=XI)
         assert clean["r2"] == pytest.approx(10.0, rel=1e-4)
-        assert minor["r2"] > clean["r2"] + 1.0
+        assert minor["r2"] > clean["r2"] + 1.5
         res = np.array(minor["experiments"][0]["residuals"])
         x = np.array(minor["experiments"][0]["x_ppm"])
         # Most negative residual near the minor state.
@@ -265,4 +299,6 @@ def test_one_state_endpoint_on_exchange_layout(tmp_path):
     assert out["time_t1"] == {"600MHz_25hz": 0.4}
     assert out["fits"]["7N"]["cs_a"] == pytest.approx(118.3, abs=1e-3)
     assert out["fits"]["7N"]["r2"] == pytest.approx(9.0, rel=1e-3)
+    assert out["fits"]["7N"]["r1"] == pytest.approx(1.5, rel=1e-3)
+    assert out["fits"]["7N"]["r1_fixed"] is False
     assert out["r2_stats"]["flagged"] == []

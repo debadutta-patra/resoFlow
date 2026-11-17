@@ -12,6 +12,9 @@ import {
   snapToMinimum,
   trimNumber,
   fittedShiftsFromResults,
+  normalizeRows,
+  rowBaseline,
+  valueRange,
 } from './cestPicking';
 
 const XI = 0.101329118;
@@ -179,5 +182,36 @@ describe('fittedShiftsFromResults', () => {
       '2N': { cs_a: 120, cs_b: 122.5 },
     });
     expect(fittedShiftsFromResults(null)).toEqual({});
+  });
+});
+
+describe('heatmap ordering and colour scaling', () => {
+  it('orders rows by residue number, not text', () => {
+    const p = (residue: string) => ({ residue, experiments: [exp(25, () => 0.5, 118, 5)] });
+    const panels = heatmapPanels([p('9N'), p('75N'), p('G10N'), p('6N'), p('69N')], XI);
+    expect(panels[0].residues).toEqual(['6N', '9N', 'G10N', '69N', '75N']);
+  });
+
+  it('row baseline is the median of the top quartile (off-resonance plateau)', () => {
+    // 8 values, top quartile = [0.46, 0.45] → 0.455
+    expect(rowBaseline([0.1, 0.2, 0.44, 0.45, 0.46, 0.3, 0.4, 0.41])).toBeCloseTo(0.455, 12);
+    expect(rowBaseline([null, null])).toBeNull();
+  });
+
+  it('per-row normalisation puts every plateau at 1, so weak dips compare across rows', () => {
+    const z = normalizeRows([
+      [0.45, 0.45, 0.2, 0.45],
+      [0.9, 0.9, 0.4, 0.9],
+      [null, 0.5, 0.5, 0.5],
+    ]);
+    expect(z[0][0]).toBeCloseTo(1, 12);
+    expect(z[0][2]).toBeCloseTo(0.2 / 0.45, 12);
+    expect(z[1][2]).toBeCloseTo(0.4 / 0.9, 12);
+    expect(z[2][0]).toBeNull();
+  });
+
+  it('valueRange spans the data', () => {
+    expect(valueRange([[0.2, null], [0.47, 0.3]])).toEqual([0.2, 0.47]);
+    expect(valueRange([[null]])).toEqual([0, 1]);
   });
 });

@@ -27,6 +27,8 @@ import {
   differenceTrace,
   formatFieldLabel,
   heatmapPanels,
+  normalizeRows,
+  valueRange,
   profilePoints,
   snapAcrossExperiments,
 } from '../../lib/cestPicking';
@@ -79,6 +81,9 @@ interface OneStateFit {
   r2: number;
   r2_err: number | null;
   r1: number;
+  r1_err?: number | null;
+  r1_fixed?: boolean;
+  r1_fixed_reason?: string | null;
   redchi: number;
   experiments: OneStateExp[];
   error?: string;
@@ -143,6 +148,8 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
 
   const [showDiff, setShowDiff] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  /** Heatmap colour: each row relative to its own off-resonance baseline, or raw I/I0. */
+  const [heatNorm, setHeatNorm] = useState<'row' | 'raw'>('row');
   const [oneState, setOneState] = useState<OneStateResponse | null>(null);
   const [oneStateBusy, setOneStateBusy] = useState(false);
   const [oneStateError, setOneStateError] = useState('');
@@ -627,11 +634,11 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
                 {fit && !fit.error && (
                   <span
                     className={`${chip} ${r2High ? 'border-amber-400 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 font-bold' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}
-                    title={`One-state fit at R1 = ${fit.r1} s⁻¹ (only R2 − R1 is determined). ${r2High ? 'R2 is high relative to other residues: a one-state misfit inflates R2 and is a known source of false positives.' : ''}`}
+                    title={`One-state fit, B1 inhomogeneity as dephasing. R1 = ${fit.r1.toFixed(2)} s⁻¹ ${fit.r1_fixed ? `(fixed: ${fit.r1_fixed_reason ?? 'given'})` : `(fitted${fit.r1_err ? ` ± ${fit.r1_err.toFixed(2)}` : ''})`}. ${r2High ? 'R2 is high relative to other residues: a one-state misfit inflates R2 and is a known source of false positives.' : ''}`}
                     data-testid="one-state-r2"
                   >
                     {r2High && <AlertTriangle className="inline w-3 h-3 mr-1" />}
-                    R2 (one-state) {fit.r2.toFixed(1)}{fit.r2_err ? ` ± ${fit.r2_err.toFixed(1)}` : ''} s⁻¹ · χ²ᵣ {fit.redchi.toFixed(2)}
+                    R2 (one-state) {fit.r2.toFixed(1)}{fit.r2_err ? ` ± ${fit.r2_err.toFixed(1)}` : ''} s⁻¹ · R1 {fit.r1.toFixed(2)}{fit.r1_fixed ? ' (fixed)' : ''} · χ²ᵣ {fit.redchi.toFixed(2)}
                     {r2High && oneState?.r2_stats.median != null ? ` (median ${oneState.r2_stats.median.toFixed(1)})` : ''}
                   </span>
                 )}
@@ -696,35 +703,58 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
           Overview heatmap (residues × offset, I/I0)
         </button>
         {showHeatmap && (
+          <div className="flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-slate-600 dark:text-slate-300">
+            <span>Colour:</span>
+            <button type="button" className={toggleCls(heatNorm === 'row')} aria-pressed={heatNorm === 'row'} onClick={() => setHeatNorm('row')}
+              title="Each row divided by its own off-resonance baseline (median of its top quartile): 1 = plateau, so shallow minor dips stand out in every row">
+              Per-row baseline
+            </button>
+            <button type="button" className={toggleCls(heatNorm === 'raw')} aria-pressed={heatNorm === 'raw'} onClick={() => setHeatNorm('raw')}
+              title="Raw I/I0, colour range fitted to the data in each panel">
+              Raw I/I0
+            </button>
+            <span className="text-slate-400">Rows in residue order. Hover for values; click a cell to open that residue.</span>
+          </div>
+        )}
+        {showHeatmap && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 p-3 pt-0">
-            {heatmaps.map(h => (
+            {heatmaps.map(h => {
+              const z = heatNorm === 'row' ? normalizeRows(h.z) : h.z;
+              const [zlo, zhi] = valueRange(z);
+              const zLabel = heatNorm === 'row' ? 'I/I0 ÷ baseline' : 'I/I0';
+              const raw = h.z;
+              return (
               <Plot
                 key={h.label}
                 data={[{
                   type: 'heatmap',
                   x: h.x,
                   y: h.residues.map(r => profiles.find(p => p.residue === r)?.full_residue || r),
-                  z: h.z,
-                  customdata: h.residues.map(r => h.x.map(() => r)),
+                  z,
+                  // [residue id, raw I/I0] per cell, for click-to-select and the tooltip.
+                  customdata: h.residues.map((r, i) => h.x.map((_, j) => [r, raw[i][j]])),
                   colorscale: 'Viridis',
-                  zmin: 0,
-                  zmax: 1.05,
-                  colorbar: { title: 'I/I0', thickness: 10 },
-                  hovertemplate: '%{y}<br>%{x:.2f} ppm<br>I/I0 %{z:.3f}<extra></extra>',
+                  zmin: heatNorm === 'row' ? Math.max(0, zlo) : zlo,
+                  zmax: heatNorm === 'row' ? 1 : zhi,
+                  colorbar: { title: { text: zLabel }, thickness: 10 },
+                  hovertemplate: `%{y}<br>%{x:.2f} ppm<br>I/I0 %{customdata[1]:.3f}${heatNorm === 'row' ? '<br>÷ baseline %{z:.2f}' : ''}<extra></extra>`,
                 }]}
                 layout={{
                   title: { text: h.title, font: { size: 12 } },
                   xaxis: { title: `15N offset (${unitLabel})`, autorange: 'reversed' },
-                  yaxis: { automargin: true, type: 'category' },
+                  // Lowest residue number at the top, like the residue table.
+                  yaxis: { automargin: true, type: 'category', autorange: 'reversed' },
                   margin: { l: 70, r: 20, t: 30, b: 45 },
                 }}
                 style={{ width: '100%', height: `${Math.max(240, 14 * h.residues.length + 90)}px` }}
                 onClick={(ev: any) => {
-                  const r = ev?.points?.[0]?.customdata;
+                  const cd = ev?.points?.[0]?.customdata;
+                  const r = Array.isArray(cd) ? cd[0] : cd;
                   if (typeof r === 'string') browser.select(r);
                 }}
               />
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

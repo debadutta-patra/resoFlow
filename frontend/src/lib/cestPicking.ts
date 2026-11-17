@@ -6,6 +6,7 @@
  */
 
 import { offsetHzToPpm } from './cestProfileSeed';
+import { SpinSystemKey } from './spinSystem';
 
 export const REFERENCE_OFFSET_HZ = -10000;
 
@@ -224,11 +225,14 @@ export interface HeatmapPanel {
   z: (number | null)[][];
 }
 
-/** One residues × offsets I/I0 matrix per B1 experiment (keyed by experiment label). */
+/** One residues × offsets I/I0 matrix per B1 experiment (keyed by experiment label),
+ * rows in residue-number order (SpinSystemKey, as in the residue table). */
 export function heatmapPanels(
   profiles: { residue: string; experiments: CestExpLike[] }[],
   xi: number,
 ): HeatmapPanel[] {
+  const resNum = (r: string) => SpinSystemKey.parse(r).resNum || Number.MAX_SAFE_INTEGER;
+  profiles = [...profiles].sort((a, b) => resNum(a.residue) - resNum(b.residue) || a.residue.localeCompare(b.residue));
   const byLabel = new Map<string, { title: string; rows: { residue: string; pts: ProfilePoint[] }[] }>();
   for (const p of profiles) {
     for (const e of p.experiments) {
@@ -253,6 +257,33 @@ export function heatmapPanels(
     panels.push({ label, title, x, residues: rows.map(r => r.residue), z });
   }
   return panels.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+}
+
+/**
+ * Row baseline: median of the top quartile of the row's values (the off-resonance plateau,
+ * ≈ exp(−R1·T) in I/I0). Null for an empty row.
+ */
+export function rowBaseline(row: (number | null)[]): number | null {
+  const v = row.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => b - a);
+  if (!v.length) return null;
+  const top = v.slice(0, Math.max(1, Math.ceil(v.length / 4)));
+  const m = top.length >> 1;
+  return top.length % 2 ? top[m] : (top[m - 1] + top[m]) / 2;
+}
+
+/** Each row divided by its baseline, so 1 = plateau and dips read the same in every row. */
+export function normalizeRows(z: (number | null)[][]): (number | null)[][] {
+  return z.map(row => {
+    const b = rowBaseline(row);
+    return row.map(v => (v === null || !b ? null : v / b));
+  });
+}
+
+/** [min, max] of the finite values (colour range); [0, 1] when empty. */
+export function valueRange(z: (number | null)[][]): [number, number] {
+  let lo = Infinity, hi = -Infinity;
+  for (const row of z) for (const v of row) if (typeof v === 'number' && Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  return Number.isFinite(lo) ? [lo, hi] : [0, 1];
 }
 
 // ── Fitted shifts from a committed run ───────────────────────────────────

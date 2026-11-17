@@ -58,8 +58,10 @@ class OneStateRequest(BaseModel):
     #: Unsaved masks from the page; falls back to the saved ``cest_masks``.
     masks: Optional[dict[str, list[int]]] = None
     xi: float = Field(default=DEFAULT_XI_15N, gt=0)
-    #: Fixed R1 (s⁻¹); only R2 − R1 is identifiable from a one-state CEST fit.
-    r1: float = Field(default=1.5, gt=0, le=20)
+    #: Hold R1 (s⁻¹) fixed; by default it is fitted per residue from the reference planes.
+    r1: Optional[float] = Field(default=None, gt=0, le=20)
+    #: Treat B1 inhomogeneity as dephasing (ChemEx b1_distribution "dephasing").
+    dephasing: bool = True
 
 
 @router.post("/cest/one-state")
@@ -79,7 +81,7 @@ def cest_one_state_fits(
         if not res or (wanted is not None and res not in wanted):
             continue
         try:
-            fit = fit_one_state(experiment_inputs(prof, t1, masks), xi=body.xi, r1=body.r1)
+            fit = fit_one_state(experiment_inputs(prof, t1, masks), xi=body.xi, r1=body.r1, dephasing=body.dephasing)
         except (ValueError, FloatingPointError, ArithmeticError) as e:
             fit = {"error": str(e)}
         if fit is not None:

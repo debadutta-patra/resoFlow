@@ -9,13 +9,23 @@ decays as exp(-R1 T)). Bloch equations in the rotating frame of the B1 field::
          [ Δ,  -R2, -ω1],
          [ 0,   ω1, -R1]]
 
-with Δ = 2π(ν_rf - ν_spin) and ω1 = 2π B1. The observed intensity is scale · Mz(T); one
-scale per B1 experiment absorbs the I0 normalisation. Free parameters: CS_A (ppm), R2 and
-the scales; R1 is fixed (see ``fit_one_state``). This ignores exchange, B1 inhomogeneity and 1H decoupling on purpose: it is
-the null model whose residuals reveal a minor-state dip.
+with Δ = 2π(ν_rf - ν_spin) and ω1 = 2π B1.
 
-A one-state fit that cannot place a minor dip broadens the main dip instead, inflating R2;
-``flag_high_r2`` marks such residues relative to the others (robust z-score).
+B1 inhomogeneity is treated as *dephasing* (ChemEx ``b1_distribution = "dephasing"``):
+magnetization precessing about the effective field averages out over the B1 distribution,
+so only the non-oscillating eigencomponents of the propagator are kept. This also removes
+the nutation wiggles a homogeneous-B1 model shows near resonance.
+
+Intensities: the reference plane (offset < −10 kHz) is recorded without the saturation
+delay, so it is scale · Mz(0) = scale, and the saturated planes are scale · Mz(T). Fitting
+the reference points with the profile (one scale per B1 experiment) makes R1 identifiable
+from the baseline decay. Free parameters: CS_A (ppm), R2, R1 and the scales. Without a
+reference plane only R2 − R1 is determined, so R1 is then held fixed (reported).
+
+The model ignores exchange and 1H decoupling on purpose: it is the null model whose
+residuals reveal a minor-state dip. A one-state fit that cannot place a minor dip broadens
+the main dip instead, inflating R2; ``flag_high_r2`` marks such residues relative to the
+others (robust z-score).
 """
 
 from __future__ import annotations
@@ -60,6 +70,23 @@ class _Prepared:
     y: np.ndarray  # I / I0
     err: np.ndarray
     used: np.ndarray  # bool mask: not masked
+    ref_y: np.ndarray  # reference planes (I / I0), modelled as scale · Mz(0) = scale
+    ref_err: np.ndarray
+
+
+def _bloch(offsets_hz: np.ndarray, cs_ppm: float, r2: float, r1: float, b0_mhz: float, b1_hz: float, carrier_ppm: float, xi: float) -> np.ndarray:
+    spin_hz = (cs_ppm - carrier_ppm) * b0_mhz * xi
+    delta = TWO_PI * (offsets_hz - spin_hz)
+    w1 = TWO_PI * b1_hz
+    L = np.zeros((offsets_hz.size, 3, 3))
+    L[:, 0, 0] = -r2
+    L[:, 0, 1] = -delta
+    L[:, 1, 0] = delta
+    L[:, 1, 1] = -r2
+    L[:, 1, 2] = -w1
+    L[:, 2, 1] = w1
+    L[:, 2, 2] = -r1
+    return L
 
 
 def one_state_mz(
@@ -72,23 +99,29 @@ def one_state_mz(
     carrier_ppm: float,
     time_t1: float,
     xi: float,
+    dephasing: bool = True,
 ) -> np.ndarray:
-    """Mz(T) / Mz(0) of a single spin for each irradiation offset (Hz from the carrier)."""
-    offsets_hz = np.asarray(offsets_hz, dtype=float)
-    spin_hz = (cs_ppm - carrier_ppm) * b0_mhz * xi
-    delta = TWO_PI * (offsets_hz - spin_hz)
-    w1 = TWO_PI * b1_hz
-    n = offsets_hz.size
-    L = np.zeros((n, 3, 3))
-    L[:, 0, 0] = -r2
-    L[:, 0, 1] = -delta
-    L[:, 1, 0] = delta
-    L[:, 1, 1] = -r2
-    L[:, 1, 2] = -w1
-    L[:, 2, 1] = w1
-    L[:, 2, 2] = -r1
-    prop = expm(L * time_t1)
-    return prop[:, 2, 2]
+    """Mz(T) / Mz(0) of a single spin for each irradiation offset (Hz from the carrier).
+
+    With ``dephasing`` (default) the oscillating eigencomponents of the propagator, i.e.
+    precession about the effective field, are dropped (B1 inhomogeneity averages them out).
+    """
+    offsets_hz = np.atleast_1d(np.asarray(offsets_hz, dtype=float))
+    L = _bloch(offsets_hz, cs_ppm, r2, r1, b0_mhz, b1_hz, carrier_ppm, xi)
+    if not dephasing:
+        return expm(L * time_t1)[:, 2, 2]
+    lam, V = np.linalg.eig(L)
+    with np.errstate(all="ignore"):
+        Vinv = np.linalg.inv(V)
+        scale = np.maximum(1.0, np.abs(lam).max(axis=-1, keepdims=True))
+        keep = np.abs(lam.imag) <= 1e-7 * scale
+        # Mz(T) = Σ_k V[z,k] · exp(λ_k T) · (V⁻¹ e_z)_k over non-oscillating components.
+        mz = np.sum(V[:, 2, :] * np.exp(lam * time_t1) * Vinv[:, :, 2] * keep, axis=-1).real
+        ok = np.isfinite(mz) & (np.linalg.cond(V) < 1e10)
+    if not ok.all():
+        # Defective (exceptional-point) matrices: no oscillation to dephase, use expm.
+        mz[~ok] = expm(L[~ok] * time_t1)[:, 2, 2]
+    return mz
 
 
 def _prepare(exp: CestExperimentInput) -> Optional[_Prepared]:
@@ -112,6 +145,10 @@ def _prepare(exp: CestExperimentInput) -> Optional[_Prepared]:
     err = np.where(err > 0, err, 0.01)
     masked = set(int(p) for p in exp.masked_planes)
     used = np.array([int(p) not in masked for p in planes[keep]], dtype=bool)
+    ref_keep = is_ref & np.array([int(p) not in masked for p in planes], dtype=bool)
+    ref_y = inten[ref_keep] / i0
+    ref_err = np.abs(unc[ref_keep] / i0) if unc is not None else np.zeros_like(ref_y)
+    ref_err = np.where(ref_err > 0, ref_err, 0.01)
     return _Prepared(
         label=exp.label,
         b0_mhz=float(exp.b0_mhz),
@@ -123,6 +160,8 @@ def _prepare(exp: CestExperimentInput) -> Optional[_Prepared]:
         y=y,
         err=err,
         used=used,
+        ref_y=ref_y,
+        ref_err=ref_err,
     )
 
 
@@ -130,21 +169,28 @@ def _ppm(p: _Prepared, offsets_hz: np.ndarray, xi: float) -> np.ndarray:
     return offsets_hz / (p.b0_mhz * xi) + p.carrier_ppm
 
 
+DEFAULT_R1 = 1.5
+
+
 def fit_one_state(
     experiments: Sequence[CestExperimentInput],
     xi: float,
     curve_points: int = 400,
-    r1: float = 1.5,
+    r1: Optional[float] = None,
+    dephasing: bool = True,
 ) -> Optional[dict]:
     """Fit one residue's experiments jointly. Returns None when there is nothing to fit.
 
-    R1 is held fixed: with a free intensity scale per experiment only R2 − R1 is
-    identifiable (a common shift of all rates multiplies Mz by a constant), so R2 is
-    reported at the given R1.
+    R1 is fitted when every experiment has a reference plane (and ``r1`` is None). Pass
+    ``r1`` to hold it fixed; without reference planes it is held at ``DEFAULT_R1`` because
+    only R2 − R1 is then identifiable.
     """
     prepared = [p for p in (_prepare(e) for e in experiments) if p is not None and p.used.sum() >= 4]
     if not prepared:
         return None
+    has_refs = all(p.ref_y.size > 0 for p in prepared)
+    fit_r1 = r1 is None and has_refs
+    r1_fixed_value = float(r1) if r1 is not None else DEFAULT_R1
 
     # Starting point: deepest point of the lowest-B1 experiment.
     low = min(prepared, key=lambda p: p.b1_hz)
@@ -154,58 +200,64 @@ def fit_one_state(
     lo_cs, hi_cs = float(all_ppm.min()), float(all_ppm.max())
     cs0 = min(max(cs0, lo_cs), hi_cs)
 
-    # CS_A is fitted as a shift from the start value: relative step sizes on a ~100 ppm
-    # value are too coarse for the optimizer (it stalls on the nearest data point).
-    x0 = [0.0, 10.0] + [max(float(np.max(p.y[p.used])), 1e-3) for p in prepared]
-    lower = [lo_cs - cs0, r1 + 1e-3] + [1e-6] * len(prepared)
-    upper = [hi_cs - cs0, 500.0] + [np.inf] * len(prepared)
-    NP = 2  # physical parameters before the scales
+    # Parameters: [dCS_A, R2, (R1), scale_1 … scale_n]. CS_A is fitted as a shift from the
+    # start value: relative step sizes on a ~100 ppm value are too coarse for the optimizer.
+    NP = 3 if fit_r1 else 2
 
-    def model(theta, p: _Prepared, offsets: np.ndarray, scale: float) -> np.ndarray:
-        dcs, r2 = theta[:NP]
-        return scale * one_state_mz(offsets, cs0 + dcs, r2, r1, p.b0_mhz, p.b1_hz, p.carrier_ppm, p.time_t1, xi)
+    def unpack(theta):
+        dcs, r2 = theta[0], theta[1]
+        return dcs, r2, (theta[2] if fit_r1 else r1_fixed_value)
+
+    def shape(theta, p: _Prepared, offsets: np.ndarray) -> np.ndarray:
+        dcs, r2, r1_ = unpack(theta)
+        return one_state_mz(offsets, cs0 + dcs, r2, r1_, p.b0_mhz, p.b1_hz, p.carrier_ppm, p.time_t1, xi, dephasing)
 
     def residuals(theta):
         out = []
         for j, p in enumerate(prepared):
-            m = model(theta, p, p.offsets_hz[p.used], theta[NP + j])
-            out.append((p.y[p.used] - m) / p.err[p.used])
+            scale = theta[NP + j]
+            out.append((p.y[p.used] - scale * shape(theta, p, p.offsets_hz[p.used])) / p.err[p.used])
+            out.append((p.ref_y - scale) / p.ref_err)
         return np.concatenate(out)
 
-    # Coarse scan first: at low R2 / high B1 the profile carries nutation wiggles near
-    # resonance, so the cost in CS_A has local minima. Scales are linear, solved exactly.
-    def scan_cost(dcs: float, r2: float) -> tuple[float, list[float]]:
+    # Coarse scan over CS_A, R2 (and R1) with the scales solved exactly (they are linear).
+    def scan_cost(theta_phys: list[float]) -> tuple[float, list[float]]:
         total, scales = 0.0, []
         for p in prepared:
-            w = 1.0 / p.err[p.used]
-            shape = one_state_mz(p.offsets_hz[p.used], cs0 + dcs, r2, r1, p.b0_mhz, p.b1_hz, p.carrier_ppm, p.time_t1, xi)
-            a, b = shape * w, p.y[p.used] * w
-            scale = max(float(a @ b) / max(float(a @ a), 1e-300), 1e-6)
-            scales.append(scale)
-            total += float(np.sum((b - scale * a) ** 2))
+            w = 1.0 / np.concatenate([p.err[p.used], p.ref_err])
+            a = np.concatenate([shape(theta_phys, p, p.offsets_hz[p.used]), np.ones(p.ref_y.size)]) * w
+            b = np.concatenate([p.y[p.used], p.ref_y]) * w
+            sc = max(float(a @ b) / max(float(a @ a), 1e-300), 1e-6)
+            scales.append(sc)
+            total += float(np.sum((b - sc * a) ** 2))
         return total, scales
 
+    lower = [lo_cs - cs0, 0.1] + ([0.01] if fit_r1 else []) + [1e-6] * len(prepared)
+    upper = [hi_cs - cs0, 500.0] + ([20.0] if fit_r1 else []) + [np.inf] * len(prepared)
     spacing = float(np.median(np.abs(np.diff(np.sort(_ppm(low, low.offsets_hz, xi)))))) if low.offsets_hz.size > 1 else 0.1
     best = None
-    for dcs in np.linspace(-2 * spacing, 2 * spacing, 41):
+    # Dephasing removes the nutation wiggles, so a coarse CS_A × R2 grid suffices; R1 is
+    # well determined by the baseline and starts at its typical value.
+    n_cs = 21 if dephasing else 41
+    for dcs in np.linspace(-2 * spacing, 2 * spacing, n_cs):
         if not (lower[0] <= dcs <= upper[0]):
             continue
         for r2 in (3.0, 10.0, 30.0, 100.0):
-            r2 = max(r2, r1 + 0.01)
-            cost, scales = scan_cost(float(dcs), r2)
-            if best is None or cost < best[0]:
-                best = (cost, [float(dcs), r2] + scales)
-    if best is not None:
-        x0 = best[1]
+            for r1_start in ((DEFAULT_R1,) if fit_r1 else (None,)):
+                phys = [float(dcs), r2] + ([r1_start] if fit_r1 else [])
+                cost, scales = scan_cost(phys)
+                if best is None or cost < best[0]:
+                    best = (cost, phys + scales)
+    x0 = best[1]
 
-    res = least_squares(residuals, x0, bounds=(lower, upper), x_scale="jac", max_nfev=400, ftol=1e-10, xtol=1e-10)
+    res = least_squares(residuals, x0, bounds=(lower, upper), x_scale="jac", max_nfev=600, ftol=1e-10, xtol=1e-10)
     theta = res.x
     n_data = res.fun.size
     n_par = theta.size
     dof = max(1, n_data - n_par)
     chisqr = float(np.sum(res.fun**2))
     redchi = chisqr / dof
-    stderr = [None] * n_par
+    stderr: list[Optional[float]] = [None] * n_par
     try:
         cov = np.linalg.inv(res.jac.T @ res.jac) * max(redchi, 1e-12)
         stderr = [float(math.sqrt(v)) if v >= 0 else None for v in np.diag(cov)]
@@ -215,7 +267,7 @@ def fit_one_state(
     out_exps = []
     for j, p in enumerate(prepared):
         scale = float(theta[NP + j])
-        fit_at_data = model(theta, p, p.offsets_hz, scale)
+        fit_at_data = scale * shape(theta, p, p.offsets_hz)
         grid_hz = np.linspace(float(p.offsets_hz.min()), float(p.offsets_hz.max()), curve_points)
         out_exps.append({
             "label": p.label,
@@ -228,17 +280,21 @@ def fit_one_state(
             "used": p.used.tolist(),
             "fit": fit_at_data.tolist(),
             "residuals": (p.y - fit_at_data).tolist(),
-            "curve": {"x_ppm": _ppm(p, grid_hz, xi).tolist(), "y": model(theta, p, grid_hz, scale).tolist()},
+            "curve": {"x_ppm": _ppm(p, grid_hz, xi).tolist(), "y": (scale * shape(theta, p, grid_hz)).tolist()},
             "scale": scale,
         })
 
+    _, r2_fit, r1_fit = unpack(theta)
     return {
         "cs_a": float(cs0 + theta[0]),
         "cs_a_err": stderr[0],
-        "r2": float(theta[1]),
+        "r2": float(r2_fit),
         "r2_err": stderr[1],
-        "r1": float(r1),
-        "r1_fixed": True,
+        "r1": float(r1_fit),
+        "r1_err": stderr[2] if fit_r1 else None,
+        "r1_fixed": not fit_r1,
+        "r1_fixed_reason": None if fit_r1 else ("given" if r1 is not None else "no reference plane"),
+        "b1_inhomogeneity": "dephasing" if dephasing else "none",
         "chisqr": chisqr,
         "redchi": redchi,
         "ndata": int(n_data),
