@@ -20,6 +20,7 @@ import {
   buildBrowserRows,
   isFlagged,
   noteOf,
+  storedStatusOf,
 } from '../../lib/residueReview';
 import {
   deltaVarpi,
@@ -110,6 +111,8 @@ export interface PickCestPanelProps {
   exportName?: string;
   /** Fitted shifts from the last committed run, per residue. */
   fittedShifts?: Record<string, { cs_a?: number | null; cs_b?: number | null }>;
+  /** Switch the kinetic model (offered when picks need more states than the model has). */
+  onChangeModel?: (model: string) => void;
   /** For the one-state fit endpoint. */
   projectUuid?: string;
   analysisUuid?: string;
@@ -123,10 +126,20 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
   const {
     profiles, picks, onPick, pickMode, setPickMode, model, xiRatio, unitLabel, filterPlanes = [], masks, setMasks,
     isExcluded, toggleExclude, review, setReview, gapContext, onSelectResidue, exportName = 'pick_cest',
-    fittedShifts = {}, projectUuid, analysisUuid,
+    fittedShifts = {}, projectUuid, analysisUuid, onChangeModel,
   } = props;
   const nStates = numStatesOf(model);
-  const keys = PICK_KEYS.slice(0, Math.max(2, nStates));
+  /** Number of states a residue's picks define (A plus the highest picked minor state). */
+  const pickedStates = (p: CestPickSet | undefined) => {
+    let n = 0;
+    PICK_KEYS.forEach((k, i) => {
+      if (p?.[k] != null) n = i + 1;
+    });
+    return n;
+  };
+  const maxPicked = Math.max(0, ...Object.values(picks).map(pickedStates));
+  /** Pick columns: the model's states plus any extra states picked anywhere. */
+  const keys = PICK_KEYS.slice(0, Math.max(2, nStates, maxPicked));
 
   const [showDiff, setShowDiff] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -154,9 +167,20 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
     [fittedShifts, profiles]
   );
 
+  // A picked residue counts as accepted unless a status was set explicitly (incl. a reset).
   const statusOverride = useCallback(
-    (id: string, s: ReviewStatus): ReviewStatus => (s === 'unreviewed' && picks[id]?.cs_a != null ? 'accepted' : s),
+    (id: string, s: ReviewStatus, stored: string | undefined): ReviewStatus =>
+      s === 'unreviewed' && stored === undefined && picks[id]?.cs_a != null ? 'accepted' : s,
     [picks]
+  );
+  const statusWarning = useCallback(
+    (id: string): string | null => {
+      const minor = PICK_KEYS.slice(1).filter(k => picks[id]?.[k] != null);
+      return storedStatusOf(review, id) === 'no_excited_state' && minor.length
+        ? `Marked "no excited state" but has ${minor.map(k => k.toUpperCase()).join(', ')} pick(s): remove them or change the status`
+        : null;
+    },
+    [picks, review]
   );
 
   const browser = useResidueBrowser({
@@ -232,7 +256,11 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
     };
   }, [seeder, profile, xiRatio, pick?.cs_a, seedCands]);
 
-  const nextMode = (mode: PickKey): PickKey => keys[(keys.indexOf(mode) + 1) % nStates] ?? 'cs_a';
+  // States in play for this residue: the model's, extra picked ones, and the armed one.
+  const resStates = Math.max(1, nStates, pickedStates(pick), PICK_KEYS.indexOf(pickMode) + 1);
+  const resKeys = PICK_KEYS.slice(0, Math.max(2, resStates));
+  const nextMode = (mode: PickKey): PickKey => PICK_KEYS[(PICK_KEYS.indexOf(mode) + 1) % resStates] ?? 'cs_a';
+  const nextNewState = PICK_KEYS[Math.max(nStates, pickedStates(pick), 2)] as PickKey | undefined;
 
   const commitPick = (residue: string, key: PickKey, value: number | null, label?: string) => {
     const undoPick = onPick(residue, key, value);
@@ -287,7 +315,7 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
   const suggestion = selectedId && pick?.cs_a == null ? suggestionOf(selectedId) : null;
   const shapeKeys: Array<PickKey | 'suggestion'> = [];
   const shapes: any[] = [];
-  keys.forEach((k, i) => {
+  resKeys.forEach((k, i) => {
     const v = pick?.[k];
     if (v == null) return;
     shapeKeys.push(k);
@@ -408,6 +436,13 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
     if (k === 'cs_a') return oneState?.fits?.[id]?.cs_a ?? null;
     return null;
   };
+  const extraPickColumns: ResidueColumn[] = keys.slice(2).map((k, i) => ({
+    key: k,
+    header: `${k.toUpperCase()} pick`,
+    render: (id: string) => fmt(picks[id]?.[k]) ?? <span className="text-slate-300 dark:text-slate-600">·</span>,
+    sortValue: (id: string) => picks[id]?.[k] ?? null,
+    className: i % 2 ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300',
+  }));
   const columns: ResidueColumn[] = keys.slice(0, 2).flatMap((k, i) => [
     {
       key: k,
@@ -427,6 +462,7 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
       sortValue: (id: string) => fittedOf(id, k),
     },
   ]);
+  columns.push(...extraPickColumns);
   columns.push({
     key: 'r2_one',
     header: 'R2 (1-st)',
@@ -470,7 +506,6 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
 
   const excluded = selectedId ? isExcluded(selectedId) : false;
   const b0 = experiments[0]?.b0 ?? 600;
-  const dw = pick?.cs_a != null && pick?.cs_b != null ? deltaVarpi(pick.cs_a, pick.cs_b, b0, xiRatio) : null;
   const modeCls =
     pickMode === 'cs_a'
       ? 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800'
@@ -497,12 +532,12 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
 
   return (
     <div className="space-y-4 animate-in fade-in">
-      <ResidueNavBar browser={browser} statusLabels={STATUS_LABELS} buildExport={buildExport}>
+      <ResidueNavBar browser={browser} statusLabels={STATUS_LABELS} buildExport={buildExport} statusWarning={statusWarning}>
         <button
           type="button"
           onClick={() => setPickMode(nextMode(pickMode))}
           className={`text-xs font-bold px-3 py-1 rounded-full border transition-all ${modeCls}`}
-          title="Click to cycle pick mode (A / B)"
+          title="Click to cycle pick mode (keys A … F arm a state directly)"
         >
           Click to set: {pickMode.toUpperCase()}
         </button>
@@ -538,11 +573,50 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2 px-2 pb-2 text-xs">
-                {pick?.cs_a != null && <span className={`${chip} border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-300`}>CS_A {pick.cs_a.toFixed(3)}</span>}
-                {pick?.cs_b != null && <span className={`${chip} border-rose-200 text-rose-700 dark:border-rose-800 dark:text-rose-300`}>CS_B {pick.cs_b.toFixed(3)}</span>}
-                {dw && (
-                  <span className={`${chip} border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200`} title="Δϖ = CS_B − CS_A" data-testid="delta-varpi">
-                    Δϖ {signed(dw.ppm, 3)} ppm ({signed(dw.hz, 1)} Hz)
+                {resKeys.map((k, i) => {
+                  const v = pick?.[k];
+                  if (v == null) return null;
+                  const d = i > 0 && pick?.cs_a != null ? deltaVarpi(pick.cs_a, v, b0, xiRatio) : null;
+                  const state = k.slice(3).toUpperCase();
+                  return (
+                    <span key={k} className={`${chip} inline-flex items-center gap-1`} style={{ borderColor: PICK_COLORS[i] + '66', color: PICK_COLORS[i] }} data-testid={`pick-chip-${k}`}>
+                      CS_{state} {v.toFixed(3)}
+                      {d && (
+                        <span className="text-slate-600 dark:text-slate-300" title={`Δϖ = CS_${state} − CS_A`} data-testid={i === 1 ? 'delta-varpi' : `delta-varpi-${k}`}>
+                          · Δϖ{i > 1 ? `_A${state}` : ''} {signed(d.ppm, 3)} ppm ({signed(d.hz, 1)} Hz)
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => commitPick(profile.residue, k, null, `Remove CS_${state} ${profile.residue}`)}
+                        className="ml-0.5 text-slate-400 hover:text-rose-600"
+                        title={`Remove the CS_${state} pick`}
+                        aria-label={`Remove CS_${state}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+                {nextNewState && (
+                  <button
+                    type="button"
+                    onClick={() => setPickMode(nextNewState)}
+                    className={`${chip} border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-500`}
+                    title={`Arm CS_${nextNewState.slice(3).toUpperCase()}: the next click on the plot picks an additional excited state (key ${nextNewState.slice(3).toUpperCase()})`}
+                  >
+                    + Add state {nextNewState.slice(3).toUpperCase()}
+                  </button>
+                )}
+                {pickedStates(pick) > nStates && (
+                  <span className={`${chip} border-amber-400 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300`} data-testid="model-states-warning">
+                    <AlertTriangle className="inline w-3 h-3 mr-1" />
+                    Picks define {pickedStates(pick)} states; model {model} fits {nStates}
+                    {onChangeModel && (
+                      <button type="button" className="ml-1 underline font-semibold" onClick={() => onChangeModel(`${pickedStates(pick)}st`)}>
+                        use {pickedStates(pick)}st
+                      </button>
+                    )}
                   </span>
                 )}
                 {suggestion && (
@@ -612,7 +686,7 @@ export const PickCestPanel: React.FC<PickCestPanelProps> = props => {
 
             <ResidueNotePanel browser={browser} label={profile.full_residue || profile.residue} />
           </div>
-          <ResidueTable browser={browser} columns={columns} statusLabels={STATUS_LABELS} className="lg:col-span-1 h-[560px]" />
+          <ResidueTable browser={browser} columns={columns} statusLabels={STATUS_LABELS} statusWarning={statusWarning} className="lg:col-span-1 h-[560px]" />
         </div>
       )}
 

@@ -27,6 +27,7 @@ import { minorPickFlag } from '../lib/residueSelection';
 import type { ProfileRef } from '../lib/parameterConfig';
 import {
   computePickHash,
+  MINOR_STATES,
   canonicalizeParameterConfig,
   isResidueExcluded,
   sortSpinKeys,
@@ -700,18 +701,23 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
     const updated = { ...empty, ...(prevPick || {}), [key]: x };
     setPicks(prev => ({ ...prev, [res]: updated }));
 
-    if (x !== null && (key === 'cs_a' || key === 'cs_b' || key === 'cs_c')) {
-      const pickHash = computePickHash(updated);
-      const source = { kind: 'pick' as const, pickSetHash: pickHash, at: new Date().toISOString() };
-      setParameterConfig(prev => {
-        const r = { ...(prev.residues[res] || {}) };
-        r[key] = withValue(r[key], x, source);
-        const csA = key === 'cs_a' ? x : r.cs_a?.value;
-        if (key === 'cs_b' && csA !== undefined) r.dw_ab = withValue(r.dw_ab, x - csA, source);
-        if (key === 'cs_c' && csA !== undefined) r.dw_ac = withValue(r.dw_ac, x - csA, source);
-        return { ...prev, residues: { ...prev.residues, [res]: r } };
-      });
-    }
+    // Mirror into the parameter config: CS_A, and DW_A* = CS_* − CS_A for every minor state.
+    const source = { kind: 'pick' as const, pickSetHash: computePickHash(updated), at: new Date().toISOString() };
+    setParameterConfig(prev => {
+      const r = { ...(prev.residues[res] || {}) };
+      if (key === 'cs_a') {
+        if (x === null) delete r.cs_a;
+        else r.cs_a = withValue(r.cs_a, x, source);
+      }
+      const csA = key === 'cs_a' ? x : r.cs_a?.value ?? updated.cs_a;
+      for (const m of MINOR_STATES) {
+        if (key !== 'cs_a' && key !== m.pick) continue;
+        const minor = updated[m.pick];
+        if (minor != null && csA != null) r[m.dw] = withValue(r[m.dw], minor - csA, source);
+        else if (key === m.pick && r[m.dw]?.source?.kind === 'pick') delete r[m.dw];
+      }
+      return { ...prev, residues: { ...prev.residues, [res]: r } };
+    });
     return () => {
       setPicks(prev => {
         const next = { ...prev };
@@ -1195,6 +1201,10 @@ export const ExchangeAnalysisManager: React.FC<ExchangeAnalysisManagerProps> = (
               gapContext={gapContext}
               exportName={`${analysis.name}_pick_cest`}
               masks={cestMasks}
+              onChangeModel={m => {
+                setModel(m);
+                notify(`Kinetic model set to ${m} (Experiments tab)`, 4000);
+              }}
               setMasks={update => setCestMasks(update)}
               fittedShifts={fittedShiftsFromResults(analysisResults)}
               projectUuid={projectUuid}

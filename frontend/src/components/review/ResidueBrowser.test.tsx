@@ -111,4 +111,20 @@ describe('ResidueBrowser', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].textContent).toContain('1N');
   });
+
+  it('status menu sets and resets a status; U resets; flag can be removed', () => {
+    render(<Harness />);
+    const status = () => screen.getAllByRole('button', { name: 'Status of 1N' })[0];
+    fireEvent.click(status());
+    fireEvent.click(screen.getByRole('menuitem', { name: 'No excited state' }));
+    expect(status().textContent).toContain('No excited state');
+    key('u');
+    expect(status().textContent).toContain('Unreviewed');
+    key('z', { ctrlKey: true });
+    expect(status().textContent).toContain('No excited state');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Flag' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove flag' }));
+    expect(screen.getByRole('button', { name: 'Flag' }).getAttribute('aria-pressed')).toBe('false');
+  });
 });

@@ -1227,6 +1227,10 @@ const CestAnalysisManager: React.FC<CestAnalysisManagerProps> = ({
               onSelectResidue={selectProfileResidue}
               exportName={`${analysis.name}_pick_cest`}
               masks={cestMasks}
+              onChangeModel={m => {
+                setModel(m);
+                notify(`Kinetic model set to ${m} (Experiments tab)`, 4000);
+              }}
               setMasks={update => setCestMasks(update)}
               fittedShifts={fittedShiftsFromResults(analysisResults)}
               projectUuid={projectUuid}

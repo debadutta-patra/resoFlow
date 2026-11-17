@@ -16,6 +16,7 @@ import {
   setStatus,
   shortcutFor,
   statusOf,
+  storedStatusOf,
   stepRow,
   toggleFlag,
 } from './residueReview';
@@ -115,10 +116,22 @@ describe('shortcuts', () => {
     expect(shortcutFor({ key: 'z', metaKey: true })).toBe('undo');
   });
 
-  it('A / B only arm picking where enabled', () => {
+  it('A … F only arm picking where enabled; U resets the status', () => {
     expect(shortcutFor({ key: 'a' })).toBeNull();
     expect(shortcutFor({ key: 'a' }, { armKeys: true })).toBe('arm_a');
     expect(shortcutFor({ key: 'B' }, { armKeys: true })).toBe('arm_b');
+    expect(shortcutFor({ key: 'c' }, { armKeys: true })).toBe('arm_c');
+    expect(shortcutFor({ key: 'f' }, { armKeys: true })).toBe('arm_f');
+    expect(shortcutFor({ key: 'g' }, { armKeys: true })).toBeNull();
+    expect(shortcutFor({ key: 'u' })).toBe('clear_status');
+  });
+
+  it('an explicit reset is stored and normalised as unreviewed', () => {
+    const r = setStatus(setStatus(EMPTY_REVIEW, '4N', 'accepted'), '4N', 'unreviewed');
+    expect(statusOf(r, '4N', false)).toBe('unreviewed');
+    expect(storedStatusOf(r, '4N')).toBe('unreviewed');
+    expect(storedStatusOf(r, '5N')).toBeUndefined();
+    expect(normalizeReview({ statuses: { '4N': 'unreviewed' } }).statuses).toEqual({ '4N': 'unreviewed' });
   });
 
   it('is ignored while typing and with modifiers', () => {

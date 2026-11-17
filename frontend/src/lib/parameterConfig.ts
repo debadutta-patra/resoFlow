@@ -94,6 +94,16 @@ export {
   SpinSystemKey,
 };
 
+/** Minor states B–F: the pick that sets each one and the DW_A* parameter it seeds. */
+export const MINOR_STATES = [
+  { state: 'B', pick: 'cs_b', dw: 'dw_ab' },
+  { state: 'C', pick: 'cs_c', dw: 'dw_ac' },
+  { state: 'D', pick: 'cs_d', dw: 'dw_ad' },
+  { state: 'E', pick: 'cs_e', dw: 'dw_ae' },
+  { state: 'F', pick: 'cs_f', dw: 'dw_af' },
+] as const;
+export type MinorDwKey = (typeof MINOR_STATES)[number]['dw'];
+
 /**
  * Computes a deterministic hash string for a set of picks for a residue.
  */
@@ -399,10 +409,12 @@ export function isPickSourceStale(source: Source | undefined, pick: PickSetData 
   return stored !== computePickHash(pick);
 }
 
-/** Residues whose CS_A or DW_AB were seeded from a pick that has since moved. */
+/** Residues whose CS_A or DW_AB … DW_AF were seeded from a pick that has since moved. */
 export function staleResidueKeys(config: ParameterConfig, picks: Record<string, PickSetData>): string[] {
   return Object.entries(config.residues || {})
-    .filter(([res, p]) => isPickSourceStale(p?.cs_a?.source, picks[res]) || isPickSourceStale(p?.dw_ab?.source, picks[res]))
+    .filter(([res, p]) =>
+      isPickSourceStale(p?.cs_a?.source, picks[res]) || MINOR_STATES.some(m => isPickSourceStale(p?.[m.dw]?.source, picks[res]))
+    )
     .map(([res]) => res);
 }
 

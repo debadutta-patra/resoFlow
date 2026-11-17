@@ -41,7 +41,7 @@ function profile(residue: string, cs: number, hsqc?: number) {
   };
 }
 
-function Harness(props: { fittedShifts?: any; initialPicks?: Record<string, CestPickSet> }) {
+function Harness(props: { fittedShifts?: any; initialPicks?: Record<string, CestPickSet>; model?: string; onChangeModel?: (m: string) => void }) {
   const [picks, setPicks] = useState<Record<string, CestPickSet>>(props.initialPicks ?? {});
   const [mode, setMode] = useState<PickKey>('cs_a');
   const [masks, setMasks] = useState<CestMasks>({});
@@ -58,7 +58,8 @@ function Harness(props: { fittedShifts?: any; initialPicks?: Record<string, Cest
         }}
         pickMode={mode}
         setPickMode={setMode}
-        model="2st"
+        model={props.model ?? '2st'}
+        onChangeModel={props.onChangeModel}
         xiRatio={XI}
         unitLabel="ppm"
         masks={masks}
@@ -113,7 +114,7 @@ describe('PickCestPanel', () => {
 
   it('shows signed Δϖ in ppm and Hz', () => {
     render(<Harness initialPicks={{ '10N': { cs_a: 118, cs_b: 117 } }} />);
-    expect(screen.getByTestId('delta-varpi').textContent).toBe(`Δϖ −1.000 ppm (−${(HZ).toFixed(1)} Hz)`);
+    expect(screen.getByTestId('delta-varpi').textContent).toBe(`· Δϖ −1.000 ppm (−${(HZ).toFixed(1)} Hz)`);
   });
 
   it('shift-click masks an offset (hollow marker), shift-click again unmasks', () => {
@@ -184,5 +185,55 @@ describe('PickCestPanel', () => {
     expect(heat).toHaveLength(2);
     act(() => heat.at(-1).onClick({ points: [{ customdata: '11N' }] }));
     expect(new URLSearchParams(window.location.search).get('res')).toBe('11N');
+  });
+
+  it('adds extra excited states (C) beyond the model, with Δϖ_AC and a model warning', () => {
+    const onChangeModel = vi.fn();
+    render(<Harness initialPicks={{ '10N': { cs_a: 118, cs_b: 117 } }} onChangeModel={onChangeModel} />);
+    fireEvent.click(screen.getByRole('button', { name: /\+ Add state C/ }));
+    expect(state().mode).toBe('cs_c');
+    click({ points: [{ x: 120.5 }], event: { altKey: true } });
+    expect(state().picks['10N'].cs_c).toBe(120.5);
+    expect(screen.getByTestId('delta-varpi-cs_c').textContent).toContain('Δϖ_AC +2.500 ppm');
+    // Cycling now covers A → B → C.
+    expect(state().mode).toBe('cs_a');
+    expect(screen.getByTestId('model-states-warning').textContent).toContain('Picks define 3 states; model 2st fits 2');
+    fireEvent.click(screen.getByRole('button', { name: 'use 3st' }));
+    expect(onChangeModel).toHaveBeenCalledWith('3st');
+    // The table gets a CS_C column.
+    expect(screen.getByText('CS_C pick')).toBeDefined();
+  });
+
+  it('keyboard C arms CS_C; × removes a pick', () => {
+    render(<Harness initialPicks={{ '10N': { cs_a: 118, cs_b: 117 } }} model="3st" />);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c' }));
+    });
+    expect(state().mode).toBe('cs_c');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove CS_B' }));
+    expect(state().picks['10N'].cs_b).toBeNull();
+    expect(screen.queryByTestId('model-states-warning')).toBeNull();
+  });
+
+  it('a picked residue can be reset to unreviewed and stays unreviewed', () => {
+    render(<Harness initialPicks={{ '10N': { cs_a: 118 } }} />);
+    const statusBtn = () => screen.getAllByRole('button', { name: 'Status of 10N' })[0];
+    expect(statusBtn().textContent).toContain('Picked');
+    fireEvent.click(statusBtn());
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset to unreviewed' }));
+    expect(statusBtn().textContent).toContain('Unreviewed');
+  });
+
+  it('warns when "no excited state" conflicts with a minor-state pick', () => {
+    render(<Harness initialPicks={{ '10N': { cs_a: 118, cs_b: 119.9 } }} />);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
+    });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+    });
+    expect(screen.getAllByTestId('status-warning')[0].getAttribute('title')).toContain('has CS_B pick');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove CS_B' }));
+    expect(screen.queryAllByTestId('status-warning')).toHaveLength(0);
   });
 });

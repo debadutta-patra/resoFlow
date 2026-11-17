@@ -10,7 +10,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Search, Flag, HelpCircle, Download, MinusCircle, PlusCircle,
-  ArrowUpDown, Undo2, Check, Ban, Circle,
+  ArrowUpDown, Undo2, Check, Ban, Circle, AlertTriangle,
 } from 'lucide-react';
 import type { ResidueBrowserState } from '../../hooks/useResidueBrowser';
 import {
@@ -18,6 +18,7 @@ import {
   type ExportMask,
   type ExportResidue,
   type ReviewStatus,
+  type StoredStatus,
   STATUS_LABELS,
   reviewToCsv,
   reviewToToml,
@@ -50,6 +51,68 @@ export const StatusBadge: React.FC<{ status: ReviewStatus; label?: string }> = (
     {label ?? STATUS_LABELS[status]}
   </span>
 );
+
+// ── Status menu (set or reset a status) ─────────────────────────────────
+
+const SETTABLE: StoredStatus[] = ['unreviewed', 'accepted', 'no_excited_state'];
+
+export const StatusMenu: React.FC<{
+  browser: ResidueBrowserState;
+  id: string;
+  statusLabels?: Partial<Record<ReviewStatus, string>>;
+  /** Extra warning shown on the badge (e.g. "has CS_B pick"). */
+  warning?: string | null;
+}> = ({ browser, id, statusLabels, warning }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const s = browser.status(id);
+  return (
+    <div className="relative inline-flex items-center gap-1" ref={ref} onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        disabled={s === 'excluded'}
+        title={s === 'excluded' ? 'Excluded: use Include to change' : 'Change status'}
+        aria-label={`Status of ${id}`}
+        aria-haspopup="menu"
+        className="disabled:cursor-default"
+      >
+        <StatusBadge status={s} label={statusLabels?.[s]} />
+      </button>
+      {warning && (
+        <span className="text-amber-500" title={warning} data-testid="status-warning">
+          <AlertTriangle className="w-3 h-3" />
+        </span>
+      )}
+      {open && (
+        <div role="menu" className="absolute left-0 top-full z-30 mt-1 w-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg text-xs overflow-hidden">
+          {SETTABLE.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                browser.setReviewStatus(opt, id);
+                setOpen(false);
+              }}
+              className={`block w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 ${s === opt ? 'font-bold' : ''}`}
+            >
+              {opt === 'unreviewed' ? 'Reset to unreviewed' : statusLabels?.[opt] ?? STATUS_LABELS[opt]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── Shortcuts popover ────────────────────────────────────────────────────
 
@@ -138,9 +201,10 @@ export interface ResidueNavBarProps {
   buildExport: () => ReviewExport;
   /** Page actions shown on the right (pick mode, Accept & Next, No excited state, ...). */
   children?: React.ReactNode;
+  statusWarning?: (id: string) => string | null;
 }
 
-export const ResidueNavBar: React.FC<ResidueNavBarProps> = ({ browser, statusLabels, buildExport, children }) => {
+export const ResidueNavBar: React.FC<ResidueNavBarProps> = ({ browser, statusLabels, buildExport, children, statusWarning }) => {
   const present = browser.rows.filter(r => r.present);
   const idx = browser.selectedId ? present.findIndex(r => r.id === browser.selectedId) : -1;
   const sel = browser.selectedId;
@@ -181,6 +245,7 @@ export const ResidueNavBar: React.FC<ResidueNavBarProps> = ({ browser, statusLab
             <span>{excluded ? 'Excluded (Click to Include)' : 'Exclude'}</span>
           </button>
         )}
+        {sel && <StatusMenu browser={browser} id={sel} statusLabels={statusLabels} warning={statusWarning?.(sel)} />}
         <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 px-2" data-testid="review-progress">
           {browser.progress.reviewed} / {browser.progress.total} reviewed
         </span>
@@ -230,11 +295,12 @@ export interface ResidueTableProps {
   /** Row highlight (e.g. a warning tint) for present rows. */
   rowClassName?: (id: string) => string;
   className?: string;
+  statusWarning?: (id: string) => string | null;
 }
 
 type SortState = { key: string; dir: 1 | -1 };
 
-export const ResidueTable: React.FC<ResidueTableProps> = ({ browser, columns = [], statusLabels, filters = [], rowClassName, className }) => {
+export const ResidueTable: React.FC<ResidueTableProps> = ({ browser, columns = [], statusLabels, filters = [], rowClassName, className, statusWarning }) => {
   const [query, setQuery] = useState('');
   const [filterKey, setFilterKey] = useState('all');
   const [sort, setSort] = useState<SortState>({ key: 'res', dir: 1 });
@@ -351,7 +417,7 @@ export const ResidueTable: React.FC<ResidueTableProps> = ({ browser, columns = [
                     <span className={s === 'excluded' ? 'line-through text-slate-400' : ''}>{r.label}</span>
                     {browser.noteFor(r.id) && <span className="ml-1 text-slate-400" title={browser.noteFor(r.id)}>✎</span>}
                   </td>
-                  <td className="px-3 py-1.5"><StatusBadge status={s} label={statusLabels?.[s]} /></td>
+                  <td className="px-3 py-1.5"><StatusMenu browser={browser} id={r.id} statusLabels={statusLabels} warning={statusWarning?.(r.id)} /></td>
                   {columns.map(c => (
                     <td key={c.key} className={`px-3 py-1.5 font-mono ${c.className ?? ''}`}>{c.render(r.id)}</td>
                   ))}
@@ -409,9 +475,10 @@ export const ResidueNotePanel: React.FC<{ browser: ResidueBrowserState; label?: 
             : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:text-amber-600'
         }`}
         aria-pressed={browser.flagged}
+        title={browser.flagged ? 'Remove the flag' : 'Flag this residue'}
       >
         <Flag className="w-3.5 h-3.5" fill={browser.flagged ? 'currentColor' : 'none'} />
-        {browser.flagged ? 'Flagged' : 'Flag'}
+        {browser.flagged ? 'Remove flag' : 'Flag'}
       </button>
     </div>
   );

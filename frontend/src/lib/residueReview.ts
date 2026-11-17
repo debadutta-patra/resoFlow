@@ -14,7 +14,8 @@ import { SpinSystemKey } from './spinSystem';
 import { residueTypeAt } from './sequence';
 
 export type ReviewStatus = 'unreviewed' | 'accepted' | 'no_excited_state' | 'excluded';
-export type StoredStatus = 'accepted' | 'no_excited_state';
+/** 'unreviewed' is stored only when a status was explicitly reset (so a pick does not re-mark it). */
+export type StoredStatus = 'accepted' | 'no_excited_state' | 'unreviewed';
 
 export interface ReviewState {
   statuses: Record<string, StoredStatus>;
@@ -49,7 +50,7 @@ export function normalizeReview(raw: unknown): ReviewState {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<ReviewState>;
   const statuses: Record<string, StoredStatus> = {};
   for (const [k, v] of Object.entries(r.statuses || {})) {
-    if (v === 'accepted' || v === 'no_excited_state') statuses[k] = v;
+    if (v === 'accepted' || v === 'no_excited_state' || v === 'unreviewed') statuses[k] = v;
   }
   const notes: Record<string, string> = {};
   for (const [k, v] of Object.entries(r.notes || {})) {
@@ -78,6 +79,11 @@ function sameResidue(a: SpinSystemKey, b: SpinSystemKey): boolean {
 function lookup<T>(record: Record<string, T>, id: string): T | undefined {
   const k = findKey(record, id);
   return k === undefined ? undefined : record[k];
+}
+
+/** The stored status, if any (undefined when never set). */
+export function storedStatusOf(review: ReviewState, id: string): StoredStatus | undefined {
+  return lookup(review.statuses, id);
 }
 
 /** Effective status: exclusion wins over a stored status. */
@@ -201,7 +207,8 @@ export function stepRow(rows: BrowserRow[], id: string | null, delta: 1 | -1): s
 
 // ── Keyboard shortcuts ───────────────────────────────────────────────────
 
-export type ShortcutAction = 'prev' | 'next' | 'accept' | 'exclude' | 'no_excited' | 'arm_a' | 'arm_b' | 'undo';
+export type ArmAction = 'arm_a' | 'arm_b' | 'arm_c' | 'arm_d' | 'arm_e' | 'arm_f';
+export type ShortcutAction = 'prev' | 'next' | 'accept' | 'exclude' | 'no_excited' | 'clear_status' | ArmAction | 'undo';
 
 export interface KeyLike {
   key: string;
@@ -236,8 +243,9 @@ export function shortcutFor(e: KeyLike, opts: { armKeys?: boolean } = {}): Short
   switch (e.key.toLowerCase()) {
     case 'x': return 'exclude';
     case 'n': return 'no_excited';
-    case 'a': return opts.armKeys ? 'arm_a' : null;
-    case 'b': return opts.armKeys ? 'arm_b' : null;
+    case 'u': return 'clear_status';
+    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
+      return opts.armKeys ? (`arm_${e.key.toLowerCase()}` as ArmAction) : null;
   }
   return null;
 }
@@ -252,8 +260,9 @@ export function shortcutHelp(armKeys: boolean): ShortcutHelp[] {
     { keys: '← / →', action: 'Previous / next residue' },
     { keys: 'Enter', action: 'Accept and go to next' },
     { keys: 'X', action: 'Exclude / include residue' },
-    { keys: 'N', action: 'Mark no excited state' },
-    ...(armKeys ? [{ keys: 'A / B', action: 'Arm CS_A / CS_B picking' }] : []),
+    { keys: 'N', action: 'Mark / unmark no excited state' },
+    { keys: 'U', action: 'Reset status to unreviewed' },
+    ...(armKeys ? [{ keys: 'A … F', action: 'Arm CS_A … CS_F picking (C–F add states)' }] : []),
     { keys: 'Ctrl+Z', action: 'Undo last action' },
   ];
 }

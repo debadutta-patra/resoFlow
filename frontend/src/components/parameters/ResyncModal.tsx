@@ -23,11 +23,12 @@ import {
   withValue,
 } from '../../lib/parameterConfig';
 import { ParameterBadge } from './ParameterBadge';
+import { MINOR_STATES, type MinorDwKey } from '../../lib/parameterConfig';
 
 export interface ResyncItem {
   residue: string;
   displayLabel?: string;
-  paramKey: 'cs_a' | 'dw_ab';
+  paramKey: 'cs_a' | MinorDwKey;
   oldValue: number | undefined;
   newValue: number | null;
   oldSource?: any;
@@ -171,41 +172,39 @@ export const ResyncModal: React.FC<ResyncModalProps> = ({
         selected: statusCsA !== 'unchanged' && !isManualCsA,
       });
 
-      // 2. DW_AB
-      const oldDw = rConfig.dw_ab?.value;
-      const hasBPick = pk?.cs_b != null && !isNaN(pk.cs_b);
-      let newDw: number | null = null;
-      if (newCsA !== null && hasBPick) {
-        newDw = pk!.cs_b! - newCsA;
-      }
-      const sourceDw = rConfig.dw_ab?.source;
-      const isManualDw = sourceDw?.kind === 'manual';
+      // 2. DW_AB … DW_AF: one row per minor state picked (or previously set).
+      for (const { pick: pickKey, dw: dwKey } of MINOR_STATES) {
+        const oldDw = rConfig[dwKey]?.value;
+        const minorPick = pk?.[pickKey];
+        const hasPick = minorPick != null && !isNaN(minorPick);
+        // States never picked nor set are not listed (no DW_AC = 0 invented for 2-state fits).
+        if (!hasPick && oldDw === undefined) continue;
+        const newDw = newCsA !== null && hasPick ? (minorPick as number) - newCsA : null;
+        const sourceDw = rConfig[dwKey]?.source;
+        const isManualDw = sourceDw?.kind === 'manual';
 
-      let statusDw: ResyncItem['status'] = 'unchanged';
-      if (hasBPick) {
-        if (oldDw === undefined && newDw !== null) {
-          statusDw = 'added';
-        } else if (oldDw !== undefined && newDw === null) {
+        let statusDw: ResyncItem['status'] = 'unchanged';
+        if (hasPick) {
+          if (oldDw === undefined && newDw !== null) statusDw = 'added';
+          else if (oldDw !== undefined && newDw === null) statusDw = 'removed';
+          else if (oldDw !== undefined && newDw !== null && Math.abs(oldDw - newDw) > 1e-4) statusDw = 'changed';
+        } else if (sourceDw?.kind === 'pick') {
+          // The pick behind this value was removed.
           statusDw = 'removed';
-        } else if (oldDw !== undefined && newDw !== null && Math.abs(oldDw - newDw) > 1e-4) {
-          statusDw = 'changed';
         }
-      } else {
-        // No B-pick: do not invent a DW_AB = 0.0 or force CS_B = CS_A
-        statusDw = 'unchanged';
-      }
 
-      items.push({
-        residue: canonicalKey,
-        displayLabel: label,
-        paramKey: 'dw_ab',
-        oldValue: oldDw,
-        newValue: newDw,
-        oldSource: sourceDw,
-        status: statusDw,
-        isManual: isManualDw,
-        selected: statusDw !== 'unchanged' && !isManualDw,
-      });
+        items.push({
+          residue: canonicalKey,
+          displayLabel: label,
+          paramKey: dwKey,
+          oldValue: oldDw,
+          newValue: newDw,
+          oldSource: sourceDw,
+          status: statusDw,
+          isManual: isManualDw,
+          selected: statusDw !== 'unchanged' && !isManualDw,
+        });
+      }
     }
 
     return items;

@@ -12,6 +12,7 @@ import {
   type BrowserRow,
   type ReviewState,
   type ReviewStatus,
+  type StoredStatus,
   type ShortcutAction,
   type UndoEntry,
   isFlagged,
@@ -24,6 +25,7 @@ import {
   shortcutFor,
   shortcutHelp,
   statusOf,
+  storedStatusOf,
   stepRow,
   toggleFlag as toggleFlagIn,
 } from '../lib/residueReview';
@@ -62,15 +64,18 @@ export interface UseResidueBrowserOptions {
   toggleExclude: (id: string) => void;
   /** Only the visible page listens to the keyboard and owns the URL parameter. */
   active: boolean;
-  /** Pick CEST: A / B arm CS_A / CS_B picking. */
-  onArm?: (mode: 'cs_a' | 'cs_b') => void;
+  /** Pick CEST: A … F arm CS_A … CS_F picking. */
+  onArm?: (mode: 'cs_a' | 'cs_b' | 'cs_c' | 'cs_d' | 'cs_e' | 'cs_f') => void;
   /**
    * Extra work when a residue is accepted (e.g. commit a suggested CS_A). May return an
    * undo function for that work.
    */
   onAccept?: (id: string) => (() => void) | void;
-  /** Page-specific status override, e.g. Pick CEST counts a picked residue as accepted. */
-  statusOverride?: (id: string, status: ReviewStatus) => ReviewStatus;
+  /**
+   * Page-specific status override, e.g. Pick CEST counts a picked residue as accepted
+   * unless its status was explicitly set (`stored`).
+   */
+  statusOverride?: (id: string, status: ReviewStatus, stored: StoredStatus | undefined) => ReviewStatus;
 }
 
 export function useResidueBrowser(opts: UseResidueBrowserOptions) {
@@ -118,7 +123,7 @@ export function useResidueBrowser(opts: UseResidueBrowserOptions) {
   const status = useCallback(
     (id: string): ReviewStatus => {
       const s = statusOf(review, id, isExcluded(id));
-      return statusOverride ? statusOverride(id, s) : s;
+      return statusOverride ? statusOverride(id, s, storedStatusOf(review, id)) : s;
     },
     [review, isExcluded, statusOverride]
   );
@@ -167,6 +172,16 @@ export function useResidueBrowser(opts: UseResidueBrowserOptions) {
     [selectedId, changeReview, rows]
   );
 
+  /** Set the selected (or given) residue's status; 'unreviewed' resets it. Undoable. */
+  const setReviewStatus = useCallback(
+    (status: StoredStatus, id?: string) => {
+      const target = id ?? selectedId;
+      if (!target) return;
+      changeReview(`Set ${target} ${status}`, r => setStatus(r, target, status));
+    },
+    [selectedId, changeReview]
+  );
+
   const toggleExclusion = useCallback(
     (id?: string) => {
       const target = id ?? selectedId;
@@ -210,8 +225,13 @@ export function useResidueBrowser(opts: UseResidueBrowserOptions) {
       accept: acceptAndNext,
       exclude: () => toggleExclusion(),
       no_excited: () => markNoExcited(),
+      clear_status: () => setReviewStatus('unreviewed'),
       arm_a: () => onArm?.('cs_a'),
       arm_b: () => onArm?.('cs_b'),
+      arm_c: () => onArm?.('cs_c'),
+      arm_d: () => onArm?.('cs_d'),
+      arm_e: () => onArm?.('cs_e'),
+      arm_f: () => onArm?.('cs_f'),
       undo,
     };
   });
@@ -239,6 +259,7 @@ export function useResidueBrowser(opts: UseResidueBrowserOptions) {
     next,
     acceptAndNext,
     markNoExcited,
+    setReviewStatus,
     toggleExclusion,
     toggleFlag,
     setNote,
